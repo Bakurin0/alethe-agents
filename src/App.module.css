@@ -1,3 +1,18 @@
+/* Container raiz do app. No macOS, arredonda os cantos para casar com o recorte
+   do contentView feito no AppKit (window_style.rs). O --bg vive aqui (não no
+   body) porque html/body ficam transparentes no macOS — ver reset.css. */
+.appRoot {
+  display: flex;
+  flex-direction: column;
+  height: 100vh;
+  background: var(--bg);
+}
+
+:global([data-platform='macos']) .appRoot {
+  border-radius: 16px;
+  overflow: hidden;
+}
+
 .loadingScreen {
   display: grid;
   place-items: center;
@@ -8,6 +23,11 @@
     radial-gradient(circle at 50% 42%, var(--accent-soft), transparent 30%),
     var(--bg);
   color: var(--fg);
+}
+
+:global([data-platform='macos']) .loadingScreen {
+  border-radius: 16px;
+  overflow: hidden;
 }
 
 .loadingMark {

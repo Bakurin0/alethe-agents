@@ -26,6 +26,7 @@ mod pty;
 mod session_watcher;
 mod spotify;
 mod stats;
+mod window_style;
 
 use std::collections::HashMap;
 use std::sync::{Arc, Mutex};
@@ -56,6 +57,10 @@ pub fn run() {
                 let _ = window.set_title("(DEV) Alethe");
             }
             logging::set_logs_dir(app.handle());
+            // Cantos arredondados no macOS (no-op nas outras plataformas). A
+            // janela roda sem decorações nativas, então reaplicamos o
+            // arredondamento no nível do AppKit.
+            window_style::apply_rounded_corners(app.handle());
             // Detecta saída suja anterior (crash/OOM/kill) e sobe o heartbeat.
             crash_watch::start(app.handle().clone());
             // Limpa scrollback órfão antes de qualquer spawn (sem corrida).

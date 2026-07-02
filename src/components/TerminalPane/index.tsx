@@ -392,17 +392,34 @@ export const TerminalPane = memo(function TerminalPane({
           ) : activeTab ? (
             <>
               {useNativeBackend ? (
-                <GhosttySurface
-                  key={activeTab.id}
-                  surfaceId={activeTab.id}
-                  cwd={activeTab.cwd?.trim() || terminal.cwd?.trim() || undefined}
-                  command={buildGhosttyCommand(activeTab.type, activeTab.extraArgs)}
-                  onSpawned={(id) => {
-                    if (activeTab.ptyId !== id) {
-                      setSubTabPtyId(projectId, terminal.id, activeTab.id, id)
-                    }
-                  }}
-                />
+                // Native (Ghostty): todas as sub-tabs ficam montadas; só a ativa
+                // fica visível/focada, as demais seguem VIVAS mas escondidas.
+                // É isso que preserva o estado ao voltar pra uma tab (a surface
+                // não é destruída na troca — só no fechamento do pane/tab).
+                terminal.tabs.map((tab) => (
+                  <GhosttySurface
+                    key={tab.id}
+                    surfaceId={tab.id}
+                    active={tab.id === activeTab.id}
+                    cwd={tab.cwd?.trim() || terminal.cwd?.trim() || undefined}
+                    command={buildGhosttyCommand(tab.type, tab.extraArgs)}
+                    onSpawned={(id) => {
+                      if (tab.ptyId !== id) {
+                        setSubTabPtyId(projectId, terminal.id, tab.id, id)
+                      }
+                    }}
+                    onExit={() => {
+                      // Processo saiu (ex.: `exit`). Com >1 sub-tab, fecha só ela;
+                      // sendo a última, fecha o pane e reajusta o layout (mantém o
+                      // atalho na sidebar, como o botão Kill).
+                      if (terminal.tabs.length > 1) {
+                        closeSubTab(projectId, terminal.id, tab.id)
+                      } else {
+                        killTerminal(projectId, terminal.id)
+                      }
+                    }}
+                  />
+                ))
               ) : (
                 <XTermView
                   key={activeTab.id}

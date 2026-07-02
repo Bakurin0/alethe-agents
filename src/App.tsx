@@ -31,6 +31,7 @@ import { useKeybindings } from './hooks/useKeybindings'
 import { useDiscordPresence } from './hooks/useDiscordPresence'
 import { startActivityTracker } from './lib/activityTracker'
 import { intlLocale, translate } from './lib/i18n'
+import { isMacOS } from './lib/platform'
 import { setMaxConcurrentSpawns } from './lib/spawnQueue'
 import { getLastCrashReport } from './lib/tauri'
 import { useProjectsStore } from './stores/projectsStore'
@@ -143,6 +144,14 @@ export default function App() {
     })
   }, [])
 
+  // Marca a plataforma no <html> uma vez. O CSS usa [data-platform="macos"]
+  // para arredondar os cantos da janela (a janela roda sem decorações nativas,
+  // e o backend AppKit recorta o contentView — o DOM precisa ser transparente
+  // nos cantos para o recorte aparecer). Ver window_style.rs.
+  useEffect(() => {
+    document.documentElement.dataset.platform = isMacOS() ? 'macos' : 'other'
+  }, [])
+
   useEffect(() => {
     document.documentElement.dataset.theme = uiTheme
   }, [uiTheme])
@@ -212,7 +221,7 @@ export default function App() {
 
   return (
     <>
-      <div style={{ display: 'flex', flexDirection: 'column', height: '100vh', background: 'var(--bg)' }}>
+      <div className={styles.appRoot}>
         <TitleBar />
         <div style={{ display: 'flex', flex: 1, minHeight: 0 }}>
           {sidebarVisible ? <ProjectSidebar /> : null}

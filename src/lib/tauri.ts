@@ -138,6 +138,15 @@ export async function ghosttySetHidden(id: string, hidden: boolean): Promise<voi
   await invoke('ghostty_set_hidden', { id, hidden })
 }
 
+export async function ghosttySetFocus(id: string, focused: boolean): Promise<void> {
+  await invoke('ghostty_set_focus', { id, focused })
+}
+
+/** true quando o processo do terminal Ghostty já saiu (shell/agente encerrou). */
+export async function ghosttySurfaceExited(id: string): Promise<boolean> {
+  return invoke<boolean>('ghostty_surface_exited', { id })
+}
+
 export async function ghosttyKill(id: string): Promise<void> {
   await invoke('ghostty_kill', { id })
 }

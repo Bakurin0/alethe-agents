@@ -548,6 +548,14 @@ void alethe_ghostty_surface_draw(alethe_surface_t surface) {
     alethe_draw_surface((ghostty_surface_t)surface);
 }
 
+// true quando o processo do terminal (shell/agente) já terminou — o Ghostty
+// mostra "Press any key to close", mas cabe ao app fechar o pane. Consultado por
+// polling do frontend (ghostty_surface_exited) para reajustar o layout.
+bool alethe_ghostty_surface_process_exited(alethe_surface_t surface) {
+    if (surface == NULL) return false;
+    return ghostty_surface_process_exited((ghostty_surface_t)surface);
+}
+
 unsigned long long alethe_ghostty_draw_count(void) {
     return g_draw_count;
 }

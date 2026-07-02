@@ -481,6 +481,53 @@ mod imp {
         Ok(String::from_utf8_lossy(&buf).to_string())
     }
 
+    pub fn set_focus(
+        state: &State<'_, GhosttyState>,
+        id: String,
+        focused: bool,
+    ) -> Result<(), String> {
+        let _mtm = MainThreadMarker::new()
+            .ok_or_else(|| "ghostty_set_focus precisa rodar na main thread".to_string())?;
+        let mut views = state.views.lock().map_err(|_| "lock poisoned".to_string())?;
+        if let Some(entry) = views.get_mut(&id) {
+            #[cfg(ghostty_linked)]
+            {
+                use crate::ghostty_ffi::*;
+                if !entry.surface.is_null() {
+                    unsafe { alethe_ghostty_surface_set_focus(entry.surface, focused) };
+                }
+            }
+            #[cfg(not(ghostty_linked))]
+            {
+                // Modo stub (sem libghostty): a NSView é só um placeholder
+                // colorido, sem shell real — foco de teclado é no-op.
+                let _ = (&entry, focused);
+            }
+        }
+        Ok(())
+    }
+
+    pub fn process_exited(state: &State<'_, GhosttyState>, id: String) -> Result<bool, String> {
+        let _mtm = MainThreadMarker::new()
+            .ok_or_else(|| "ghostty_process_exited precisa rodar na main thread".to_string())?;
+        let views = state.views.lock().map_err(|_| "lock poisoned".to_string())?;
+        match views.get(&id) {
+            #[cfg(ghostty_linked)]
+            Some(entry) => {
+                use crate::ghostty_ffi::*;
+                if entry.surface.is_null() {
+                    return Ok(false);
+                }
+                Ok(unsafe { alethe_ghostty_surface_process_exited(entry.surface) })
+            }
+            #[cfg(not(ghostty_linked))]
+            Some(_entry) => Ok(false),
+            // Surface ausente (já morta/nunca criada) — trata como "saiu" para o
+            // frontend não ficar preso esperando por uma surface inexistente.
+            None => Ok(true),
+        }
+    }
+
     pub fn kill(state: &State<'_, GhosttyState>, id: String) -> Result<(), String> {
         let _mtm = MainThreadMarker::new()
             .ok_or_else(|| "ghostty_kill precisa rodar na main thread".to_string())?;
@@ -968,6 +1015,19 @@ mod imp {
     ) -> Result<(), String> {
         Err(UNSUPPORTED.into())
     }
+    pub fn set_focus(
+        _state: &State<'_, GhosttyState>,
+        _id: String,
+        _focused: bool,
+    ) -> Result<(), String> {
+        Err(UNSUPPORTED.into())
+    }
+    pub fn process_exited(
+        _state: &State<'_, GhosttyState>,
+        _id: String,
+    ) -> Result<bool, String> {
+        Err(UNSUPPORTED.into())
+    }
     pub fn kill(_state: &State<'_, GhosttyState>, _id: String) -> Result<(), String> {
         Err(UNSUPPORTED.into())
     }
@@ -1011,6 +1071,23 @@ pub fn ghostty_set_hidden(
     hidden: bool,
 ) -> Result<(), String> {
     imp::set_hidden(&state, id, hidden)
+}
+
+#[tauri::command]
+pub fn ghostty_set_focus(
+    state: tauri::State<'_, GhosttyState>,
+    id: String,
+    focused: bool,
+) -> Result<(), String> {
+    imp::set_focus(&state, id, focused)
+}
+
+#[tauri::command]
+pub fn ghostty_surface_exited(
+    state: tauri::State<'_, GhosttyState>,
+    id: String,
+) -> Result<bool, String> {
+    imp::process_exited(&state, id)
 }
 
 #[tauri::command]
