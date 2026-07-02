@@ -38,6 +38,20 @@ use tauri::Manager;
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     let _ = dotenvy::dotenv();
+    // `npm run app` (dev) injeta EDITOR=vi e GIT_EDITOR=true no ambiente do
+    // processo. Shells spawnados pelos terminais herdariam isso e o zsh ligaria
+    // o vi-mode (Ctrl+R vira "redisplay", Ctrl+A/E viram self-insert — bug real
+    // depurado no macOS). Removemos APENAS quando é claramente o artefato do
+    // npm (rodando sob npm run + valores exatos que o npm injeta); o ambiente
+    // do usuário em produção passa intocado, em todas as plataformas.
+    if std::env::var_os("npm_lifecycle_event").is_some() {
+        if std::env::var("EDITOR").as_deref() == Ok("vi") {
+            std::env::remove_var("EDITOR");
+        }
+        if std::env::var("GIT_EDITOR").as_deref() == Ok("true") {
+            std::env::remove_var("GIT_EDITOR");
+        }
+    }
     // Instala o panic hook cedo (antes do builder). O diretório de logs só é
     // resolvido no .setup(); panics anteriores a isso caem só no stderr.
     logging::install_panic_hook();
