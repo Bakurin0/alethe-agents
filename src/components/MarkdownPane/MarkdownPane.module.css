@@ -241,6 +241,16 @@
   overflow: auto;
 }
 
+/* Viewer de texto puro (kind: 'file') — arquivos não-markdown em monospace. */
+.textView {
+  margin: 0;
+  padding: 14px 16px;
+  color: var(--fg);
+  font: 400 12px/1.6 var(--font-mono);
+  white-space: pre;
+  tab-size: 2;
+}
+
 /* ---- Tipografia do markdown — só tokens, sem cor literal ---- */
 .markdownBody {
   padding: 20px 24px;

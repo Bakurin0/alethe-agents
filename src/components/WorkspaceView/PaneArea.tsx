@@ -7,9 +7,9 @@ import { MarkdownPane } from '../MarkdownPane'
 import { TerminalPane } from '../TerminalPane'
 import styles from './WorkspaceView.module.css'
 
-/** Renderiza o pane certo conforme o tipo (terminal ou markdown viewer). */
+/** Renderiza o pane certo conforme o tipo (terminal ou viewer de arquivo). */
 function Pane({ projectId, terminal }: { projectId: string; terminal: Terminal }) {
-  if (terminal.kind === 'markdown') {
+  if (terminal.kind === 'markdown' || terminal.kind === 'file') {
     return <MarkdownPane projectId={projectId} terminal={terminal} />
   }
   return <TerminalPane projectId={projectId} terminal={terminal} />

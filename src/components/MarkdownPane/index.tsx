@@ -1,5 +1,6 @@
 import { useDraggable, useDroppable } from '@dnd-kit/core'
 import {
+  FileCode,
   FileText,
   FolderOpen,
   GripVertical,
@@ -142,7 +143,7 @@ export const MarkdownPane = memo(function MarkdownPane({
             </button>
           ) : null}
           <span className={styles.iconWrap}>
-            <FileText size={16} />
+            {terminal.kind === 'file' ? <FileCode size={16} /> : <FileText size={16} />}
           </span>
           <div className={styles.identity}>
             <span className={styles.name} title={terminal.name}>
@@ -225,6 +226,10 @@ export const MarkdownPane = memo(function MarkdownPane({
         ) : content === null ? (
           <div className={styles.empty}>
             <span>{t('ui.markdown.loading')}</span>
+          </div>
+        ) : terminal.kind === 'file' ? (
+          <div className={styles.scroll}>
+            <pre className={styles.textView}>{content}</pre>
           </div>
         ) : (
           <div className={styles.scroll}>

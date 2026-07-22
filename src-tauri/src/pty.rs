@@ -3,7 +3,7 @@ use serde::Serialize;
 use std::collections::{HashMap, VecDeque};
 use std::fs;
 use std::io::{Read, Write};
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::sync::{Arc, Mutex};
 use std::thread;
 use std::time::Instant;
@@ -15,11 +15,19 @@ use crate::paths::{scrollback_dir, scrollback_path};
 
 pub const SCROLLBACK_CAP_BYTES: usize = 4 * 1024 * 1024;
 pub const SCROLLBACK_FLUSH_INTERVAL_MS: u128 = 250;
+/// Acima disso o `.bin` (append-only) é compactado pra cauda de
+/// `SCROLLBACK_CAP_BYTES`. 2× o cap = ~2× de write-amplification amortizada
+/// sobre a saída real, e no máximo ~8 MB por terminal em disco.
+pub const SCROLLBACK_COMPACT_BYTES: u64 = SCROLLBACK_CAP_BYTES as u64 * 2;
 
 pub struct ScrollbackBuffer {
     pub data: VecDeque<u8>,
     pub last_flush: Instant,
     pub dirty: bool,
+    /// Bytes novos ainda não escritos em disco. O flush faz APPEND só disto —
+    /// não reescreve os 4 MB do anel. Sem isso, um spinner (poucos bytes/s)
+    /// forçava um rewrite de 4 MB a cada 250ms (~16 MB/s por terminal ativo).
+    pub pending: Vec<u8>,
 }
 
 impl ScrollbackBuffer {
@@ -28,6 +36,7 @@ impl ScrollbackBuffer {
             data: initial,
             last_flush: Instant::now(),
             dirty: false,
+            pending: Vec::new(),
         }
     }
 }
@@ -588,17 +597,61 @@ pub fn load_scrollback(app: &AppHandle, id: &str) -> Result<VecDeque<u8>, String
 /// Writer global de scrollback: uma única thread em background recebe
 /// `(path, bytes)` e escreve. Evita spawnar uma thread a cada flush (250ms por
 /// PTY ativo). Vive pela vida do processo — sem teardown por PTY, sem vazar thread.
-fn scrollback_writer() -> &'static std::sync::mpsc::Sender<(PathBuf, Vec<u8>)> {
-    static WRITER: std::sync::OnceLock<std::sync::mpsc::Sender<(PathBuf, Vec<u8>)>> =
+enum ScrollbackWrite {
+    /// Anexa `bytes` ao fim do `.bin` (cria se não existir). Compacta pra cauda
+    /// de `SCROLLBACK_CAP_BYTES` se o arquivo passar de `SCROLLBACK_COMPACT_BYTES`.
+    Append { path: PathBuf, bytes: Vec<u8> },
+    /// Reescreve o arquivo inteiro (usado no teardown do PTY, uma vez).
+    Overwrite { path: PathBuf, bytes: Vec<u8> },
+}
+
+/// Anexa e, se o arquivo cresceu além do limite, compacta pra cauda do cap.
+/// Compactar é raro (a cada ~4 MB de saída), então o custo é amortizado.
+fn append_and_maybe_compact(path: &Path, bytes: &[u8]) {
+    let mut file = match fs::OpenOptions::new().create(true).append(true).open(path) {
+        Ok(file) => file,
+        Err(_) => return,
+    };
+    if file.write_all(bytes).is_err() {
+        return;
+    }
+    let len = file.metadata().map(|m| m.len()).unwrap_or(0);
+    drop(file);
+    if len > SCROLLBACK_COMPACT_BYTES {
+        if let Ok(all) = fs::read(path) {
+            if all.len() > SCROLLBACK_CAP_BYTES {
+                let tail = &all[all.len() - SCROLLBACK_CAP_BYTES..];
+                let _ = fs::write(path, tail);
+            }
+        }
+    }
+}
+
+/// Writer global de scrollback: uma única thread em background recebe comandos
+/// e escreve. Evita spawnar uma thread a cada flush (250ms por PTY ativo).
+/// Vive pela vida do processo — sem teardown por PTY, sem vazar thread.
+fn scrollback_writer() -> &'static std::sync::mpsc::Sender<ScrollbackWrite> {
+    static WRITER: std::sync::OnceLock<std::sync::mpsc::Sender<ScrollbackWrite>> =
         std::sync::OnceLock::new();
     WRITER.get_or_init(|| {
-        let (tx, rx) = std::sync::mpsc::channel::<(PathBuf, Vec<u8>)>();
+        let (tx, rx) = std::sync::mpsc::channel::<ScrollbackWrite>();
         thread::spawn(move || {
-            while let Ok((path, bytes)) = rx.recv() {
+            while let Ok(msg) = rx.recv() {
+                let path = match &msg {
+                    ScrollbackWrite::Append { path, .. } => path,
+                    ScrollbackWrite::Overwrite { path, .. } => path,
+                };
                 if let Some(parent) = path.parent() {
                     let _ = fs::create_dir_all(parent);
                 }
-                let _ = fs::write(&path, &bytes);
+                match &msg {
+                    ScrollbackWrite::Append { path, bytes } => {
+                        append_and_maybe_compact(path, bytes);
+                    }
+                    ScrollbackWrite::Overwrite { path, bytes } => {
+                        let _ = fs::write(path, bytes);
+                    }
+                }
             }
         });
         tx
@@ -620,29 +673,33 @@ pub fn push_scrollback(
         let excess = buffer.data.len() - SCROLLBACK_CAP_BYTES;
         buffer.data.drain(..excess);
     }
+    // Acumula SÓ os bytes novos pro append. O anel em memória (`data`) continua
+    // servindo o getScrollback; o disco recebe só o delta, não os 4 MB inteiros.
+    buffer.pending.extend_from_slice(data);
     buffer.dirty = true;
 
     if buffer.last_flush.elapsed().as_millis() < SCROLLBACK_FLUSH_INTERVAL_MS {
         return Ok(());
     }
 
-    // make_contiguous evita a cópia de 256KB que `iter().copied().collect()` fazia.
-    // Também encolhe a capacity se VecDeque ficou superdimensionado depois de drains.
-    let slice = buffer.data.make_contiguous();
-    let bytes = slice.to_vec();
     if buffer.data.capacity() > SCROLLBACK_CAP_BYTES * 2 {
         buffer.data.shrink_to(SCROLLBACK_CAP_BYTES);
     }
+    let bytes = std::mem::take(&mut buffer.pending);
     buffer.last_flush = Instant::now();
     buffer.dirty = false;
     drop(buffer);
+
+    if bytes.is_empty() {
+        return Ok(());
+    }
 
     // Disk write em thread separada — segurar o reader thread aqui causava
     // latência visível de digitação (10-50ms por flush no Windows) propagando
     // pra TODOS os terminais com qualquer atividade.
     let path = scrollback_path(app, id)?;
     // Envia pro writer global em vez de spawnar uma thread por flush.
-    let _ = scrollback_writer().send((path, bytes));
+    let _ = scrollback_writer().send(ScrollbackWrite::Append { path, bytes });
     Ok(())
 }
 
@@ -657,16 +714,20 @@ pub fn flush_scrollback(
     if !buffer.dirty {
         return Ok(());
     }
+    // No teardown reescrevemos o anel inteiro (capado a 4 MB) — é a compactação
+    // final do arquivo. `data` já inclui o que estava em `pending`.
     let bytes = buffer.data.iter().copied().collect::<Vec<_>>();
+    buffer.pending.clear();
     buffer.last_flush = Instant::now();
     buffer.dirty = false;
     drop(buffer);
 
+    // Via o writer global pra manter ordem FIFO com Appends ainda na fila —
+    // senão um Append pendente poderia sobrescrever este Overwrite e duplicar
+    // a cauda no disco.
     let path = scrollback_path(app, id)?;
-    if let Some(parent) = path.parent() {
-        fs::create_dir_all(parent).map_err(|error| error.to_string())?;
-    }
-    fs::write(path, bytes).map_err(|error| error.to_string())
+    let _ = scrollback_writer().send(ScrollbackWrite::Overwrite { path, bytes });
+    Ok(())
 }
 
 pub fn delete_scrollback(app: &AppHandle, id: &str) -> Result<(), String> {

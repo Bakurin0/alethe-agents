@@ -56,7 +56,9 @@ Detalhes em [`../docs/BUILD_WINDOWS.md`](../docs/BUILD_WINDOWS.md).
 1. **NÃO encerre nem reinicie o app nem o dev server** (`tauri dev` / Vite). Não mate o processo,
    não rode `npm run app` "pra testar" se já estiver rodando. Aplique mudanças via **HMR** e confie no reload.
 2. **NÃO faça commit / push / tag / release sem permissão explícita do dono na hora.** Faça as
-   alterações **só no working tree** e pare — quem decide commitar é ele.
+   alterações **só no working tree** e pare — quem decide commitar é ele. Quando ele autorizar um
+   commit, **NÃO adicione co-autor** (`Co-Authored-By: Claude …`) nem qualquer assinatura de
+   ferramenta na mensagem — o autor é só ele.
 3. **Design system estrito — sem gradientes, sem "vibecoded".** Nada de UI genérica de template.
    Dashboards e widgets mostram **dado real**, nunca placeholder/mock. Estilo via CSS Modules +
    tokens de `src/styles/theme.css`; **nunca** hardcode de cor — use as variáveis (`--bg`, `--fg`,

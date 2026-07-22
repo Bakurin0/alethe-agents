@@ -4,7 +4,7 @@ import { WebglAddon } from '@xterm/addon-webgl'
 import { Terminal } from '@xterm/xterm'
 import type { ILink } from '@xterm/xterm'
 import { getCurrentWebview } from '@tauri-apps/api/webview'
-import { Copy, ExternalLink, FolderOpen, LayoutGrid, X } from 'lucide-react'
+import { AppWindow, Copy, ExternalLink, FolderOpen, LayoutGrid, X } from 'lucide-react'
 import { useCallback, useEffect, useRef, useState } from 'react'
 import '@xterm/xterm/css/xterm.css'
 
@@ -45,29 +45,22 @@ import {
   normalizePastedText,
   shouldScrollHostScrollback,
 } from './terminalInput'
+import {
+  detectTerminalLinks,
+  getLogicalTerminalLine,
+  terminalLinkRange,
+  type DetectedTerminalLink,
+  type FileLinkKind,
+} from './terminalLinks'
 import styles from './XTermView.module.css'
-
-type DetectedLink = {
-  text: string
-  index: number
-  kind: 'url' | 'path'
-  /** True quando o path aponta para um arquivo .md/.markdown. */
-  isMarkdown?: boolean
-}
 
 type LinkActionState = {
   text: string
   kind: 'url' | 'path'
-  isMarkdown?: boolean
+  fileKind?: FileLinkKind
   x: number
   y: number
 }
-
-const MARKDOWN_PATH_PATTERN = /\.(md|markdown)$/i
-
-const TERMINAL_LINK_PATTERN =
-  /https?:\/\/[^\s<>"'`]+|(?:[A-Za-z]:\\|\\\\)[^\s<>"'`|]+|(?:~|\/)[^\s<>"'`|]+/g
-const LINK_TRAILING_PUNCTUATION = /[),.;:]+$/
 
 const DARK_THEME = {
   background: '#101114',
@@ -230,38 +223,19 @@ function getXtermTheme(theme: Theme) {
   return DARK_THEME
 }
 
-function detectTerminalLinks(line: string): DetectedLink[] {
-  const links: DetectedLink[] = []
-  for (const match of line.matchAll(TERMINAL_LINK_PATTERN)) {
-    const raw = match[0]
-    const text = raw.replace(LINK_TRAILING_PUNCTUATION, '')
-    if (!text) continue
-    const kind = text.startsWith('http://') || text.startsWith('https://') ? 'url' : 'path'
-    links.push({
-      text,
-      index: match.index ?? 0,
-      kind,
-      isMarkdown: kind === 'path' && MARKDOWN_PATH_PATTERN.test(text),
-    })
-  }
-  return links
-}
-
 function makeXtermLink(
-  bufferLineNumber: number,
-  link: DetectedLink,
+  logicalLineStart: number,
+  columns: number,
+  link: DetectedTerminalLink,
   handlers: {
     open: (text: string) => void
-    hover: (event: MouseEvent, link: DetectedLink) => void
+    hover: (event: MouseEvent, link: DetectedTerminalLink) => void
     leave: () => void
   },
 ): ILink {
   return {
     text: link.text,
-    range: {
-      start: { x: link.index + 1, y: bufferLineNumber },
-      end: { x: link.index + link.text.length, y: bufferLineNumber },
-    },
+    range: terminalLinkRange(logicalLineStart, columns, link),
     decorations: { pointerCursor: true, underline: true },
     activate: (_event: MouseEvent, text: string) => handlers.open(text),
     hover: (event: MouseEvent) => handlers.hover(event, link),
@@ -345,6 +319,9 @@ export function XTermView({
   const ptyIdRef = useRef<string | null>(null)
   const lastCtrlCRef = useRef(0)
   const linkTooltipHideTimerRef = useRef<number | null>(null)
+  const linkTooltipShowTimerRef = useRef<number | null>(null)
+  const pendingLinkRef = useRef<LinkActionState | null>(null)
+  const linkActionsRef = useRef<LinkActionState | null>(null)
 
   const cliPathOverride = useProjectsStore((s) =>
     command && command !== 'shell' ? s.cliPaths[command] ?? null : null,
@@ -378,40 +355,75 @@ export function XTermView({
     linkTooltipHideTimerRef.current = null
   }, [])
 
-  const hideLinkActions = useCallback(() => {
-    clearLinkTooltipHideTimer()
-    setLinkActions(null)
-  }, [clearLinkTooltipHideTimer])
+  const clearLinkTooltipShowTimer = useCallback(() => {
+    if (linkTooltipShowTimerRef.current === null) return
+    window.clearTimeout(linkTooltipShowTimerRef.current)
+    linkTooltipShowTimerRef.current = null
+  }, [])
 
+  const hideLinkActions = useCallback(() => {
+    clearLinkTooltipShowTimer()
+    clearLinkTooltipHideTimer()
+    pendingLinkRef.current = null
+    setLinkActions(null)
+  }, [clearLinkTooltipShowTimer, clearLinkTooltipHideTimer])
+
+  // Saiu do link (ou do tooltip): fecha com folga pra dar tempo de atravessar o
+  // gap link→tooltip sem ele sumir — a causa clássica do "some antes de clicar".
   const scheduleHideLinkActions = useCallback(() => {
+    clearLinkTooltipShowTimer()
     clearLinkTooltipHideTimer()
     linkTooltipHideTimerRef.current = window.setTimeout(() => {
       linkTooltipHideTimerRef.current = null
+      pendingLinkRef.current = null
       setLinkActions(null)
-    }, 180)
-  }, [clearLinkTooltipHideTimer])
+    }, 450)
+  }, [clearLinkTooltipShowTimer, clearLinkTooltipHideTimer])
 
+  // Hover num link: só abre depois de uma intenção de hover (~320ms) pra não
+  // poluir a tela quando o mouse só passa por cima. Se já há um tooltip aberto,
+  // troca na hora (transição suave entre links vizinhos).
   const showLinkActions = useCallback(
-    (event: MouseEvent, link: DetectedLink) => {
+    (event: MouseEvent, link: DetectedTerminalLink) => {
       clearLinkTooltipHideTimer()
-      setLinkActions({
+      const next: LinkActionState = {
         text: link.text,
         kind: link.kind,
-        isMarkdown: link.isMarkdown,
+        fileKind: link.fileKind,
         x: Math.min(Math.max(event.clientX, 180), window.innerWidth - 180),
         y: Math.max(event.clientY, 72),
-      })
+      }
+      pendingLinkRef.current = next
+      if (linkActionsRef.current) {
+        setLinkActions(next)
+        return
+      }
+      clearLinkTooltipShowTimer()
+      linkTooltipShowTimerRef.current = window.setTimeout(() => {
+        linkTooltipShowTimerRef.current = null
+        if (pendingLinkRef.current) setLinkActions(pendingLinkRef.current)
+      }, 320)
     },
-    [clearLinkTooltipHideTimer],
+    [clearLinkTooltipHideTimer, clearLinkTooltipShowTimer],
   )
 
-  const openMarkdownInGrid = useCallback(
+  // Espelha o estado num ref pra os handlers (que rodam no provider do xterm)
+  // lerem "tem tooltip aberto?" sem virar dependência e recriar o listener.
+  useEffect(() => {
+    linkActionsRef.current = linkActions
+  }, [linkActions])
+
+  const openFileInGrid = useCallback(
     (target: string) => {
       if (!projectId) return
-      useProjectsStore.getState().createMarkdownPane(projectId, { filePath: target })
+      useProjectsStore.getState().createFilePane(projectId, { filePath: target })
     },
     [projectId],
   )
+
+  const openLinkInAppViewer = useCallback((target: string) => {
+    useUiStore.getState().openLinkViewer(target)
+  }, [])
 
   const openLinkInBrowser = useCallback(async (target: string) => {
     try {
@@ -514,6 +526,7 @@ export function XTermView({
     let forceNextResize = false
     let completionMonitor: AgentCompletionMonitor | null = null
     let linkProviderDisposable: { dispose: () => void } | null = null
+    let linkScrollDisposable: { dispose: () => void } | null = null
 
     const terminal = new Terminal({
       cursorBlink: true,
@@ -533,13 +546,15 @@ export function XTermView({
     terminalRef.current = terminal
     linkProviderDisposable = terminal.registerLinkProvider({
       provideLinks: (bufferLineNumber, callback) => {
-        const line = terminal.buffer.active.getLine(bufferLineNumber - 1)?.translateToString(true)
-        if (!line) {
+        const logicalLine = getLogicalTerminalLine(terminal.buffer.active, bufferLineNumber)
+        if (!logicalLine?.text) {
           callback(undefined)
           return
         }
-        const links = detectTerminalLinks(line).map((link) =>
-          makeXtermLink(bufferLineNumber, link, {
+        const links = detectTerminalLinks(logicalLine.text).map((link) =>
+          makeXtermLink(logicalLine.startLine, terminal.cols, link, {
+            // Clique default: URL abre no browser externo, path abre no app
+            // padrão do SO. O visualizador in-app fica opcional no botão do tooltip.
             open: (text) => void openLinkInBrowser(text),
             hover: showLinkActions,
             leave: scheduleHideLinkActions,
@@ -547,6 +562,21 @@ export function XTermView({
         )
         callback(links.length > 0 ? links : undefined)
       },
+    })
+
+    // Se a tela rola (stream do agente), o tooltip — ancorado no ponto do cursor —
+    // apontaria pro vazio; fecha junto pra não virar fantasma.
+    linkScrollDisposable = terminal.onScroll(() => {
+      if (
+        linkActionsRef.current ||
+        pendingLinkRef.current ||
+        linkTooltipShowTimerRef.current !== null
+      ) {
+        clearLinkTooltipShowTimer()
+        clearLinkTooltipHideTimer()
+        pendingLinkRef.current = null
+        setLinkActions(null)
+      }
     })
 
     // Renderer WebGL (GPU) — o renderer DOM padrão trava a digitação,
@@ -1014,9 +1044,12 @@ export function XTermView({
       unlistenExit?.()
       unlistenDragDrop?.()
       linkProviderDisposable?.dispose()
+      linkScrollDisposable?.dispose()
       completionMonitor?.dispose()
       completionMonitor = null
+      clearLinkTooltipShowTimer()
       clearLinkTooltipHideTimer()
+      pendingLinkRef.current = null
       setLinkActions(null)
       if (terminalRef.current === terminal) terminalRef.current = null
       ptyIdRef.current = null
@@ -1096,12 +1129,13 @@ export function XTermView({
             {linkActions.text}
           </span>
           <div className={styles.linkActionsButtons}>
-            {linkActions.isMarkdown && projectId ? (
+            {(linkActions.fileKind === 'markdown' || linkActions.fileKind === 'text') &&
+            projectId ? (
               <button
                 type="button"
                 className={styles.linkActionBtn}
                 onClick={() => {
-                  openMarkdownInGrid(linkActions.text)
+                  openFileInGrid(linkActions.text)
                   hideLinkActions()
                 }}
                 title={t('xterm.openInGrid')}
@@ -1135,6 +1169,20 @@ export function XTermView({
             >
               <Copy size={14} />
             </button>
+            {linkActions.kind === 'url' ? (
+              <button
+                type="button"
+                className={styles.linkActionBtn}
+                onClick={() => {
+                  openLinkInAppViewer(linkActions.text)
+                  hideLinkActions()
+                }}
+                title={t('xterm.openInApp')}
+                aria-label={t('xterm.openInApp')}
+              >
+                <AppWindow size={14} />
+              </button>
+            ) : null}
             <button
               type="button"
               className={styles.linkActionBtn}

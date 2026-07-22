@@ -43,6 +43,8 @@ export type SubTab = {
   type: AgentType
   name: string
   cwd: string
+  /** Última vez que esta sub-tab foi ativada. Usada pra restaurar o último chat. */
+  lastUsedAt?: number
   /** ID do PTY no backend. null quando o terminal está disabled ou ainda não foi spawnado. */
   ptyId: string | null
   /** Resposta concluída e notificada, ainda não vista pelo usuário. */
@@ -64,8 +66,11 @@ export const UNRESTRICTED_FLAG: Record<AgentType, string | null> = {
   mimo: null,
 }
 
-/** Tipo de pane. Ausente = 'terminal' (back-compat, sem migração). */
-export type PaneKind = 'terminal' | 'markdown'
+/**
+ * Tipo de pane. Ausente = 'terminal' (back-compat, sem migração).
+ * 'markdown' | 'file' | 'image' são viewers de arquivo (usam `tabs: []` + `filePath`).
+ */
+export type PaneKind = 'terminal' | 'markdown' | 'file' | 'image'
 
 export type Terminal = {
   id: string
@@ -77,9 +82,9 @@ export type Terminal = {
   laneVisible: boolean | null
   /** Última vez que esse terminal foi aberto/focado. Usado pra ordenar a Home. */
   lastUsedAt?: number
-  /** Discriminador de pane. Ausente/undefined = 'terminal'. Um 'markdown' usa `tabs: []`. */
+  /** Discriminador de pane. Ausente/undefined = 'terminal'. Viewers de arquivo usam `tabs: []`. */
   kind?: PaneKind
-  /** Caminho absoluto do arquivo .md quando kind === 'markdown'. */
+  /** Caminho absoluto do arquivo quando o pane é um viewer (markdown/file/image). */
   filePath?: string
 }
 
@@ -209,6 +214,8 @@ export type Preferences = {
   topbarShowMemory: boolean
   /** Exibe a aba Source Control na sidebar. */
   showGitControl: boolean
+  /** Notifica quando uma janela de uso do Claude/Codex reseta, indicando qual. Default true. */
+  notifyOnLimitReset: boolean
   /** Quantos PTYs podem ser spawnados em paralelo (fila global). Default 3. */
   spawnConcurrency: number
   /** v2.2 — grid layout custom da workspace inteira (cross-grupo). */
@@ -270,6 +277,7 @@ export const DEFAULT_PREFERENCES: Preferences = {
   topbarShowProfile: true,
   topbarShowMemory: true,
   showGitControl: true,
+  notifyOnLimitReset: true,
   spawnConcurrency: 3,
 }
 

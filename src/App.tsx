@@ -7,6 +7,7 @@ import { ghosttyKillAll } from './lib/tauri'
 import { AgentIcon } from './components/icons/AgentIcons'
 import { ErrorBoundary } from './components/ErrorBoundary'
 import { FocusOverlay } from './components/FocusOverlay'
+import { LinkViewerOverlay } from './components/LinkViewerOverlay'
 import { MainMenu } from './components/MainMenu'
 import { ProjectSidebar } from './components/ProjectSidebar'
 import { TitleBar } from './components/TitleBar'
@@ -26,6 +27,7 @@ import { SyncModal } from './components/modals/SyncModal'
 import { SuspendGroupModal } from './components/modals/SuspendGroupModal'
 import { ThemePickerModal } from './components/modals/ThemePickerModal'
 import { TopbarSettingsModal } from './components/modals/TopbarSettingsModal'
+import { UpdateModal } from './components/modals/UpdateModal'
 import { WelcomeModal } from './components/modals/WelcomeModal'
 import { useKeybindings } from './hooks/useKeybindings'
 import { useDiscordPresence } from './hooks/useDiscordPresence'
@@ -34,6 +36,7 @@ import { intlLocale, translate } from './lib/i18n'
 import { isMacOS } from './lib/platform'
 import { setMaxConcurrentSpawns } from './lib/spawnQueue'
 import { getLastCrashReport } from './lib/tauri'
+import { checkForUpdate } from './lib/updater'
 import { useProjectsStore } from './stores/projectsStore'
 import { type InAppToast, useUiStore } from './stores/uiStore'
 import styles from './App.module.css'
@@ -194,6 +197,22 @@ export default function App() {
     return startActivityTracker()
   }, [hydrated])
 
+  // Checa atualização em silêncio no boot. Se houver, o chip discreto na sidebar
+  // aparece (SidebarUpdate); nada de popup. Erros (dev sem assinatura, offline,
+  // endpoint fora) são engolidos — updater indisponível = "sem update".
+  useEffect(() => {
+    if (!hydrated) return
+    let cancelled = false
+    void checkForUpdate()
+      .then((info) => {
+        if (!cancelled) useUiStore.getState().setUpdateInfo(info)
+      })
+      .catch(() => {})
+    return () => {
+      cancelled = true
+    }
+  }, [hydrated])
+
   // Se a sessão anterior não saiu limpa (crash/OOM/kill), avisa com o estado de
   // memória de quando caiu — diagnóstico de "o que matou o app".
   useEffect(() => {
@@ -239,6 +258,7 @@ export default function App() {
         </div>
       </div>
       <FocusOverlay />
+      <LinkViewerOverlay />
       <MainMenu />
       <ErrorBoundary label="modals">
       <NewProjectModal />
@@ -266,6 +286,7 @@ export default function App() {
       ) : null}
       <ThemePickerModal />
       <TopbarSettingsModal />
+      <UpdateModal />
       </ErrorBoundary>
       <InAppNotifications />
       {activeView === 'agentCanvas' ? <TokenHud /> : null}

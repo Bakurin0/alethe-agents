@@ -119,8 +119,19 @@
   background: color-mix(in srgb, var(--surface-modal) 96%, transparent);
   color: var(--fg);
   box-shadow: var(--shadow-lg);
-  transform: translate(-50%, calc(-100% - 10px));
+  transform: translate(-50%, calc(-100% - 5px));
   animation: linkActionsIn 120ms ease-out;
+}
+
+/* Ponte invisível cobrindo o gap link→tooltip pra o hover não "cair" no meio
+   do caminho e o tooltip sumir antes do clique. */
+.linkActions::before {
+  content: '';
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: -14px;
+  height: 14px;
 }
 
 .linkActions::after {
@@ -190,10 +201,10 @@
 @keyframes linkActionsIn {
   from {
     opacity: 0;
-    transform: translate(-50%, calc(-100% - 4px)) scale(0.98);
+    transform: translate(-50%, calc(-100% - 2px)) scale(0.98);
   }
   to {
     opacity: 1;
-    transform: translate(-50%, calc(-100% - 10px)) scale(1);
+    transform: translate(-50%, calc(-100% - 5px)) scale(1);
   }
 }
