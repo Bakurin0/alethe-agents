@@ -32,7 +32,10 @@ zip = "0.6"
 sysinfo = "0.31"
 reqwest = { version = "0.12", default-features = false, features = ["json", "rustls-tls"] }
 tiny_http = "0.12"
-keyring = "3"
+# keyring v3 não habilita NENHUM backend de plataforma por padrão — sem uma
+# feature explícita ele usa um store mock e todo get_password() falha. Os
+# backends nativos são declarados por plataforma abaixo (macos/windows/linux).
+keyring = { version = "3", default-features = false }
 dirs-next = "2"
 base64 = "0.22"
 urlencoding = "2"
@@ -47,17 +50,27 @@ notify = "6"
 objc2 = "0.6"
 objc2-app-kit = "0.3"
 objc2-foundation = "0.3"
+# Backend do Keychain (onde o Claude Code guarda o token OAuth no macOS).
+keyring = { version = "3", default-features = false, features = ["apple-native"] }
 
 # Dependências só-Windows (registro + Win32). Em Linux/macOS o `winreg` nem
 # compila, então ficam atrás de `cfg(windows)`; o código que as usa já é gated.
 [target.'cfg(windows)'.dependencies]
 winreg = "0.52"
+# Backend do Windows Credential Manager.
+keyring = { version = "3", default-features = false, features = ["windows-native"] }
 windows-sys = { version = "0.61", features = [
   "Win32_Foundation",
   "Win32_System_DataExchange",
   "Win32_System_Memory",
   "Win32_System_Ole",
 ] }
+
+# Backend do Secret Service (GNOME Keyring / KWallet) no Linux. A variante
+# `sync-secret-service` + `crypto-rust` não precisa de tokio nem de libs de
+# sistema pra criptografia da sessão D-Bus.
+[target.'cfg(target_os = "linux")'.dependencies]
+keyring = { version = "3", default-features = false, features = ["sync-secret-service", "crypto-rust"] }
 
 # Em dev, unwind permite que um panic de comando vire Err em vez de derrubar o
 # app inteiro durante uma sessão de HMR. Release segue abort (binário menor).
