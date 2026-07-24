@@ -462,6 +462,109 @@ pub fn get_model_pricing() -> Vec<ModelRate> {
         .collect()
 }
 
+/// Resumo de custo/tokens do OpenCode nas últimas N horas — usado pelo
+/// OpenCodeCard (não existe conceito de "% de plano" pro OpenCode, é
+/// BYOK/multi-provider, então o card mostra custo/tokens acumulado em vez de
+/// uma barra de utilização).
+#[derive(Serialize, Default)]
+pub struct OpenCodeUsageSummary {
+    pub cost_usd: f64,
+    pub input_tokens: u64,
+    pub output_tokens: u64,
+    pub session_count: u32,
+    pub by_model: Vec<ModelCost>,
+}
+
+#[tauri::command]
+pub async fn get_opencode_usage_summary(hours: u32) -> Result<OpenCodeUsageSummary, String> {
+    tokio::task::spawn_blocking(move || get_opencode_usage_summary_inner(hours))
+        .await
+        .map_err(|e| e.to_string())?
+}
+
+fn get_opencode_usage_summary_inner(hours: u32) -> Result<OpenCodeUsageSummary, String> {
+    let db_path = opencode_db_path()
+        .ok_or_else(|| "caminho do banco do OpenCode não encontrado".to_string())?;
+    if !db_path.is_file() {
+        // Banco ainda não existe (OpenCode nunca rodou nesta máquina) — resumo
+        // vazio, não é erro: o card mostra "sem dados" em vez de falhar.
+        return Ok(OpenCodeUsageSummary::default());
+    }
+
+    let conn = rusqlite::Connection::open_with_flags(
+        &db_path,
+        rusqlite::OpenFlags::SQLITE_OPEN_READ_ONLY | rusqlite::OpenFlags::SQLITE_OPEN_NO_MUTEX,
+    )
+    .map_err(|e| format!("falha ao abrir banco do OpenCode: {e}"))?;
+
+    let now_ms = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map(|d| d.as_millis() as i64)
+        .unwrap_or(0);
+    let since_ms = now_ms - (hours as i64) * 3_600_000;
+
+    let mut stmt = conn
+        .prepare(
+            "SELECT model, cost, tokens_input, tokens_output, tokens_cache_read, tokens_cache_write \
+             FROM session WHERE time_updated >= ?1",
+        )
+        .map_err(|e| format!("falha ao preparar query: {e}"))?;
+
+    let mut rows = stmt
+        .query(rusqlite::params![since_ms])
+        .map_err(|e| format!("falha ao executar query: {e}"))?;
+
+    let mut by_model: std::collections::HashMap<String, ModelCost> = std::collections::HashMap::new();
+    let mut session_count = 0u32;
+    while let Some(row) = rows.next().map_err(|e| format!("falha ao ler linha: {e}"))? {
+        let model_raw: String = row.get(0).unwrap_or_default();
+        let cost: f64 = row.get(1).unwrap_or(0.0);
+        let tokens_input: u64 = row.get(2).unwrap_or(0);
+        let tokens_output: u64 = row.get(3).unwrap_or(0);
+        let tokens_cache_read: u64 = row.get(4).unwrap_or(0);
+        let tokens_cache_write: u64 = row.get(5).unwrap_or(0);
+
+        let model_name = if let Ok(v) = serde_json::from_str::<serde_json::Value>(&model_raw) {
+            v.get("id")
+                .and_then(|id| id.as_str())
+                .unwrap_or(&model_raw)
+                .to_string()
+        } else {
+            model_raw
+        };
+        if model_name.is_empty() {
+            continue;
+        }
+
+        session_count += 1;
+        let entry = by_model.entry(model_name.clone()).or_insert_with(|| ModelCost {
+            model: model_name,
+            cost_usd: Some(0.0),
+            ..Default::default()
+        });
+        entry.input += tokens_input;
+        entry.output += tokens_output;
+        entry.cache_read += tokens_cache_read;
+        entry.cache_write_5m += tokens_cache_write;
+        entry.cost_usd = Some(entry.cost_usd.unwrap_or(0.0) + cost);
+    }
+
+    let mut by_model: Vec<ModelCost> = by_model.into_values().collect();
+    by_model.sort_by(|a, b| b.cost_usd.partial_cmp(&a.cost_usd).unwrap_or(std::cmp::Ordering::Equal));
+
+    let cost_usd = by_model.iter().filter_map(|m| m.cost_usd).sum();
+    let input_tokens = by_model.iter().map(|m| m.input).sum();
+    let output_tokens = by_model.iter().map(|m| m.output).sum();
+
+    Ok(OpenCodeUsageSummary {
+        cost_usd,
+        input_tokens,
+        output_tokens,
+        session_count,
+        by_model,
+    })
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

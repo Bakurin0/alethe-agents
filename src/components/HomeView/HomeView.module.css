@@ -536,16 +536,16 @@
 
 .usageStrip {
   display: grid;
-  grid-template-columns: 1fr 1fr 1.15fr;
+  grid-template-columns: 1fr 1fr 1fr 1.15fr;
   gap: 14px;
   align-items: stretch;
 }
 
-.usageStripTwo {
-  grid-template-columns: repeat(2, minmax(0, 1fr));
+.usageStripThree {
+  grid-template-columns: repeat(3, minmax(0, 1fr));
 }
 
-@media (max-width: 1100px) {
+@media (max-width: 1300px) {
   .usageStrip {
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
@@ -600,6 +600,11 @@
   color: var(--agent-codex);
   background: color-mix(in srgb, var(--agent-codex) 14%, transparent);
   border-color: color-mix(in srgb, var(--agent-codex) 28%, transparent);
+}
+.badgeOpenCode {
+  color: var(--agent-opencode);
+  background: color-mix(in srgb, var(--agent-opencode) 16%, transparent);
+  border-color: color-mix(in srgb, var(--agent-opencode) 28%, transparent);
 }
 .badgeActivity {
   color: var(--status-working);

@@ -218,6 +218,7 @@ pub fn run() {
             agent_cost::get_session_cost,
             agent_cost::get_transcript_cost,
             agent_cost::get_model_pricing,
+            agent_cost::get_opencode_usage_summary,
             crash_watch::get_last_crash_report,
             quit_app,
             worktrees::worktree_provision,

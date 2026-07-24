@@ -659,6 +659,21 @@ export async function getModelPricing(): Promise<ModelRate[]> {
   return invoke<ModelRate[]>('get_model_pricing')
 }
 
+/** Resumo de custo/tokens do OpenCode numa janela de horas — não existe
+ * conceito de "% de plano" pro OpenCode (BYOK multi-provider), então o
+ * OpenCodeCard mostra isso em vez de uma barra de utilização. */
+export type OpenCodeUsageSummary = {
+  cost_usd: number
+  input_tokens: number
+  output_tokens: number
+  session_count: number
+  by_model: ModelCost[]
+}
+
+export async function getOpenCodeUsageSummary(hours: number): Promise<OpenCodeUsageSummary> {
+  return invoke<OpenCodeUsageSummary>('get_opencode_usage_summary', { hours })
+}
+
 export type ClaudeSessionMeta = {
   id: string
   title: string | null
