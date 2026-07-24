@@ -22,9 +22,49 @@ struct Pricing {
     cache_read: f64,
 }
 
-/// Banco SQLite do OpenCode CLI (tokens/custo por sessão). Windows/macOS usam
-/// data_dir; Linux usa data_local_dir.
+/// Banco SQLite do OpenCode CLI (tokens/custo por sessão).
+///
+/// O OpenCode usa convenção XDG (`~/.local/share/opencode/opencode.db`) mesmo no
+/// Windows — não `%APPDATA%` (verificado rodando `opencode db path` de verdade
+/// nesta máquina: retornou `C:\Users\<user>\.local\share\opencode\opencode.db`,
+/// enquanto `dirs_next::data_dir()` aponta pra `%APPDATA%`, onde o arquivo nunca
+/// existe). Pergunta pro próprio binário primeiro (`db path`, fonte de verdade,
+/// resiliente a mudança futura de convenção); só cai pro palpite de
+/// `dirs_next` se o binário não for encontrado ou o subcomando não existir
+/// (versão antiga do OpenCode).
 fn opencode_db_path() -> Option<PathBuf> {
+    if let Some(path) = opencode_db_path_from_cli() {
+        return Some(path);
+    }
+    opencode_db_path_fallback_guess()
+}
+
+fn opencode_db_path_from_cli() -> Option<PathBuf> {
+    let binary = crate::cli_resolver::find_windows_cli_launcher("opencode")?;
+    let mut cmd = std::process::Command::new(&binary);
+    cmd.args(["db", "path"]);
+    crate::git_control::hide_console(&mut cmd);
+    let output = cmd.output().ok()?;
+    if !output.status.success() {
+        return None;
+    }
+    let raw = String::from_utf8_lossy(&output.stdout);
+    let trimmed = raw.trim();
+    if trimmed.is_empty() {
+        return None;
+    }
+    let path = PathBuf::from(trimmed);
+    if path.is_file() {
+        Some(path)
+    } else {
+        None
+    }
+}
+
+/// Palpite antigo (pré-descoberta do path real via `opencode db path`) — mantido
+/// só como fallback quando o binário não está no PATH/foi desinstalado, mas o
+/// banco ainda existe de uma instalação anterior nesse layout.
+fn opencode_db_path_fallback_guess() -> Option<PathBuf> {
     #[cfg(target_os = "linux")]
     {
         dirs_next::data_local_dir().map(|d| d.join("opencode").join("opencode.db"))
@@ -38,64 +78,14 @@ fn opencode_db_path() -> Option<PathBuf> {
 /// Resolve o preço por prefixo do model id (ex.: "claude-opus-4-8",
 /// "claude-sonnet-4-6", "claude-haiku-4-5"). Codex usa modelos GPT, sem preço
 /// público estável aqui — retorna None (tokens ainda somam, custo fica null).
+///
+/// Modelos OpenCode NÃO passam mais por aqui: `session.cost` no `opencode.db`
+/// já vem calculado pelo próprio CLI com pricing ao vivo (confirmado lendo o
+/// schema real — `cost real DEFAULT 0 NOT NULL`), então `get_session_cost_inner`
+/// usa esse valor direto em vez de manter uma tabela hardcoded que ficava
+/// incompleta a cada modelo novo lançado.
 fn pricing_for(model: &str) -> Option<Pricing> {
     let m = model.to_ascii_lowercase();
-
-    // Modelos de precificação conhecidos do OpenCode (valores por 1M tokens).
-    if m.contains("deepseek-v4-pro") {
-        return Some(Pricing {
-            input: 1.74,
-            output: 3.48,
-            cache_write_5m: 0.0,
-            cache_write_1h: 0.0,
-            cache_read: 0.0145,
-        });
-    }
-    if m.contains("qwen3.7-max") {
-        return Some(Pricing {
-            input: 2.50,
-            output: 7.50,
-            cache_write_5m: 3.125,
-            cache_write_1h: 3.125,
-            cache_read: 0.50,
-        });
-    }
-    if m.contains("glm-5.2") {
-        return Some(Pricing {
-            input: 1.40,
-            output: 4.40,
-            cache_write_5m: 0.0,
-            cache_write_1h: 0.0,
-            cache_read: 0.26,
-        });
-    }
-    if m.contains("kimi-k2.7-code") {
-        return Some(Pricing {
-            input: 0.95,
-            output: 4.00,
-            cache_write_5m: 0.0,
-            cache_write_1h: 0.0,
-            cache_read: 0.19,
-        });
-    }
-    if m.contains("deepseek-v4-flash-free") {
-        return Some(Pricing {
-            input: 0.0,
-            output: 0.0,
-            cache_write_5m: 0.0,
-            cache_write_1h: 0.0,
-            cache_read: 0.0,
-        });
-    }
-    if m.contains("minimax-m3") {
-        return Some(Pricing {
-            input: 0.55,
-            output: 2.19,
-            cache_write_5m: 0.0,
-            cache_write_1h: 0.0,
-            cache_read: 0.055,
-        });
-    }
 
     // input, output → derivados: 5m=1.25x, 1h=2x, read=0.1x
     let base = if m.contains("opus") {
@@ -147,7 +137,14 @@ pub struct SessionCost {
 }
 
 impl ModelCost {
+    /// Preenche `cost_usd` pela tabela hardcoded — mas só se ainda não tiver um
+    /// valor (ex.: OpenCode já traz `cost_usd` direto do banco, calculado pelo
+    /// próprio CLI com pricing ao vivo; nunca sobrescrever isso com um palpite
+    /// pior da tabela estática).
     fn compute_cost(&mut self) {
+        if self.cost_usd.is_some() {
+            return;
+        }
         if let Some(p) = pricing_for(&self.model) {
             let cost = self.input as f64 / 1_000_000.0 * p.input
                 + self.output as f64 / 1_000_000.0 * p.output
@@ -324,9 +321,14 @@ fn get_session_cost_inner(
             )
             .map_err(|e| format!("falha ao abrir banco do OpenCode: {e}"))?;
 
+            // `session.id` é PRIMARY KEY (confirmado no schema real) — no máximo 1
+            // linha por sessão, então `rows.next()` uma vez é correto (não é bug de
+            // agregação). `session.cost` já vem calculado pelo próprio OpenCode com
+            // pricing ao vivo — muito mais confiável que a tabela hardcoded local
+            // (`pricing_for`), que só cobre um punhado de modelos.
             let mut stmt = conn
                 .prepare(
-                    "SELECT model, tokens_input, tokens_output, tokens_cache_read, tokens_cache_write FROM session WHERE id = ?1",
+                    "SELECT model, tokens_input, tokens_output, tokens_cache_read, tokens_cache_write, cost FROM session WHERE id = ?1",
                 )
                 .map_err(|e| format!("falha ao preparar query: {e}"))?;
 
@@ -341,6 +343,7 @@ fn get_session_cost_inner(
                 let tokens_output: u64 = row.get(2).unwrap_or(0);
                 let tokens_cache_read: u64 = row.get(3).unwrap_or(0);
                 let tokens_cache_write: u64 = row.get(4).unwrap_or(0);
+                let cost: f64 = row.get(5).unwrap_or(0.0);
 
                 // A coluna `model` pode ser JSON ({"id": "..."}) ou string simples.
                 let model_name = if let Ok(v) = serde_json::from_str::<serde_json::Value>(&model_raw) {
@@ -358,6 +361,7 @@ fn get_session_cost_inner(
                     output: tokens_output,
                     cache_read: tokens_cache_read,
                     cache_write_5m: tokens_cache_write,
+                    cost_usd: Some(cost),
                     ..Default::default()
                 });
             }
@@ -456,4 +460,47 @@ pub fn get_model_pricing() -> Vec<ModelRate> {
             })
         })
         .collect()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn pricing_for_still_resolves_claude_families_after_opencode_table_removal() {
+        assert!(pricing_for("claude-opus-4-8").is_some());
+        assert!(pricing_for("claude-sonnet-4-6").is_some());
+        assert!(pricing_for("claude-haiku-4-5").is_some());
+        // Modelo OpenCode não passa mais pela tabela hardcoded (removida —
+        // session.cost do opencode.db é a fonte agora).
+        assert!(pricing_for("deepseek-v4-flash-free").is_none());
+    }
+
+    #[test]
+    fn compute_cost_never_overwrites_a_pre_set_cost_from_the_opencode_db() {
+        // Simula o que o branch "opencode" de get_session_cost_inner faz: seta
+        // cost_usd direto da coluna `session.cost` (fonte de verdade), e
+        // compute_cost() não pode substituir isso pela tabela hardcoded.
+        let mut mc = ModelCost {
+            model: "deepseek-v4-flash".to_string(),
+            input: 1000,
+            output: 500,
+            cost_usd: Some(0.0123),
+            ..Default::default()
+        };
+        mc.compute_cost();
+        assert_eq!(mc.cost_usd, Some(0.0123));
+    }
+
+    #[test]
+    fn compute_cost_fills_in_claude_pricing_when_none_was_set() {
+        let mut mc = ModelCost {
+            model: "claude-opus-4-8".to_string(),
+            input: 1_000_000,
+            output: 0,
+            ..Default::default()
+        };
+        mc.compute_cost();
+        assert_eq!(mc.cost_usd, Some(5.0));
+    }
 }
