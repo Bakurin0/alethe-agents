@@ -53,6 +53,7 @@ export function WorkspaceView() {
   const groups = useProjectsStore((s) => s.groups)
   const flat = useProjectsStore((s) => s.preferences.workspaceFlat)
   const fullscreenId = useProjectsStore((s) => s.preferences.fullscreenContainerId)
+  const setFullscreenContainer = useProjectsStore((s) => s.setFullscreenContainer)
   const reorderPane = useProjectsStore((s) => s.reorderPaneInContainer)
   const reorderContainers = useProjectsStore((s) => s.reorderContainers)
   const setWorkspaceGridLayout = useProjectsStore((s) => s.setWorkspaceGridLayout)
@@ -85,6 +86,17 @@ export function WorkspaceView() {
     if (!focusedTerminalId) return
     requestPaneFocus(focusedTerminalId)
   }, [focusedTerminalId, requestPaneFocus])
+
+  // Container/projeto de fullscreenContainerId pode deixar de existir nesta
+  // vista (removido, filtrado por grupo, etc.) — sem isso o botão de tela
+  // cheia "trava": o estado fica preso apontando pra um alvo que nunca mais
+  // renderiza fullscreen, mas também não volta pra vista normal sozinho.
+  useEffect(() => {
+    if (!fullscreenId) return
+    const c = containers.find((x) => x.projectId === fullscreenId)
+    if (c && projectsById.has(c.projectId)) return
+    setFullscreenContainer(null)
+  }, [fullscreenId, containers, projectsById, setFullscreenContainer])
 
   const sensors = useSensors(
     useSensor(PointerSensor, { activationConstraint: { distance: 6 } }),
