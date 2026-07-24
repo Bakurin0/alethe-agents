@@ -351,6 +351,113 @@ fn count_messages_per_day(path: &PathBuf, counts: &mut HashMap<String, usize>) {
     }
 }
 
+/// Mesma janela do heatmap "atividade", mas somando Claude + Codex + OpenCode
+/// em vez de só Claude. Claude e OpenCode contam por MENSAGEM (granularidade
+/// real); Codex conta por ARQUIVO de sessão tocado no dia (mtime) — o formato
+/// exato de timestamp por linha do rollout do Codex não está confirmado, e
+/// contar por arquivo é uma aproximação honesta em vez de arriscar um nome de
+/// campo errado e ficar sempre zerado silenciosamente.
+#[tauri::command]
+pub async fn get_multi_agent_activity(days: usize) -> Result<Vec<ActivityDay>, String> {
+    tokio::task::spawn_blocking(move || get_multi_agent_activity_inner(days))
+        .await
+        .map_err(|e| e.to_string())?
+}
+
+fn get_multi_agent_activity_inner(days: usize) -> Result<Vec<ActivityDay>, String> {
+    let days = days.clamp(1, 366);
+    let now = SystemTime::now();
+    let window_start = now
+        .checked_sub(Duration::from_secs(days as u64 * 86_400))
+        .unwrap_or(UNIX_EPOCH);
+    let window_start_ms = window_start
+        .duration_since(UNIX_EPOCH)
+        .map(|d| d.as_millis() as i64)
+        .unwrap_or(0);
+
+    let mut counts: HashMap<String, usize> = HashMap::new();
+
+    // Claude: reaproveita a varredura já existente (mesma lógica de get_claude_activity).
+    if let Some(root) = claude_projects_dir() {
+        if root.is_dir() {
+            if let Ok(project_entries) = fs::read_dir(&root) {
+                for project_entry in project_entries.filter_map(|e| e.ok()) {
+                    let project_path = project_entry.path();
+                    if !project_path.is_dir() {
+                        continue;
+                    }
+                    let Ok(session_entries) = fs::read_dir(&project_path) else {
+                        continue;
+                    };
+                    for entry in session_entries.filter_map(|e| e.ok()) {
+                        let path = entry.path();
+                        if path.extension().and_then(|s| s.to_str()) != Some("jsonl") {
+                            continue;
+                        }
+                        if let Ok(metadata) = entry.metadata() {
+                            if let Ok(modified) = metadata.modified() {
+                                if modified < window_start {
+                                    continue;
+                                }
+                            }
+                        }
+                        count_messages_per_day(&path, &mut counts);
+                    }
+                }
+            }
+        }
+    }
+
+    // Codex: 1 sessão tocada = +1 no dia do mtime do arquivo (ver nota acima).
+    if let Some(root) = crate::codex_sessions::codex_sessions_dir() {
+        if root.is_dir() {
+            let mut files = Vec::new();
+            crate::codex_sessions::collect_jsonl_files(&root, &mut files);
+            for path in files {
+                let Ok(metadata) = fs::metadata(&path) else {
+                    continue;
+                };
+                let Ok(modified) = metadata.modified() else {
+                    continue;
+                };
+                if modified < window_start {
+                    continue;
+                }
+                if let Ok(secs) = modified.duration_since(UNIX_EPOCH) {
+                    let (y, m, d) = epoch_secs_to_ymd(secs.as_secs() as i64);
+                    let date = format!("{y:04}-{m:02}-{d:02}");
+                    *counts.entry(date).or_insert(0) += 1;
+                }
+            }
+        }
+    }
+
+    // OpenCode: mensagem por mensagem, direto do opencode.db (mesma granularidade do Claude).
+    if let Some(db_path) = crate::agent_cost::opencode_db_path() {
+        if db_path.is_file() {
+            if let Ok(conn) = rusqlite::Connection::open_with_flags(
+                &db_path,
+                rusqlite::OpenFlags::SQLITE_OPEN_READ_ONLY | rusqlite::OpenFlags::SQLITE_OPEN_NO_MUTEX,
+            ) {
+                if let Ok(mut stmt) =
+                    conn.prepare("SELECT time_created FROM message WHERE time_created >= ?1")
+                {
+                    if let Ok(mut rows) = stmt.query(rusqlite::params![window_start_ms]) {
+                        while let Ok(Some(row)) = rows.next() {
+                            let created_ms: i64 = row.get(0).unwrap_or(0);
+                            let (y, m, d) = epoch_secs_to_ymd(created_ms / 1000);
+                            let date = format!("{y:04}-{m:02}-{d:02}");
+                            *counts.entry(date).or_insert(0) += 1;
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    Ok(build_activity_window(days, &counts))
+}
+
 /// Constrói a janela contígua dos últimos `days` dias até hoje (UTC),
 /// preenchendo zeros onde não houve atividade.
 fn build_activity_window(days: usize, counts: &HashMap<String, usize>) -> Vec<ActivityDay> {

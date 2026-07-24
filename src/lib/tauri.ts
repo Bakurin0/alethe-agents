@@ -719,6 +719,12 @@ export async function getClaudeActivity(days: number): Promise<ActivityDay[]> {
   return invoke<ActivityDay[]>('get_claude_activity', { days })
 }
 
+/** Mesma janela, mas somando Claude + Codex + OpenCode — ver
+ * get_multi_agent_activity em claude_sessions.rs pra granularidade por agente. */
+export async function getMultiAgentActivity(days: number): Promise<ActivityDay[]> {
+  return invoke<ActivityDay[]>('get_multi_agent_activity', { days })
+}
+
 export type ActivityAgentSample = {
   agent: Exclude<import('./types').AgentType, 'shell'>
   projectId: string | null

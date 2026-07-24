@@ -32,7 +32,7 @@ struct Pricing {
 /// resiliente a mudança futura de convenção); só cai pro palpite de
 /// `dirs_next` se o binário não for encontrado ou o subcomando não existir
 /// (versão antiga do OpenCode).
-fn opencode_db_path() -> Option<PathBuf> {
+pub(crate) fn opencode_db_path() -> Option<PathBuf> {
     if let Some(path) = opencode_db_path_from_cli() {
         return Some(path);
     }

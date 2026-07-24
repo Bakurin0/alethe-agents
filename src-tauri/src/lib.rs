@@ -212,6 +212,7 @@ pub fn run() {
             claude_sessions::snapshot_claude_sessions,
             claude_sessions::list_claude_sessions,
             claude_sessions::get_claude_activity,
+            claude_sessions::get_multi_agent_activity,
             codex_sessions::snapshot_codex_sessions,
             claude_usage::get_claude_usage,
             codex_usage::get_codex_usage,
