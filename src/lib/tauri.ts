@@ -1,12 +1,14 @@
 import { invoke } from '@tauri-apps/api/core'
 import { listen, type UnlistenFn } from '@tauri-apps/api/event'
 
+
+
 export async function loadProjectsFile(): Promise<string | null> {
   return invoke<string | null>('load_projects')
 }
 
-export async function saveProjectsFile(content: string): Promise<void> {
-  await invoke('save_projects', { content })
+export async function saveProjectsFile(content: string, sequence: number): Promise<void> {
+  await invoke('save_projects', { content, sequence })
 }
 
 export type ProfileMeta = {
@@ -89,6 +91,46 @@ export async function resizePty(id: string, cols: number, rows: number): Promise
 
 export async function killPty(id: string): Promise<void> {
   await invoke('kill_pty', { id })
+}
+
+export async function setPtyReadState(id: string, active: boolean): Promise<void> {
+  await invoke('set_pty_read_state', { id, active })
+}
+
+export async function setPtyPriority(id: string, active: boolean): Promise<void> {
+  await invoke('set_pty_priority', { id, active })
+}
+
+export type MemoryPressureLevel = 'Ok' | 'Low' | 'Medium' | 'High' | 'Critical'
+
+export type ResourceMetrics = {
+  memory_pressure: MemoryPressureLevel
+  system_available_mb: number
+  system_total_mb: number
+  app_mb: number
+  webview_mb: number
+  ptys_mb: number
+  process_count: number
+  policy_trigger_count: number
+}
+
+export async function getResourceMetrics(): Promise<ResourceMetrics> {
+  return invoke<ResourceMetrics>('get_resource_metrics')
+}
+
+export type PtyTreeInfo = {
+  pty_id: string
+  root_pid: number | null
+  descendants: number[]
+  alive: boolean
+}
+
+export async function getPtyTreeInfo(ptyId: string): Promise<PtyTreeInfo> {
+  return invoke<PtyTreeInfo>('get_pty_tree_info', { ptyId })
+}
+
+export async function killPtyTree(ptyId: string): Promise<number[]> {
+  return invoke<number[]>('kill_pty_tree_cmd', { ptyId })
 }
 
 export async function restartPty(args: SpawnPtyArgs & { id: string }): Promise<{ id: string }> {
@@ -272,6 +314,8 @@ export type MemoryStats = {
   webview_mb: number
   ptys_mb: number
   process_count: number
+  system_total_mb: number
+  system_available_mb: number
 }
 
 export async function getMemoryStats(): Promise<MemoryStats> {
@@ -702,4 +746,395 @@ export async function getActivitySummary(dates: string[] = []): Promise<Activity
 
 export async function clearActivityStats(): Promise<void> {
   await invoke('clear_activity_stats')
+}
+
+// --- RFC-003 — Worktrees ---
+
+export type WorktreeMode = 'gitWorktree' | 'localCopy'
+
+export type WorktreeInfo = {
+  agentId: string
+  path: string
+  branch: string
+  mode: WorktreeMode
+  createdAt: number
+}
+
+export async function worktreeProvision(
+  repo: string,
+  agentId: string,
+  mode: WorktreeMode,
+): Promise<WorktreeInfo> {
+  return invoke<WorktreeInfo>('worktree_provision', { repo, agentId, mode })
+}
+
+export async function worktreeList(repo: string): Promise<WorktreeInfo[]> {
+  return invoke<WorktreeInfo[]>('worktree_list', { repo })
+}
+
+export async function worktreeRemove(repo: string, agentId: string, force: boolean): Promise<void> {
+  await invoke('worktree_remove', { repo, agentId, force })
+}
+
+export async function worktreeCleanup(repo: string): Promise<void> {
+  await invoke('worktree_cleanup', { repo })
+}
+
+/** LocalCopy: traz o branch do clone para o repo principal antes do merge. No-op em gitWorktree. */
+export async function worktreeFetchBranch(repo: string, agentId: string): Promise<void> {
+  await invoke('worktree_fetch_branch', { repo, agentId })
+}
+
+/** Trava administrativamente um worktree (`git worktree lock`) — ver `adminLockReason` em `OrphanWorktree`. */
+export async function worktreeLock(repo: string, agentId: string, reason?: string): Promise<void> {
+  await invoke('worktree_lock', { repo, agentId, reason })
+}
+
+export async function worktreeUnlock(repo: string, agentId: string): Promise<void> {
+  await invoke('worktree_unlock', { repo, agentId })
+}
+
+// --- RFC-001 — Event Bus & Observabilidade ---
+
+export type EventBusPayload = {
+  event_type: string
+  timestamp_ms: number
+  correlation_id: string
+  task_id: string | null
+  agent_id: string | null
+  data: Record<string, any>
+}
+
+export type MetricData = {
+  count: number
+  last_value: number
+  sum: number
+}
+
+export async function publishEvent(event: EventBusPayload): Promise<void> {
+  await invoke('publish_event', { event })
+}
+
+export async function getTelemetryMetrics(): Promise<Record<string, MetricData>> {
+  return invoke<Record<string, MetricData>>('get_telemetry_metrics')
+}
+
+export async function getTelemetryTraces(correlationId?: string): Promise<EventBusPayload[]> {
+  return invoke<EventBusPayload[]>('get_telemetry_traces', { correlationId })
+}
+
+export function listenEventBus(handler: (event: EventBusPayload) => void): Promise<UnlistenFn> {
+  return listen<EventBusPayload>('event-bus-event', (event) => handler(event.payload))
+}
+
+// --- RFC-008 & RFC-005 — Validation & GSD Watcher ---
+
+export type ValidationResult = {
+  success: boolean
+  stage: string
+  output: string
+}
+
+export async function runValidation(cwd: string, commands: string[]): Promise<ValidationResult> {
+  return invoke<ValidationResult>('run_validation', { cwd, commands })
+}
+
+export async function startGsdWatcher(projectId: string, repoPath: string): Promise<void> {
+  await invoke('start_gsd_watcher', { projectId, repoPath })
+}
+
+export async function stopGsdWatcher(projectId: string, repoPath: string): Promise<void> {
+  await invoke('stop_gsd_watcher', { projectId, repoPath })
+}
+
+// --- RFC-002 — Scheduler ---
+
+export type SchedulerTask = {
+  id: string
+  projectId: string
+  title: string
+  dependencies: string[]
+  status: 'pending' | 'ready' | 'running' | 'completed' | 'failed' | 'blocked'
+  assignedAgentId: string | null
+  leaseResource: string | null
+  priority: number
+}
+
+export async function getSchedulerTasks(projectId: string): Promise<SchedulerTask[]> {
+  return invoke<SchedulerTask[]>('get_scheduler_tasks', { projectId })
+}
+
+export async function triggerSchedulerTick(
+  projectId: string,
+  repoPath: string,
+  worktreeMode?: WorktreeMode,
+): Promise<void> {
+  await invoke('trigger_scheduler_tick', { projectId, repoPath, worktreeMode })
+}
+
+export async function cancelTask(taskId: string): Promise<void> {
+  await invoke('cancel_task', { taskId })
+}
+
+// --- RFC-006/007/008 — Ciclo de merge seguro ---
+
+export type ConflictClass =
+  | 'rust'
+  | 'typeScript'
+  | 'ui'
+  | 'cargo'
+  | 'package'
+  | 'asset'
+  | 'config'
+  | 'gsd'
+  | 'unknown'
+
+export type ConflictFile = {
+  path: string
+  class: ConflictClass
+}
+
+export type MergeAnalysis = {
+  clean: boolean
+  source: string
+  target: string
+  conflicts: ConflictFile[]
+  classes: ConflictClass[]
+}
+
+export type ConflictEnv = {
+  id: string
+  path: string
+  branch: string
+  clean: boolean
+  conflicts: ConflictFile[]
+  promptPath?: string
+}
+
+export type MergeOutcome = {
+  merged: boolean
+  stage: string
+  output: string
+}
+
+export async function mergeAnalyze(
+  repo: string,
+  source: string,
+  target: string,
+  projectId?: string,
+): Promise<MergeAnalysis> {
+  return invoke<MergeAnalysis>('merge_analyze', { repo, source, target, projectId })
+}
+
+export async function mergePrepare(
+  repo: string,
+  source: string,
+  target: string,
+  projectId?: string,
+): Promise<ConflictEnv> {
+  return invoke<ConflictEnv>('merge_prepare', { repo, source, target, projectId })
+}
+
+export async function mergeFinalize(
+  repo: string,
+  envId: string,
+  validationCommands: string[],
+): Promise<MergeOutcome> {
+  return invoke<MergeOutcome>('merge_finalize', { repo, envId, validationCommands })
+}
+
+export async function mergeAbort(repo: string, envId: string): Promise<void> {
+  await invoke('merge_abort', { repo, envId })
+}
+
+/** Abort preventivo no worktree EFÊMERO antes de um retry — no-op se nada em progresso. */
+export async function mergePreflightAbort(repo: string, envId: string): Promise<void> {
+  await invoke('merge_preflight_abort', { repo, envId })
+}
+
+/** Reconcilia a branch efêmera (já resolvida) com a ponta atual do alvo, quando `stage === 'branch_diverged'`. */
+export async function mergeRebaseOntoTarget(repo: string, envId: string): Promise<MergeOutcome> {
+  return invoke<MergeOutcome>('merge_rebase_onto_target', { repo, envId })
+}
+
+export type MergeForceCleanupResult = {
+  deleted: boolean
+  pruned: boolean
+}
+
+/** Limpeza bruta de um ambiente de merge irrecuperável (fase `terminal_error`). */
+export async function mergeForceCleanup(repo: string, envId: string): Promise<MergeForceCleanupResult> {
+  return invoke<MergeForceCleanupResult>('merge_force_cleanup', { repo, envId })
+}
+
+export async function gitListBranches(repoRoot: string): Promise<string[]> {
+  return invoke<string[]>('git_list_branches', { repoRoot })
+}
+
+// --- RFC-004 — Graphify ---
+
+export type GraphifyStatus = {
+  available: boolean
+  command: string
+  version?: string
+}
+
+export type GraphNode = {
+  id: string
+  label: string
+  kind?: string
+  group?: string
+}
+
+export type GraphEdge = {
+  id: string
+  source: string
+  target: string
+  label?: string
+}
+
+export type GraphData = {
+  nodes: GraphNode[]
+  edges: GraphEdge[]
+  nodeCount: number
+  edgeCount: number
+  truncated: boolean
+}
+
+export type GraphSnapshotInfo = {
+  id: string
+  path: string
+  createdMs: number
+  sizeBytes: number
+}
+
+export async function graphifyDetect(command?: string): Promise<GraphifyStatus> {
+  return invoke<GraphifyStatus>('graphify_detect', { command })
+}
+
+/**
+ * Bootstrap único do grafo: o primeiro terminal de agente dispara a geração;
+ * os demais recebem 'exists'/'generating' e só usam. 'unavailable' = CLI ausente.
+ */
+export async function graphifyEnsureGraph(
+  repo: string,
+  command?: string,
+): Promise<'exists' | 'generating' | 'started' | 'unavailable'> {
+  return invoke<'exists' | 'generating' | 'started' | 'unavailable'>('graphify_ensure_graph', {
+    repo,
+    command,
+  })
+}
+
+export async function graphifyMcpConfigPath(repo: string, command?: string): Promise<string> {
+  return invoke<string>('graphify_mcp_config_path', { repo, command })
+}
+
+/** OpenCode não tem `--mcp-config`: lê MCP de `opencode.json` no root do projeto — escreve/mescla essa entrada antes do spawn. */
+export async function graphifyOpenCodeConfigWrite(repo: string, command?: string): Promise<void> {
+  await invoke('graphify_opencode_config_write', { repo, command })
+}
+
+/** Codex não tem `--mcp-config`: lê MCP de `.codex/config.toml` no root do projeto (só em "trusted projects") — escreve/mescla essa entrada antes do spawn. */
+export async function graphifyCodexConfigWrite(repo: string, command?: string): Promise<void> {
+  await invoke('graphify_codex_config_write', { repo, command })
+}
+
+export async function graphifyReadGraph(repo: string): Promise<GraphData> {
+  return invoke<GraphData>('graphify_read_graph', { repo })
+}
+
+export async function graphifySnapshot(repo: string, projectId?: string): Promise<GraphSnapshotInfo> {
+  return invoke<GraphSnapshotInfo>('graphify_snapshot', { repo, projectId })
+}
+
+export async function graphifyListSnapshots(repo: string): Promise<GraphSnapshotInfo[]> {
+  return invoke<GraphSnapshotInfo[]>('graphify_list_snapshots', { repo })
+}
+
+export async function graphifyDiffSnapshot(
+  repo: string,
+  baseId: string,
+  targetId: string,
+): Promise<GraphData> {
+  return invoke<GraphData>('graphify_diff_snapshot', { repo, baseId, targetId })
+}
+
+export async function graphifyRollback(repo: string, snapshotId: string, projectId?: string): Promise<void> {
+  await invoke('graphify_rollback', { repo, snapshotId, projectId })
+}
+
+export async function graphifyPruneSnapshots(
+  repo: string,
+  keepLast: number,
+  maxAgeDays?: number,
+  projectId?: string,
+): Promise<void> {
+  await invoke('graphify_prune_snapshots', { repo, keepLast, maxAgeDays, projectId })
+}
+
+// --- RFC-012 — Plugin System ---
+
+export type PluginKind = 'agentType' | 'skill' | 'validationPipeline'
+
+export type PluginManifest = {
+  name: string
+  version: string
+  kind: PluginKind
+  description: string
+  spec: Record<string, unknown>
+}
+
+export async function pluginsList(kind?: PluginKind): Promise<PluginManifest[]> {
+  return invoke<PluginManifest[]>('plugins_list', { kind })
+}
+
+export async function pluginInstall(manifest: PluginManifest): Promise<void> {
+  await invoke('plugin_install', { manifest })
+}
+
+export async function pluginUninstall(id: string): Promise<void> {
+  await invoke('plugin_uninstall', { id })
+}
+
+// --- RFC-005 — Auditoria GSD ---
+
+export type PlanningCommit = {
+  hash: string
+  author: string
+  timestampMs: number
+  subject: string
+  agentId: string | null
+}
+
+export async function planningAuditRecord(
+  repoPath: string,
+  agentId?: string,
+  reason?: string,
+  projectId?: string,
+): Promise<PlanningCommit | null> {
+  return invoke<PlanningCommit | null>('planning_audit_record', { repoPath, agentId, reason, projectId })
+}
+
+export async function planningAuditHistory(repoPath: string, limit?: number): Promise<PlanningCommit[]> {
+  return invoke<PlanningCommit[]>('planning_audit_history', { repoPath, limit })
+}
+
+export async function setPlanningAutocommit(enabled: boolean): Promise<void> {
+  await invoke('set_planning_autocommit', { enabled })
+}
+
+export async function getPlanningAutocommit(): Promise<boolean> {
+  return invoke<boolean>('get_planning_autocommit')
+}
+
+// --- OpenCode Sessions ---
+
+export type OpenCodeSessionSnapshot = {
+  id: string
+  modified_at_ms: number
+}
+
+export async function snapshotOpenCodeSessions(cwd: string): Promise<OpenCodeSessionSnapshot[]> {
+  return invoke<OpenCodeSessionSnapshot[]>('snapshot_opencode_sessions', { cwd })
 }

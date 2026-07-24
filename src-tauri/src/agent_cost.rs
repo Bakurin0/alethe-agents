@@ -22,11 +22,81 @@ struct Pricing {
     cache_read: f64,
 }
 
+/// Banco SQLite do OpenCode CLI (tokens/custo por sessão). Windows/macOS usam
+/// data_dir; Linux usa data_local_dir.
+fn opencode_db_path() -> Option<PathBuf> {
+    #[cfg(target_os = "linux")]
+    {
+        dirs_next::data_local_dir().map(|d| d.join("opencode").join("opencode.db"))
+    }
+    #[cfg(not(target_os = "linux"))]
+    {
+        dirs_next::data_dir().map(|d| d.join("opencode").join("opencode.db"))
+    }
+}
+
 /// Resolve o preço por prefixo do model id (ex.: "claude-opus-4-8",
 /// "claude-sonnet-4-6", "claude-haiku-4-5"). Codex usa modelos GPT, sem preço
 /// público estável aqui — retorna None (tokens ainda somam, custo fica null).
 fn pricing_for(model: &str) -> Option<Pricing> {
     let m = model.to_ascii_lowercase();
+
+    // Modelos de precificação conhecidos do OpenCode (valores por 1M tokens).
+    if m.contains("deepseek-v4-pro") {
+        return Some(Pricing {
+            input: 1.74,
+            output: 3.48,
+            cache_write_5m: 0.0,
+            cache_write_1h: 0.0,
+            cache_read: 0.0145,
+        });
+    }
+    if m.contains("qwen3.7-max") {
+        return Some(Pricing {
+            input: 2.50,
+            output: 7.50,
+            cache_write_5m: 3.125,
+            cache_write_1h: 3.125,
+            cache_read: 0.50,
+        });
+    }
+    if m.contains("glm-5.2") {
+        return Some(Pricing {
+            input: 1.40,
+            output: 4.40,
+            cache_write_5m: 0.0,
+            cache_write_1h: 0.0,
+            cache_read: 0.26,
+        });
+    }
+    if m.contains("kimi-k2.7-code") {
+        return Some(Pricing {
+            input: 0.95,
+            output: 4.00,
+            cache_write_5m: 0.0,
+            cache_write_1h: 0.0,
+            cache_read: 0.19,
+        });
+    }
+    if m.contains("deepseek-v4-flash-free") {
+        return Some(Pricing {
+            input: 0.0,
+            output: 0.0,
+            cache_write_5m: 0.0,
+            cache_write_1h: 0.0,
+            cache_read: 0.0,
+        });
+    }
+    if m.contains("minimax-m3") {
+        return Some(Pricing {
+            input: 0.55,
+            output: 2.19,
+            cache_write_5m: 0.0,
+            cache_write_1h: 0.0,
+            cache_read: 0.055,
+        });
+    }
+
     // input, output → derivados: 5m=1.25x, 1h=2x, read=0.1x
     let base = if m.contains("opus") {
         (5.0, 25.0)
@@ -240,6 +310,58 @@ fn get_session_cost_inner(
                 return Err(format!("sessão claude {session_id} não encontrada"));
             };
             parse_claude_cost(&path).into_values().collect()
+        }
+        "opencode" => {
+            let db_path = opencode_db_path()
+                .ok_or_else(|| "caminho do banco do OpenCode não encontrado".to_string())?;
+            if !db_path.is_file() {
+                return Err(format!("banco do OpenCode não encontrado em: {db_path:?}"));
+            }
+
+            let conn = rusqlite::Connection::open_with_flags(
+                &db_path,
+                rusqlite::OpenFlags::SQLITE_OPEN_READ_ONLY | rusqlite::OpenFlags::SQLITE_OPEN_NO_MUTEX,
+            )
+            .map_err(|e| format!("falha ao abrir banco do OpenCode: {e}"))?;
+
+            let mut stmt = conn
+                .prepare(
+                    "SELECT model, tokens_input, tokens_output, tokens_cache_read, tokens_cache_write FROM session WHERE id = ?1",
+                )
+                .map_err(|e| format!("falha ao preparar query: {e}"))?;
+
+            let mut rows = stmt
+                .query(rusqlite::params![session_id])
+                .map_err(|e| format!("falha ao executar query: {e}"))?;
+
+            let mut result_by_model = Vec::new();
+            if let Some(row) = rows.next().map_err(|e| format!("falha ao ler linha: {e}"))? {
+                let model_raw: String = row.get(0).unwrap_or_default();
+                let tokens_input: u64 = row.get(1).unwrap_or(0);
+                let tokens_output: u64 = row.get(2).unwrap_or(0);
+                let tokens_cache_read: u64 = row.get(3).unwrap_or(0);
+                let tokens_cache_write: u64 = row.get(4).unwrap_or(0);
+
+                // A coluna `model` pode ser JSON ({"id": "..."}) ou string simples.
+                let model_name = if let Ok(v) = serde_json::from_str::<serde_json::Value>(&model_raw) {
+                    v.get("id")
+                        .and_then(|id| id.as_str())
+                        .unwrap_or(&model_raw)
+                        .to_string()
+                } else {
+                    model_raw
+                };
+
+                result_by_model.push(ModelCost {
+                    model: model_name,
+                    input: tokens_input,
+                    output: tokens_output,
+                    cache_read: tokens_cache_read,
+                    cache_write_5m: tokens_cache_write,
+                    ..Default::default()
+                });
+            }
+            result_by_model
         }
         other => return Err(format!("agente sem custo suportado: {other}")),
     };

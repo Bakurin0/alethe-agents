@@ -1044,6 +1044,72 @@ export const en = {
   'menu.exportLogs': 'Export logs…',
   'menu.exportLogsTitle': 'Export logs',
   'menu.logsFilter': 'Alethe logs',
+
+  /* ---- RFC-004 — Graphify (code graph) ---- */
+  'graphify.title': 'Code graph',
+  'graphify.stats': '{nodes} nodes · {edges} edges',
+  'graphify.truncated': 'showing first {max}',
+  'graphify.reload': 'Reload',
+  'graphify.snapshot': 'Snapshot',
+  'graphify.prune': 'Compact',
+  'graphify.pruneHint': 'Keep the last {keep} snapshots',
+  'graphify.empty': 'No graph found. Run Graphify in this repo (graphify-out/graph.json).',
+  'graphify.snapshotsTitle': 'Snapshots',
+  'graphify.noSnapshots': 'No snapshots yet',
+  'graphify.rollback': 'Roll back to this snapshot',
+  'graphify.bootstrapStarted': 'Generating the code graph for this project (first agent only)…',
+  'project.graphifyEnabled': 'Graphify MCP (code graph for agents)',
+  'scheduler.agentSpawnedTitle': 'GSD agent started',
+  'multiAgent.newEnvPlaceholder': 'agent environment name (e.g. feature-x)',
+  'multiAgent.createEnv': 'Create agent environment',
+  'multiAgent.creatingEnv': 'Creating…',
+  'multiAgent.autoWorktree': 'Automatic agent isolation (every new agent gets its own worktree)',
+  'multiAgent.cleanOrphans': 'Clean up orphaned worktrees ({count})',
+  'multiAgent.cleaningOrphans': 'Cleaning up…',
+  'multiAgent.orphanCleanupTitle': 'Orphaned worktree cleanup',
+  'multiAgent.orphanCleanupSummary':
+    '{cleaned} fully cleaned, {partial} partially cleaned, {waiting} awaiting manual unlock, {failed} failed.',
+  'multiAgent.orphanAdminLocked':
+    'Administratively locked: {reason}. Run "git worktree unlock" to release it.',
+  'multiAgent.orphanManualRemoval':
+    'Automatic cleanup has failed repeatedly. Manual removal is recommended.',
+  'merge.integrate': 'Integrate',
+  'merge.integrateTooltip': 'Merge this agent’s work into the main branch and remove the environment',
+  'merge.busyTitle': 'Integration in progress',
+  'merge.busy': 'Another integration is running — try again in a moment.',
+
+  /* ---- pool / hibernation ---- */
+  'ui.terminal.suspended': 'Suspended',
+  'ui.terminal.suspendedTooltip': 'Terminal suspended — click to reactivate',
+  'ui.terminal.clickToReactivate': 'Click to reactivate',
+
+  /* ---- RFC-006/007/008 — safe merge cycle ---- */
+  'merge.sectionTitle': 'Merge cycle',
+  'merge.providerLabel': 'Conflict resolution agent',
+  'merge.needBranches': 'This repo needs at least two local branches to merge.',
+  'merge.sourceLabel': 'Source branch',
+  'merge.targetLabel': 'Target branch',
+  'merge.analyze': 'Analyze',
+  'merge.analyzing': 'Analyzing…',
+  'merge.start': 'Start merge',
+  'merge.finalize': 'Finalize merge',
+  'merge.finalizing': 'Finalizing…',
+  'merge.abort': 'Abort',
+  'merge.analysisClean': 'No conflicts — merge can proceed directly.',
+  'merge.analysisConflicts': '{count} file(s) in conflict:',
+  'merge.resolvingHint':
+    'Conflict agent is running in a project terminal. When it finishes, click "Finalize merge".',
+  'merge.conflictTitle': 'Merge conflict',
+  'merge.conflictBody': '{count} file(s) in conflict. An ephemeral agent was spawned to resolve them.',
+  'merge.mergedTitle': 'Merge completed',
+  'merge.blockedTitle': 'Merge blocked: {stage}',
+  'merge.retry': 'Retry ({count})',
+  'merge.cleaningUp': 'Cleaning up…',
+  'merge.forceCleanup': 'Force cleanup',
+  'merge.terminalErrorHint':
+    'The merge environment could not be recovered automatically. Force cleanup will delete the temporary environment.',
+  'merge.adminLockedReason':
+    'This worktree is administratively locked: {reason}. Run "git worktree unlock" to release it.',
 } as const
 
 export type MessageKey = keyof typeof en

@@ -40,6 +40,35 @@ function formatPct(value: number): string {
   return `${value.toFixed(0)}%`
 }
 
+function MemoryPillButton({ ramMb }: { ramMb: number }) {
+  const memoryStats = useUiStore((s) => s.memoryStats)
+  const openModal = useUiStore((s) => s.openModal_)
+  const t = useT()
+  const availableMb = memoryStats?.system_available_mb ?? 16384
+
+  let pressureClass = ''
+  if (availableMb < 256) {
+    pressureClass = styles.ramPressureCritical
+  } else if (availableMb < 512) {
+    pressureClass = styles.ramPressureHigh
+  } else if (availableMb < 1024) {
+    pressureClass = styles.ramPressureMedium
+  } else if (availableMb < 2048) {
+    pressureClass = styles.ramPressureLow
+  }
+
+  return (
+    <button
+      type="button"
+      className={`${styles.ramPill} ${pressureClass}`}
+      title={`${t('ui.titlebar.openMemoryAnalytics')} · ${availableMb.toFixed(0)} MB livre`}
+      onClick={() => openModal('memoryAnalytics')}
+    >
+      {ramMb.toFixed(0)} MB
+    </button>
+  )
+}
+
 export function TitleBar() {
   const t = useT()
   const toggleMainMenu = useUiStore((s) => s.toggleMainMenu)
@@ -418,9 +447,7 @@ export function TitleBar() {
           </div>
         ) : null}
         {preferences.topbarShowMemory && ramMb !== null ? (
-          <button type="button" className={styles.ramPill} title={t('ui.titlebar.openMemoryAnalytics')} onClick={() => openModal('memoryAnalytics')}>
-            {ramMb.toFixed(0)} MB
-          </button>
+          <MemoryPillButton ramMb={ramMb} />
         ) : null}
         <button type="button" className={styles.editWidgets} title={t('ui.titlebar.customize')} aria-label={t('ui.titlebar.customize')} onClick={() => openModal('topbarSettings')}>
           <Pencil size={12} />

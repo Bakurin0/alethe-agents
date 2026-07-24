@@ -373,10 +373,31 @@
   margin-right: 6px;
   cursor: pointer;
   border: 1px solid transparent;
+  transition: border-color 0.15s ease;
 }
 .ramPill:hover {
   color: var(--fg);
   border-color: var(--border-strong);
+}
+.ramPressureLow {
+  border-color: var(--status-waiting);
+}
+.ramPressureMedium {
+  border-color: var(--status-working);
+}
+.ramPressureHigh {
+  border-color: var(--status-offline);
+  animation: ramPillPulse 1.5s infinite;
+}
+.ramPressureCritical {
+  border-color: var(--status-offline);
+  background: var(--status-offline-soft);
+  animation: ramPillPulse 0.8s infinite;
+}
+
+@keyframes ramPillPulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.55; }
 }
 
 .syncPill {

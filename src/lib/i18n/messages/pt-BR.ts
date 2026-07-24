@@ -1045,4 +1045,70 @@ export const ptBR: Record<MessageKey, string> = {
   'menu.exportLogs': 'Exportar logs…',
   'menu.exportLogsTitle': 'Exportar logs',
   'menu.logsFilter': 'Alethe logs',
+
+  /* ---- RFC-004 — Graphify (grafo do código) ---- */
+  'graphify.title': 'Grafo do código',
+  'graphify.stats': '{nodes} nós · {edges} arestas',
+  'graphify.truncated': 'mostrando os primeiros {max}',
+  'graphify.reload': 'Recarregar',
+  'graphify.snapshot': 'Snapshot',
+  'graphify.prune': 'Compactar',
+  'graphify.pruneHint': 'Mantém os últimos {keep} snapshots',
+  'graphify.empty': 'Nenhum grafo encontrado. Rode o Graphify neste repo (graphify-out/graph.json).',
+  'graphify.snapshotsTitle': 'Snapshots',
+  'graphify.noSnapshots': 'Ainda sem snapshots',
+  'graphify.rollback': 'Restaurar este snapshot',
+  'graphify.bootstrapStarted': 'Gerando o grafo do código deste projeto (só o primeiro agente)…',
+  'project.graphifyEnabled': 'Graphify MCP (grafo do código para os agentes)',
+  'scheduler.agentSpawnedTitle': 'Agente GSD iniciado',
+  'multiAgent.newEnvPlaceholder': 'nome do ambiente (ex: feature-x)',
+  'multiAgent.createEnv': 'Criar ambiente de agente',
+  'multiAgent.creatingEnv': 'Criando…',
+  'multiAgent.autoWorktree': 'Isolamento automático de agentes (todo agente novo ganha worktree própria)',
+  'multiAgent.cleanOrphans': 'Limpar worktrees órfãs ({count})',
+  'multiAgent.cleaningOrphans': 'Limpando…',
+  'multiAgent.orphanCleanupTitle': 'Limpeza de worktrees órfãs',
+  'multiAgent.orphanCleanupSummary':
+    '{cleaned} totalmente limpos, {partial} parcialmente limpos, {waiting} aguardando unlock manual, {failed} falhas.',
+  'multiAgent.orphanAdminLocked':
+    'Travada administrativamente pelo motivo: {reason}. Execute "git worktree unlock" para liberar.',
+  'multiAgent.orphanManualRemoval':
+    'A limpeza automática falhou repetidamente. Recomenda-se remoção manual.',
+  'merge.integrate': 'Integrar',
+  'merge.integrateTooltip': 'Faz merge do trabalho deste agente no branch principal e remove o ambiente',
+  'merge.busyTitle': 'Integração em andamento',
+  'merge.busy': 'Outra integração está rodando — tente novamente em instantes.',
+
+  /* ---- pool / hibernação ---- */
+  'ui.terminal.suspended': 'Suspenso',
+  'ui.terminal.suspendedTooltip': 'Terminal suspenso — clique para reativar',
+  'ui.terminal.clickToReactivate': 'Clique para reativar',
+
+  /* ---- RFC-006/007/008 — ciclo de merge seguro ---- */
+  'merge.sectionTitle': 'Ciclo de merge',
+  'merge.providerLabel': 'Agente de resolução de conflitos',
+  'merge.needBranches': 'Este repo precisa de ao menos dois branches locais para merge.',
+  'merge.sourceLabel': 'Branch de origem',
+  'merge.targetLabel': 'Branch de destino',
+  'merge.analyze': 'Analisar',
+  'merge.analyzing': 'Analisando…',
+  'merge.start': 'Iniciar merge',
+  'merge.finalize': 'Finalizar merge',
+  'merge.finalizing': 'Finalizando…',
+  'merge.abort': 'Abortar',
+  'merge.analysisClean': 'Sem conflitos — o merge pode seguir direto.',
+  'merge.analysisConflicts': '{count} arquivo(s) em conflito:',
+  'merge.resolvingHint':
+    'O agente de conflito está rodando num terminal do projeto. Quando ele terminar, clique em "Finalizar merge".',
+  'merge.conflictTitle': 'Conflito de merge',
+  'merge.conflictBody': '{count} arquivo(s) em conflito. Um agente efêmero foi spawnado para resolver.',
+  'merge.mergedTitle': 'Merge concluído',
+  'merge.blockedTitle': 'Merge barrado: {stage}',
+  'merge.retry': 'Retentar ({count})',
+  'merge.cleaningUp': 'Limpando…',
+  'merge.forceCleanup': 'Limpeza forçada',
+  'merge.terminalErrorHint':
+    'O ambiente de merge não pôde ser recuperado automaticamente. A limpeza forçada vai apagar o ambiente temporário.',
+  'merge.adminLockedReason':
+    'Esta worktree está travada administrativamente pelo motivo: {reason}. Execute "git worktree unlock" para liberar.',
 }

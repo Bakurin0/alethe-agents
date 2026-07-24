@@ -8,9 +8,9 @@
 
 import { listen } from '@tauri-apps/api/event'
 
-type WatchAgent = 'claude' | 'codex'
+type WatchAgent = 'claude' | 'codex' | 'opencode'
 
-const waiters: Record<WatchAgent, Array<() => void>> = { claude: [], codex: [] }
+const waiters: Record<WatchAgent, Array<() => void>> = { claude: [], codex: [], opencode: [] }
 /** Teto de waiters por agente. Se o watcher nunca emitir (dir inexistente), os
  * resolvers de `Promise.race` que perderam ficariam pendentes pra sempre; ao
  * estourar o teto, resolvemos os mais antigos (no-op pra quem já perdeu o race). */
@@ -22,7 +22,7 @@ function ensureStarted(): void {
   started = true
   void listen<{ agent?: string }>('session://new', (event) => {
     const agent = event.payload?.agent
-    if (agent !== 'claude' && agent !== 'codex') return
+    if (agent !== 'claude' && agent !== 'codex' && agent !== 'opencode') return
     const pending = waiters[agent]
     waiters[agent] = []
     for (const resolve of pending) resolve()

@@ -238,6 +238,7 @@ impl ResourceSupervisor {
 
         let mut system = self.system.lock().unwrap_or_else(|p| p.into_inner());
         system.refresh_processes(sysinfo::ProcessesToUpdate::All);
+        system.refresh_memory();
 
         let mut children = HashMap::<u32, Vec<u32>>::new();
         for (pid, process) in system.processes() {
@@ -278,6 +279,8 @@ impl ResourceSupervisor {
             webview_mb: to_mb(webview_bytes),
             ptys_mb: to_mb(pty_bytes),
             process_count: app_tree.len(),
+            system_total_mb: to_mb(system.total_memory()),
+            system_available_mb: to_mb(system.available_memory()),
         };
 
         let mut ptys = roots
@@ -537,6 +540,8 @@ mod tests {
                 webview_mb: 300.0,
                 ptys_mb: 1260.0,
                 process_count: 12,
+                system_total_mb: 16384.0,
+                system_available_mb: 8192.0,
             },
             private_commit_mb: 1700.0,
             effective_total_mb: 1700.0,

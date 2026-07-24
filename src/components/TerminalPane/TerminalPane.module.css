@@ -193,6 +193,19 @@
   background: var(--status-stopped);
   flex-shrink: 0;
 }
+
+.hibernationBadge {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 14px;
+  height: 14px;
+  border-radius: 50%;
+  background: var(--fg-faint);
+  color: var(--bg);
+  flex-shrink: 0;
+  cursor: help;
+}
 .status_working { background: var(--status-working); animation: pulse 1.4s infinite; }
 .status_waiting { background: var(--status-waiting); }
 .status_stopped { background: var(--status-stopped); }

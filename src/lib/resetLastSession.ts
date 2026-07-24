@@ -15,6 +15,7 @@ import {
   restartPty,
   snapshotClaudeSessions,
   snapshotCodexSessions,
+  snapshotOpenCodeSessions,
 } from './tauri'
 import type { AgentType } from './types'
 import { useProjectsStore } from '../stores/projectsStore'
@@ -68,15 +69,27 @@ async function latestSessionId(
   agent: AgentType,
   cwd: string,
   exclude: SessionExclude,
+  savedOpenCodeId?: string,
 ): Promise<string | null> {
   if (!cwd) return null
   try {
     if (agent === 'codex') return pickSessionId(await snapshotCodexSessions(cwd), exclude)
     if (agent === 'claude') return pickSessionId(await snapshotClaudeSessions(cwd), exclude)
+    if (agent === 'opencode') {
+      // Estratégia em 3 níveis pra nunca cair no `--continue` global (que
+      // pegaria a sessão mais recente de OUTRO projeto):
+      // 1) ID já persistido pro pane; 2) snapshot filtrado por cwd no backend;
+      // 3) null → --continue como último recurso.
+      if (savedOpenCodeId) return savedOpenCodeId
+      const sessions = await snapshotOpenCodeSessions(cwd)
+      if (sessions.length > 0) {
+        return pickSessionId(sessions, exclude) ?? sessions[0].id
+      }
+      return null
+    }
   } catch {
     return null
   }
-  // opencode não expõe listagem em disco — resume "a última" via flag sem id.
   return null
 }
 
@@ -97,9 +110,12 @@ function buildResumeArgs(agent: AgentType, baseArgs: string[], sessionId: string
     }
     return sessionId ? ['resume', sessionId, ...clean] : ['resume', '--last', ...clean]
   }
-  // opencode
-  const clean = baseArgs.filter((a) => a !== '--resume')
-  return ['--resume', ...clean]
+  // opencode: `--session <id>` quando conhecemos o ID, senão `--continue`
+  // retoma a última sessão.
+  const clean = stripFlagWithValue(baseArgs, '--session').filter(
+    (a) => a !== '--resume' && a !== '--continue',
+  )
+  return sessionId ? ['--session', sessionId, ...clean] : ['--continue', ...clean]
 }
 
 type ResumeTarget = {
@@ -157,10 +173,17 @@ export async function resetLastSession(): Promise<ResetLastSessionResult> {
       // Sessão atualmente aberta nesse pane (pra não resumir ela mesma).
       const active = getActiveSessions()[target.ptyId]
       const exclude: SessionExclude = {
-        id: target.agent === 'codex' ? active?.codexSessionId : active?.claudeSessionId,
+        id:
+          target.agent === 'codex'
+            ? active?.codexSessionId
+            : target.agent === 'opencode'
+              ? active?.opencodeSessionId
+              : active?.claudeSessionId,
         before: active?.timestamp,
       }
-      const sessionId = await latestSessionId(target.agent, cwd, exclude)
+      const savedOpenCodeId =
+        target.agent === 'opencode' ? active?.opencodeSessionId : undefined
+      const sessionId = await latestSessionId(target.agent, cwd, exclude, savedOpenCodeId)
       const extraArgs = buildResumeArgs(target.agent, target.extraArgs, sessionId)
 
       // Ignora o exit event do PTY antigo (chega async após o restart).
@@ -182,6 +205,7 @@ export async function resetLastSession(): Promise<ResetLastSessionResult> {
         sessionId: target.ptyId,
         claudeSessionId: target.agent === 'claude' ? sessionId ?? undefined : undefined,
         codexSessionId: target.agent === 'codex' ? sessionId ?? undefined : undefined,
+        opencodeSessionId: target.agent === 'opencode' ? sessionId ?? undefined : undefined,
         cwd,
         agent: target.agent,
         timestamp: Date.now(),
