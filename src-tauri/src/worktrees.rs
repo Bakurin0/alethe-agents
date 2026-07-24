@@ -392,4 +392,282 @@ mod tests {
 
         fs::remove_dir_all(root).unwrap();
     }
+
+    // ========================================================================
+    // E2E: N agentes OpenCode reais em paralelo, cada um numa worktree isolada.
+    //
+    // Pedido explícito do dono desta sessão: validação de verdade do ciclo de
+    // worktree usando o OpenCode como agente de teste (não só unit tests
+    // determinísticos), com modelos GRATUITOS, rodando em PARALELO (fiel ao
+    // caso de uso real do Alethe — vários agentes ao mesmo tempo), sem
+    // `--continue` (relatado como não-confiável), e SEM `--pure` (confirmado
+    // nesta sessão via probe real: --pure esconde as ferramentas MCP,
+    // incluindo o graphify — o próprio dono confirmou e pediu pra não usar).
+    //
+    // `#[ignore]` de propósito: depende de rede + do binário `opencode`
+    // instalado + custo de tempo real (mesmo com modelo free). Rodar
+    // manualmente com `cargo test --lib worktrees::tests::opencode_e2e -- --ignored --nocapture`.
+    #[cfg(test)]
+    mod opencode_e2e {
+        use super::temp_repo;
+        use crate::worktrees::{worktree_list, worktree_provision, worktree_remove, WorktreeMode};
+        use std::fs;
+        use std::path::{Path, PathBuf};
+        use std::process::{Command, Stdio};
+        use std::time::{SystemTime, UNIX_EPOCH};
+
+        /// Achado real desta sessão (não estava confirmado quando o plano foi
+        /// escrito): `opencode run --format json` já devolve o `sessionID` no
+        /// PRÓPRIO stream de eventos (todo evento tem `sessionID` no topo) —
+        /// não precisa do snapshot-antes/depois de `opencode session list` que
+        /// o plano original previa pra capturar o ID; é mais simples e sem
+        /// corrida nenhuma, ainda mais com N agentes paralelos.
+        fn opencode_binary() -> Option<PathBuf> {
+            crate::cli_resolver::find_windows_cli_launcher("opencode")
+        }
+
+        /// Modelo free real confirmado nesta sessão via probe ao vivo
+        /// (`opencode models` listou vários `*-free`; testado de verdade com
+        /// custo $0 nos eventos step_finish). Não hardcodar sem checar de novo
+        /// se o catálogo do OpenCode mudar.
+        const FREE_MODEL: &str = "opencode/deepseek-v4-flash-free";
+
+        /// Pool pequeno de tarefas candidatas — cada execução do teste sorteia
+        /// uma por worktree (pedido do dono: "deixar mais aleatório a
+        /// verificação" em vez de sempre checar exatamente a mesma coisa).
+        /// Cada tarefa pede um arquivo com nome/conteúdo verificável e
+        /// determinístico o bastante pra assert automatizado.
+        fn task_pool() -> Vec<(&'static str, &'static str, &'static str)> {
+            // (prompt, nome do arquivo esperado, substring esperada no conteúdo)
+            vec![
+                (
+                    "Crie um arquivo chamado resultado.txt contendo exatamente a palavra ALFA (maiúsculas, sem mais nada). Não peça confirmação, apenas crie.",
+                    "resultado.txt",
+                    "ALFA",
+                ),
+                (
+                    "Crie um arquivo chamado resultado.txt contendo exatamente a palavra BETA (maiúsculas, sem mais nada). Não peça confirmação, apenas crie.",
+                    "resultado.txt",
+                    "BETA",
+                ),
+                (
+                    "Crie um arquivo chamado resultado.txt contendo exatamente a palavra GAMA (maiúsculas, sem mais nada). Não peça confirmação, apenas crie.",
+                    "resultado.txt",
+                    "GAMA",
+                ),
+            ]
+        }
+
+        /// Sorteio simples sem dependência nova (sem crate `rand`) — nanotime
+        /// como semente é suficiente pra "não sempre a mesma tarefa", que é o
+        /// objetivo real aqui (não segurança criptográfica).
+        fn pick_pseudo_random<T: Copy>(pool: &[T], salt: u128) -> T {
+            let nanos = SystemTime::now()
+                .duration_since(UNIX_EPOCH)
+                .unwrap()
+                .as_nanos()
+                .wrapping_add(salt);
+            pool[(nanos as usize) % pool.len()]
+        }
+
+        struct OpenCodeRunOutcome {
+            session_id: String,
+            raw_events: Vec<serde_json::Value>,
+        }
+
+        /// Roda `opencode run` não-interativo, sem --pure (graphify precisa
+        /// aparecer), com --auto (aprova permissões sem travar o script) e
+        /// captura o stream --format json linha a linha.
+        fn run_opencode(bin: &Path, cwd: &Path, prompt: &str, session_id: Option<&str>) -> Result<OpenCodeRunOutcome, String> {
+            let mut cmd = Command::new(bin);
+            cmd.current_dir(cwd)
+                .args(["run", "--format", "json", "--auto", "-m", FREE_MODEL]);
+            if let Some(id) = session_id {
+                cmd.args(["--session", id]);
+            }
+            cmd.arg(prompt);
+            cmd.stdout(Stdio::piped());
+            cmd.stderr(Stdio::piped());
+
+            let output = cmd.output().map_err(|e| format!("falha ao rodar opencode: {e}"))?;
+            if !output.status.success() {
+                return Err(format!(
+                    "opencode run saiu com codigo {:?}\nstderr: {}\nstdout (ultimos 2000 chars): {}",
+                    output.status.code(),
+                    String::from_utf8_lossy(&output.stderr),
+                    String::from_utf8_lossy(&output.stdout)
+                        .chars()
+                        .rev()
+                        .take(2000)
+                        .collect::<String>()
+                        .chars()
+                        .rev()
+                        .collect::<String>()
+                ));
+            }
+
+            let mut raw_events = Vec::new();
+            let mut session_id_found: Option<String> = None;
+            for line in String::from_utf8_lossy(&output.stdout).lines() {
+                let line = line.trim();
+                if line.is_empty() {
+                    continue;
+                }
+                let Ok(value) = serde_json::from_str::<serde_json::Value>(line) else {
+                    continue;
+                };
+                if session_id_found.is_none() {
+                    if let Some(sid) = value.get("sessionID").and_then(|v| v.as_str()) {
+                        session_id_found = Some(sid.to_string());
+                    }
+                }
+                raw_events.push(value);
+            }
+
+            let session_id = session_id_found
+                .ok_or_else(|| "sessionID nunca apareceu no stream de eventos".to_string())?;
+            Ok(OpenCodeRunOutcome { session_id, raw_events })
+        }
+
+        #[test]
+        #[ignore]
+        fn parallel_opencode_agents_respect_worktree_isolation_and_session_continuity() {
+            let Some(bin) = opencode_binary() else {
+                eprintln!("[e2e] opencode não encontrado no PATH — pulando (instale o CLI pra rodar este teste)");
+                return;
+            };
+
+            const N: usize = 2; // paralelismo real, mas contido (custo/tempo de rede).
+            let root = temp_repo();
+            let root_str = root.to_string_lossy().into_owned();
+
+            // Graphify ligado no repo principal — cada worktree herda o mesmo
+            // opencode.json (git worktree compartilha árvore de trabalho fora
+            // de .git, então escrever uma vez no root já vale pras worktrees
+            // via `git worktree add`... na prática cada worktree tem sua PRÓPRIA
+            // working tree, então escrevemos por worktree, não no root).
+            let pool = task_pool();
+
+            // 1) Provisiona N worktrees.
+            let mut worktrees = Vec::new();
+            for i in 0..N {
+                let agent_id = format!("e2e-{i}");
+                let wt = worktree_provision(root_str.clone(), agent_id.clone(), WorktreeMode::GitWorktree)
+                    .expect("worktree_provision falhou");
+                let wt_path = PathBuf::from(&wt.path);
+                // Graphify por worktree — mesmo padrão real que o Alethe usa ao
+                // spawnar um terminal opencode num projeto com graphifyEnabled.
+                let _ = crate::graphify::graphify_opencode_config_write(
+                    wt_path.to_string_lossy().into_owned(),
+                    None,
+                );
+                let (prompt, expected_file, expected_content) =
+                    pick_pseudo_random(&pool, i as u128 * 7919);
+                worktrees.push((agent_id, wt_path, prompt, expected_file, expected_content));
+            }
+
+            // 2) Dispara os N `opencode run` em paralelo de verdade (threads,
+            //    não sequencial) — fiel ao caso de uso real do Alethe.
+            let handles: Vec<_> = worktrees
+                .iter()
+                .map(|(agent_id, wt_path, prompt, _, _)| {
+                    let bin = bin.clone();
+                    let wt_path = wt_path.clone();
+                    let prompt = prompt.to_string();
+                    let agent_id = agent_id.clone();
+                    std::thread::spawn(move || {
+                        let result = run_opencode(&bin, &wt_path, &prompt, None);
+                        (agent_id, result)
+                    })
+                })
+                .collect();
+
+            let mut outcomes = std::collections::HashMap::new();
+            for h in handles {
+                let (agent_id, result) = h.join().expect("thread do opencode paralelo entrou em pânico");
+                match result {
+                    Ok(outcome) => {
+                        outcomes.insert(agent_id, outcome);
+                    }
+                    Err(e) => panic!("agente {agent_id} falhou: {e}"),
+                }
+            }
+
+            // 3) Isolamento: o arquivo de cada tarefa só pode existir NA
+            //    worktree daquele agente — não em nenhuma outra worktree nem
+            //    no repo principal.
+            for (agent_id, wt_path, _, expected_file, expected_content) in &worktrees {
+                let own_file = wt_path.join(expected_file);
+                assert!(
+                    own_file.is_file(),
+                    "agente {agent_id} devia ter criado {expected_file} na própria worktree"
+                );
+                let content = fs::read_to_string(&own_file).unwrap_or_default();
+                assert!(
+                    content.contains(expected_content),
+                    "conteúdo de {expected_file} do agente {agent_id} não bate com o esperado ({expected_content}): {content:?}"
+                );
+
+                // As 3 tarefas do pool usam o MESMO nome de arquivo
+                // (resultado.txt) de propósito — cada worktree ter seu próprio
+                // resultado.txt é esperado, não é vazamento. O que prova
+                // isolamento real é o CONTEÚDO: o conteúdo de UM agente não
+                // pode aparecer no arquivo de OUTRO agente.
+                for (other_id, other_path, _, _, other_expected_content) in &worktrees {
+                    if other_id == agent_id || expected_content == other_expected_content {
+                        continue;
+                    }
+                    let other_file = other_path.join(expected_file);
+                    if !other_file.is_file() {
+                        continue;
+                    }
+                    let other_content = fs::read_to_string(&other_file).unwrap_or_default();
+                    assert!(
+                        !other_content.contains(expected_content),
+                        "vazamento: conteúdo do agente {agent_id} ({expected_content}) apareceu na worktree do agente {other_id}"
+                    );
+                }
+                assert!(
+                    !root.join(expected_file).is_file(),
+                    "vazamento: arquivo do agente {agent_id} apareceu no repo principal (fora de qualquer worktree)"
+                );
+            }
+
+            // 4) Continuidade de sessão: retoma cada uma com --session
+            //    explícito (nunca --continue) e confirma que o sessionID da
+            //    retomada é o MESMO (prova que é a mesma sessão, não uma nova).
+            for (agent_id, wt_path, _, _, _) in &worktrees {
+                let outcome = outcomes.get(agent_id).unwrap();
+                let resumed = run_opencode(
+                    &bin,
+                    wt_path,
+                    "Confirme rapidamente: qual arquivo voce acabou de criar?",
+                    Some(&outcome.session_id),
+                )
+                .unwrap_or_else(|e| panic!("retomada de sessão falhou pro agente {agent_id}: {e}"));
+                assert_eq!(
+                    resumed.session_id, outcome.session_id,
+                    "retomada com --session {} devia continuar a MESMA sessão pro agente {agent_id}, não criar uma nova",
+                    outcome.session_id
+                );
+                assert!(
+                    !resumed.raw_events.is_empty(),
+                    "retomada da sessão do agente {agent_id} não produziu nenhum evento"
+                );
+            }
+
+            // 5) Limpeza: remove as N worktrees e confirma que sumiram.
+            for (agent_id, _, _, _, _) in &worktrees {
+                worktree_remove(root_str.clone(), agent_id.clone(), true)
+                    .unwrap_or_else(|e| panic!("worktree_remove falhou pro agente {agent_id}: {e}"));
+            }
+            assert_eq!(
+                worktree_list(root_str).unwrap().len(),
+                0,
+                "nenhuma worktree deveria sobrar depois da limpeza"
+            );
+
+            fs::remove_dir_all(root).unwrap();
+        }
+    }
 }
