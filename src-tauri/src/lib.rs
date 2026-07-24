@@ -43,6 +43,7 @@ mod conflict_resolution;
 mod graphify;
 mod plugins;
 mod opencode_sessions;
+mod opencode_bridge;
 
 use std::collections::HashMap;
 use std::sync::{Arc, Mutex};
@@ -110,6 +111,9 @@ pub fn run() {
             // Limpa scrollback órfão antes de qualquer spawn (sem corrida).
             pty::cleanup_orphan_scrollback(app.handle());
             agent_events::start_listener(app.handle().clone());
+            // Best-effort: escreve/atualiza o plugin global do OpenCode que
+            // reporta working/idle real de volta pro Alethe (ver opencode_bridge.rs).
+            opencode_bridge::ensure_installed();
             session_watcher::start_watcher(app.handle().clone());
 
             // Multi-Agent & Telemetry Event Loops

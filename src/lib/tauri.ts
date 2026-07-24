@@ -308,6 +308,26 @@ export type PtyExitPayload = {
   reason: PtyExitReason
 }
 
+/** Endpoint HTTP local (listener já usado pelos hooks do Claude Code em
+ * agent_events.rs) — reaproveitado pelo plugin do OpenCode pra reportar
+ * working/idle real (ver opencode_bridge.rs). */
+export async function agentHooksEndpoint(): Promise<string> {
+  return invoke('agent_hooks_endpoint')
+}
+
+export type OpenCodeBridgeStatus = {
+  directory: string
+  state: 'working' | 'idle'
+}
+
+/** Sinal real de working/idle do OpenCode, reportado pelo plugin global
+ * (~/.config/opencode/plugin/alethe-bridge.js) via POST local. */
+export function listenOpenCodeBridgeStatus(
+  handler: (payload: OpenCodeBridgeStatus) => void,
+): Promise<UnlistenFn> {
+  return listen<OpenCodeBridgeStatus>('opencode-bridge-status', (event) => handler(event.payload))
+}
+
 export type MemoryStats = {
   total_mb: number
   app_mb: number

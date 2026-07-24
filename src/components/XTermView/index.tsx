@@ -23,6 +23,7 @@ import { acquireSpawnSlot, releaseSpawnSlot } from '../../lib/spawnQueue'
 import { readScopedStorage, writeScopedStorage } from '../../lib/storageNamespace'
 import { acquireWebglContext } from '../../lib/webglPool'
 import {
+  agentHooksEndpoint,
   attachPty,
   findCliLauncher,
   killPty,
@@ -1354,7 +1355,20 @@ export function XTermView({
             : `--max-old-space-size=${heapMb}`
           nodeHeap.UV_THREADPOOL_SIZE = '4'
         }
-        const spawnEnv = { ...preparedRuntime.env, ...nodeHeap }
+
+        // Sinal real de working/idle do OpenCode (ver opencode_bridge.rs) — o
+        // plugin global lê essa env var pra saber onde fazer POST. Best-effort:
+        // se o endpoint não resolver a tempo, o terminal ainda spawna normal e
+        // cai de volta na heurística de PTY (agentCompletionMonitor.ts).
+        const bridgeEnv: Record<string, string> = {}
+        if (command === 'opencode') {
+          try {
+            bridgeEnv.ALETHE_BRIDGE_ENDPOINT = await agentHooksEndpoint()
+          } catch {
+            /* segue sem o bridge — heurística de PTY continua valendo */
+          }
+        }
+        const spawnEnv = { ...preparedRuntime.env, ...nodeHeap, ...bridgeEnv }
 
         let response: { id: string }
         try {
