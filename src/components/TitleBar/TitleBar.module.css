@@ -233,6 +233,12 @@
   margin-right: 6px;
   font-weight: 600;
   white-space: pre-line;
+  border: 0;
+  cursor: pointer;
+}
+
+.usagePill:hover {
+  background: var(--panel-hover);
 }
 
 .usagePill img {

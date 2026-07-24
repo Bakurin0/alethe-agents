@@ -6,10 +6,15 @@ type WheelLike = {
 const DOM_DELTA_PIXEL = 0
 const DOM_DELTA_LINE = 1
 const PAGE_SCROLL_LINES = 10
-const TERMINAL_SCROLLBACK_ROWS = 10_000
-
-export function getTerminalScrollbackRows(): number {
-  return TERMINAL_SCROLLBACK_ROWS
+export function getTerminalScrollbackRows(options?: {
+  agent?: boolean
+  memoryBudgetMb?: number
+}): number {
+  if (!options) return 10_000
+  const budget = options.memoryBudgetMb ?? 1536
+  if (budget <= 1536) return options.agent ? 6_000 : 3_000
+  if (budget <= 3072) return options.agent ? 8_000 : 5_000
+  return options.agent ? 10_000 : 6_000
 }
 
 /**

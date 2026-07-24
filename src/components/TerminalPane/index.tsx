@@ -1,32 +1,23 @@
 import { useDraggable, useDroppable } from '@dnd-kit/core'
 import {
-  ChevronLeft,
-  Eye,
-  EyeOff,
-  FolderOpen,
   GripVertical,
-  History,
-  Maximize2,
   Minimize2,
   MoreHorizontal,
-  PanelLeftClose,
-  PanelLeftOpen,
-  Power,
   RefreshCw,
   X,
 } from 'lucide-react'
 import { memo, useEffect, useMemo, useRef, useState } from 'react'
 
 import { useGridResize } from '../../hooks/useGridResize'
+import { preparePtyRuntimeLaunch } from '../../lib/agentRuntimeAdapter'
 import { useT } from '../../lib/i18n'
 import { buildAgentLaunch } from '../../lib/sessionLaunch'
 import { useProjectsStore } from '../../stores/projectsStore'
 import { useTerminalsStore } from '../../stores/terminalsStore'
 import { useUiStore } from '../../stores/uiStore'
 import type { Terminal as TerminalEntry, SubTab, Theme, AgentType } from '../../lib/types'
-import { getPtyCwd, openInFileExplorer, openInVscode, restartPty } from '../../lib/tauri'
-import { AgentIcon, VSCodeIcon } from '../icons/AgentIcons'
-import { ClaudeHistoryModal } from '../modals/ClaudeHistoryModal'
+import { restartPty } from '../../lib/tauri'
+import { AgentIcon } from '../icons/AgentIcons'
 import { SubTabsLane } from '../SubTabsLane'
 import { XTermView } from '../XTermView'
 import { GhosttySurface } from '../GhosttySurface'
@@ -37,6 +28,8 @@ import styles from './TerminalPane.module.css'
 export type TerminalPaneProps = {
   projectId: string
   terminal: TerminalEntry
+  /** Hide the pane drag affordance when the parent group has nothing to reorder. */
+  paneDragEnabled?: boolean
   /** True quando renderizado dentro do FocusOverlay (mostra Minimize, esconde Focus). */
   inFocusOverlay?: boolean
   /** True quando renderizado na Home — esconde grip, actions, lane, grid resize. */
@@ -46,23 +39,24 @@ export type TerminalPaneProps = {
 export const TerminalPane = memo(function TerminalPane({
   projectId,
   terminal,
+  paneDragEnabled = true,
   inFocusOverlay = false,
   preview = false,
 }: TerminalPaneProps) {
   const t = useT()
-  const [expanded, setExpanded] = useState(false)
-  const [historyOpen, setHistoryOpen] = useState(false)
+  const [resumeNonce, setResumeNonce] = useState(0)
   const focusedTerminalId = useUiStore((s) => s.focusedTerminalId)
   const isFocusMode = inFocusOverlay || focusedTerminalId === terminal.id
+  const canDragPane = paneDragEnabled && !isFocusMode && !preview
   // Drag-and-drop pra reordenar entre panes (igual canvas-agents focus mode).
   // Skip dentro do focus overlay — não faz sentido reordenar quando só tem 1.
   const draggable = useDraggable({
     id: `pane:${terminal.id}`,
-    disabled: isFocusMode || preview,
+    disabled: !canDragPane,
   })
   const droppable = useDroppable({
     id: `pane:${terminal.id}`,
-    disabled: isFocusMode || preview,
+    disabled: !canDragPane,
   })
   const paneRef = useRef<HTMLDivElement | null>(null)
   const setRefs = (node: HTMLDivElement | null) => {
@@ -84,9 +78,7 @@ export const TerminalPane = memo(function TerminalPane({
 
   const setActiveTab = useProjectsStore((s) => s.setActiveTab)
   const closeSubTab = useProjectsStore((s) => s.closeSubTab)
-  const setLaneVisible = useProjectsStore((s) => s.setLaneVisible)
   const setTerminalDisabled = useProjectsStore((s) => s.setTerminalDisabled)
-  const killTerminal = useProjectsStore((s) => s.killTerminal)
   const markTerminalUsed = useProjectsStore((s) => s.markTerminalUsed)
   const setSubTabPtyId = useProjectsStore((s) => s.setSubTabPtyId)
   const setSubTabSessionId = useProjectsStore((s) => s.setSubTabSessionId)
@@ -95,6 +87,7 @@ export const TerminalPane = memo(function TerminalPane({
   const openModal = useUiStore((s) => s.openModal_)
   const setFocusedTerminal = useUiStore((s) => s.setFocusedTerminal)
   const setActiveTerminal = useUiStore((s) => s.setActiveTerminal)
+  const setPreferences = useProjectsStore((s) => s.setPreferences)
   const terminalTheme = useProjectsStore(
     (s) => s.preferences.terminalTheme ?? s.preferences.uiTheme,
   )
@@ -129,18 +122,23 @@ export const TerminalPane = memo(function TerminalPane({
   )
   const status = ptyRuntime?.status ?? 'waiting'
   const ptyExited = ptyRuntime !== null && !ptyRuntime.alive
-
-  const onToggleLane = () => {
-    if (terminal.tabs.length > 1) return
-    setLaneVisible(projectId, terminal.id, effectiveLaneVisible ? false : true)
-  }
+  const ptyParked = ptyRuntime?.parked === true
 
   const onRestart = async () => {
     if (!activeTab?.ptyId) return
+    if (ptyParked) {
+      setResumeNonce((value) => value + 1)
+      return
+    }
     const ptyId = activeTab.ptyId
+    const preparedRuntime = preparePtyRuntimeLaunch(
+      activeTab.type,
+      activeTab.runtimeProfile,
+      activeTab.extraArgs ?? [],
+    )
     const launch = buildAgentLaunch(
       activeTab.type,
-      activeTab.extraArgs ?? [],
+      preparedRuntime.args,
       activeTab.sessionId,
     )
     if (launch.sessionId && launch.sessionId !== activeTab.sessionId) {
@@ -156,6 +154,7 @@ export const TerminalPane = memo(function TerminalPane({
         command: activeTab.type === 'shell' ? undefined : activeTab.type,
         cwd: activeTab.cwd || undefined,
         extraArgs: launch.args,
+        env: preparedRuntime.env,
       })
       window.dispatchEvent(new CustomEvent('alethe:terminal-resize-request', { detail: { ptyId } }))
     } catch (err) {
@@ -165,52 +164,14 @@ export const TerminalPane = memo(function TerminalPane({
 
   const onDisable = () => setTerminalDisabled(projectId, terminal.id, !terminal.disabled)
 
-  // Kill = mata a árvore de processos e fecha o pane, mas MANTÉM o atalho na
-  // sidebar (é um atalho pra reabrir rápido). Excluir de vez fica no menu de
-  // contexto da sidebar. Sem confirmação: reabrir restaura o atalho.
-  const onKill = () => {
-    killTerminal(projectId, terminal.id)
-    if (isFocusMode) setFocusedTerminal(null)
-  }
-
   const cwd = activeTab?.cwd?.trim() || terminal.cwd?.trim() || ''
-  const isAgentWithHistory =
-    activeTab && (activeTab.type === 'claude' || activeTab.type === 'codex' || activeTab.type === 'opencode')
 
-  /** Resolve cwd: usa o configurado; senão pergunta ao backend o cwd vivo do PTY. */
-  const resolveCwd = async (): Promise<string | null> => {
-    if (cwd) return cwd
-    if (activeTab?.ptyId) {
-      try {
-        const live = await getPtyCwd(activeTab.ptyId)
-        if (live && live.trim()) return live
-      } catch {
-        /* ignora */
-      }
-    }
-    return null
+  const dropTarget = canDragPane && droppable.isOver
+  const dragging = canDragPane && draggable.isDragging
+  const openInspector = () => {
+    setActiveTerminal(projectId, terminal.id)
+    setPreferences({ rightSidebarVisible: true })
   }
-
-  const openWithCwd = async (action: (path: string) => Promise<void>, label: string) => {
-    const path = await resolveCwd()
-    if (!path) {
-      window.alert(t('ui.terminal.noCwdAvailable', { label }))
-      return
-    }
-    try {
-      await action(path)
-    } catch (err) {
-      window.alert(t('ui.terminal.openFailed', { label, error: String(err) }))
-    }
-  }
-
-  const onShowHistory = () => {
-    if (!activeTab) return
-    setHistoryOpen(true)
-  }
-
-  const dropTarget = droppable.isOver && !isFocusMode
-  const dragging = draggable.isDragging
 
   return (
     <div
@@ -224,7 +185,7 @@ export const TerminalPane = memo(function TerminalPane({
     >
       <header className={styles.header}>
         <div className={styles.headLeft}>
-          {!isFocusMode && !preview ? (
+          {canDragPane ? (
             <button
               type="button"
               className={`${styles.action} ${styles.gripBtn}`}
@@ -245,11 +206,6 @@ export const TerminalPane = memo(function TerminalPane({
             <span className={styles.name} title={terminal.name}>
               {terminal.name}
             </span>
-            {cwd ? (
-              <span className={styles.cwdPill} title={cwd}>
-                {shortCwd(cwd)}
-              </span>
-            ) : null}
           </div>
         </div>
 
@@ -260,81 +216,6 @@ export const TerminalPane = memo(function TerminalPane({
             title={status}
           />
           <div className={styles.actions}>
-            {/* Secundárias: aparecem só com expandido */}
-            {expanded ? (
-              <>
-                <button
-                  type="button"
-                  className={styles.action}
-                  onClick={onToggleLane}
-                  title={effectiveLaneVisible ? t('ui.terminal.hideTabsLane') : t('ui.terminal.showTabsLane')}
-                  aria-label={t('ui.terminal.toggleLane')}
-                  disabled={terminal.tabs.length > 1}
-                >
-                  {effectiveLaneVisible ? <PanelLeftClose size={12} /> : <PanelLeftOpen size={12} />}
-                </button>
-                {isAgentWithHistory ? (
-                  <button
-                    type="button"
-                    className={styles.action}
-                    onClick={onShowHistory}
-                    title={t('ui.terminal.sessionHistory')}
-                    aria-label={t('ui.terminal.history')}
-                  >
-                    <History size={12} />
-                  </button>
-                ) : null}
-                <button
-                  type="button"
-                  className={styles.action}
-                  onClick={() => void onRestart()}
-                  title="Restart"
-                  aria-label="Restart"
-                  disabled={!activeTab?.ptyId || terminal.disabled}
-                >
-                  <RefreshCw size={12} />
-                </button>
-                <button
-                  type="button"
-                  className={styles.action}
-                  onClick={onDisable}
-                  title={terminal.disabled ? t('ui.sidebar.reactivate') : t('ui.terminal.disableFreesRam')}
-                  aria-label={t('ui.terminal.disable')}
-                >
-                  {terminal.disabled ? <Eye size={12} /> : <EyeOff size={12} />}
-                </button>
-                <button
-                  type="button"
-                  className={`${styles.action} ${styles.danger}`}
-                  onClick={onKill}
-                  title={t('ui.terminal.killKeepsShortcut')}
-                  aria-label={t('ui.terminal.kill')}
-                >
-                  <Power size={12} />
-                </button>
-                <div className={styles.actionsDivider} aria-hidden />
-              </>
-            ) : null}
-
-            {/* Principais sempre visíveis */}
-            <button
-              type="button"
-              className={styles.action}
-              onClick={() => void openWithCwd(openInFileExplorer, 'Explorer')}
-              title={cwd ? t('ui.terminal.openInExplorerCwd', { cwd }) : t('ui.terminal.openLiveCwdInExplorer')}
-              aria-label={t('ui.terminal.openInExplorer')}
-            >
-              <FolderOpen size={12} />
-            </button>
-            <button
-              type="button"
-              className={`${styles.action} ${styles.vscode}`}
-              onClick={() => void openWithCwd(openInVscode, 'VS Code')}
-              title={cwd ? t('ui.terminal.openInVscodeCwd', { cwd }) : t('ui.terminal.openLiveCwdInVscode')}
-              aria-label={t('ui.terminal.openInVscode')}
-            >
-              <VSCodeIcon size={14} />
-            </button>
             {isFocusMode ? (
               <button
                 type="button"
@@ -345,28 +226,15 @@ export const TerminalPane = memo(function TerminalPane({
               >
                 <Minimize2 size={12} />
               </button>
-            ) : (
-              <button
-                type="button"
-                className={styles.action}
-                onClick={() => setFocusedTerminal(terminal.id)}
-                title={t('ui.terminal.focusModeFullscreen')}
-                aria-label={t('ui.terminal.focusMode')}
-              >
-                <Maximize2 size={12} />
-              </button>
-            )}
-
-            {/* Toggle expandir/recolher */}
+            ) : null}
             <button
               type="button"
-              className={`${styles.action} ${expanded ? styles.actionActive : ''}`}
-              onClick={() => setExpanded((v) => !v)}
-              title={expanded ? t('ui.terminal.showLess') : t('ui.terminal.showMoreActions')}
-              aria-label={t('ui.terminal.moreActions')}
-              aria-expanded={expanded}
+              className={styles.action}
+              onClick={openInspector}
+              title={t('terminalInspector.open')}
+              aria-label={t('terminalInspector.open')}
             >
-              {expanded ? <ChevronLeft size={12} /> : <MoreHorizontal size={12} />}
+              <MoreHorizontal size={12} />
             </button>
           </div>
         </div>
@@ -397,7 +265,7 @@ export const TerminalPane = memo(function TerminalPane({
             <>
               {useNativeBackend ? (
                 <GhosttySurface
-                  key={activeTab.id}
+                  key={`${activeTab.id}:${resumeNonce}`}
                   surfaceId={activeTab.id}
                   cwd={activeTab.cwd?.trim() || terminal.cwd?.trim() || undefined}
                   command={buildGhosttyCommand(activeTab.type, activeTab.extraArgs)}
@@ -415,6 +283,7 @@ export const TerminalPane = memo(function TerminalPane({
                   command={activeTab.type === 'shell' ? null : activeTab.type}
                   cwd={activeTab.cwd || null}
                   extraArgs={activeTab.extraArgs}
+                  runtimeProfile={activeTab.runtimeProfile}
                   sessionId={activeTab.sessionId}
                   terminalTheme={terminalTheme}
                   onSpawned={(id) => {
@@ -435,13 +304,15 @@ export const TerminalPane = memo(function TerminalPane({
               {ptyExited && !useNativeBackend ? (
                 <div className={styles.exitedOverlay}>
                   <RefreshCw size={24} style={{ opacity: 0.5 }} />
-                  <span className={styles.exitedLabel}>{t('ui.terminal.processEnded')}</span>
+                  <span className={styles.exitedLabel}>
+                    {ptyParked ? t('ui.terminal.runtimeParked') : t('ui.terminal.processEnded')}
+                  </span>
                   <button
                     type="button"
                     className={styles.restartBtn}
                     onClick={() => void onRestart()}
                   >
-                    {t('ui.terminal.restart')}
+                    {ptyParked ? t('ui.terminal.resume') : t('ui.terminal.restart')}
                   </button>
                 </div>
               ) : null}
@@ -463,19 +334,6 @@ export const TerminalPane = memo(function TerminalPane({
         />
       ) : null}
 
-      {activeTab && isAgentWithHistory && !preview ? (
-        <ClaudeHistoryModal
-          open={historyOpen}
-          onClose={() => setHistoryOpen(false)}
-          projectId={projectId}
-          terminalId={terminal.id}
-          tabId={activeTab.id}
-          ptyId={activeTab.ptyId}
-          cwd={cwd}
-          agentType={activeTab.type}
-          extraArgs={activeTab.extraArgs}
-        />
-      ) : null}
     </div>
   )
 })
@@ -508,9 +366,3 @@ function DisabledOverlay({
   )
 }
 
-function shortCwd(path: string): string {
-  const cleaned = path.replace(/[\\/]+$/, '')
-  const parts = cleaned.split(/[\\/]/).filter(Boolean)
-  if (parts.length <= 2) return cleaned
-  return `…/${parts[parts.length - 2]}/${parts[parts.length - 1]}`
-}

@@ -1,6 +1,7 @@
 import { getCurrentWebview } from '@tauri-apps/api/webview'
 import { Bell, X } from 'lucide-react'
 import { lazy, Suspense, type CSSProperties, useEffect } from 'react'
+import { Group as PanelGroup, Panel, Separator } from 'react-resizable-panels'
 
 import { ghosttyKillAll } from './lib/tauri'
 
@@ -8,9 +9,11 @@ import { AgentIcon } from './components/icons/AgentIcons'
 import { ErrorBoundary } from './components/ErrorBoundary'
 import { FocusOverlay } from './components/FocusOverlay'
 import { LinkViewerOverlay } from './components/LinkViewerOverlay'
+import { DictationButton } from './components/DictationButton'
 import { MainMenu } from './components/MainMenu'
 import { ProjectSidebar } from './components/ProjectSidebar'
 import { TitleBar } from './components/TitleBar'
+import { RightSidebar } from './components/RightSidebar'
 import { TokenHud } from './components/TokenHud'
 import { WorkspaceView } from './components/WorkspaceView'
 import { FindJumpModal } from './components/modals/FindJumpModal'
@@ -20,17 +23,22 @@ import { NewGroupModal } from './components/modals/NewGroupModal'
 import { NewProjectModal } from './components/modals/NewProjectModal'
 import { NewSubTabModal } from './components/modals/NewSubTabModal'
 import { NewTerminalModal } from './components/modals/NewTerminalModal'
+import { AddContentModal } from './components/modals/AddContentModal'
+import { AiUsageModal } from './components/modals/AiUsageModal'
 import { OnboardingModal } from './components/modals/OnboardingModal'
 import { ProfilesModal } from './components/modals/ProfilesModal'
 import { PreferencesModal } from './components/modals/PreferencesModal'
 import { SyncModal } from './components/modals/SyncModal'
 import { SuspendGroupModal } from './components/modals/SuspendGroupModal'
 import { ThemePickerModal } from './components/modals/ThemePickerModal'
+import { TodoSettingsModal } from './components/modals/TodoSettingsModal'
 import { TopbarSettingsModal } from './components/modals/TopbarSettingsModal'
 import { UpdateModal } from './components/modals/UpdateModal'
 import { WelcomeModal } from './components/modals/WelcomeModal'
 import { useKeybindings } from './hooks/useKeybindings'
 import { useDiscordPresence } from './hooks/useDiscordPresence'
+import { useCloseConfirmation } from './hooks/useCloseConfirmation'
+import { useResourceSupervisor } from './hooks/useResourceSupervisor'
 import { startActivityTracker } from './lib/activityTracker'
 import { intlLocale, translate } from './lib/i18n'
 import { setMaxConcurrentSpawns } from './lib/spawnQueue'
@@ -127,10 +135,17 @@ export default function App() {
   const spawnConcurrency = useProjectsStore((s) => s.preferences.spawnConcurrency)
   const activeView = useUiStore((s) => s.activeView)
   const openModal = useUiStore((s) => s.openModal)
-  const sidebarVisible = useUiStore((s) => s.sidebarVisible)
+  const leftSidebarVisible = useProjectsStore((s) => s.preferences.leftSidebarVisible)
+  const rightSidebarVisible = useProjectsStore((s) => s.preferences.rightSidebarVisible)
+  const leftSidebarWidth = useProjectsStore((s) => s.preferences.leftSidebarWidth)
+  const rightSidebarWidth = useProjectsStore((s) => s.preferences.rightSidebarWidth)
+  const todoEnabled = useProjectsStore((s) => s.preferences.enabledFeatures.todos)
+  const setPreferences = useProjectsStore((s) => s.setPreferences)
 
   useKeybindings()
   useDiscordPresence()
+  useCloseConfirmation()
+  useResourceSupervisor(hydrated)
 
   useEffect(() => {
     void hydrate()
@@ -231,25 +246,69 @@ export default function App() {
 
   return (
     <>
-      <div style={{ display: 'flex', flexDirection: 'column', height: '100vh', background: 'var(--bg)' }}>
+      <div className={styles.appShell}>
         <TitleBar />
-        <div style={{ display: 'flex', flex: 1, minHeight: 0 }}>
-          {sidebarVisible ? <ProjectSidebar /> : null}
-          <ErrorBoundary label="view">
-            <Suspense fallback={<LoadingScreen />}>
-              {activeView === 'home' ? (
-                <HomeView />
-              ) : activeView === 'agentCanvas' ? (
-                <AgentCanvasPOC />
-              ) : (
-                <WorkspaceView />
-              )}
-            </Suspense>
-          </ErrorBoundary>
-        </div>
+        <PanelGroup orientation="horizontal" className={styles.shellBody}>
+          {leftSidebarVisible ? (
+            <>
+              <Panel
+                id="alethe-left-sidebar"
+                defaultSize={`${leftSidebarWidth}px`}
+                minSize="220px"
+                maxSize="380px"
+                groupResizeBehavior="preserve-pixel-size"
+                onResize={(size, _id, previous) => {
+                  if (previous && Math.abs(size.inPixels - previous.inPixels) >= 1) {
+                    setPreferences({ leftSidebarWidth: Math.round(size.inPixels) })
+                  }
+                }}
+              >
+                <ProjectSidebar />
+              </Panel>
+              <Separator className={styles.shellSeparator} />
+            </>
+          ) : null}
+
+          <Panel id="alethe-main" minSize="360px">
+            <main className={styles.mainView}>
+              <ErrorBoundary label="view">
+                <Suspense fallback={<LoadingScreen />}>
+                  {activeView === 'home' ? (
+                    <HomeView />
+                  ) : activeView === 'agentCanvas' ? (
+                    <AgentCanvasPOC />
+                  ) : (
+                    <WorkspaceView />
+                  )}
+                </Suspense>
+              </ErrorBoundary>
+            </main>
+          </Panel>
+
+          {todoEnabled && rightSidebarVisible ? (
+            <>
+              <Separator className={styles.shellSeparator} />
+              <Panel
+                id="alethe-todo-sidebar"
+                defaultSize={`${rightSidebarWidth}px`}
+                minSize="260px"
+                maxSize="420px"
+                groupResizeBehavior="preserve-pixel-size"
+                onResize={(size, _id, previous) => {
+                  if (previous && Math.abs(size.inPixels - previous.inPixels) >= 1) {
+                    setPreferences({ rightSidebarWidth: Math.round(size.inPixels) })
+                  }
+                }}
+              >
+                <RightSidebar />
+              </Panel>
+            </>
+          ) : null}
+        </PanelGroup>
       </div>
       <FocusOverlay />
       <LinkViewerOverlay />
+      <DictationButton />
       <MainMenu />
       <ErrorBoundary label="modals">
       <NewProjectModal />
@@ -257,6 +316,7 @@ export default function App() {
       <EditGroupModal />
       <EditProjectModal />
       <NewTerminalModal />
+      <AddContentModal />
       <NewSubTabModal />
       <PreferencesModal />
       <ProfilesModal />
@@ -276,7 +336,9 @@ export default function App() {
         </Suspense>
       ) : null}
       <ThemePickerModal />
+      <TodoSettingsModal />
       <TopbarSettingsModal />
+      <AiUsageModal />
       <UpdateModal />
       </ErrorBoundary>
       <InAppNotifications />

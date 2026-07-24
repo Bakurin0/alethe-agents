@@ -37,6 +37,18 @@ export type Theme =
   | 'min-dark'
   | 'min-light'
   | 'dark-lemon'
+  | 'orca'
+
+/** Módulos opcionais que podem ser ativados no onboarding ou nas Preferências. */
+export type FeatureId = 'todos' | 'git'
+
+/** Item da lista pessoal global. A ordem do array é a ordem escolhida pelo usuário. */
+export type TodoItem = {
+  id: string
+  title: string
+  completed: boolean
+  tags: string[]
+}
 
 export type SubTab = {
   id: string
@@ -53,7 +65,11 @@ export type SubTab = {
   sessionId?: string
   /** Args extras passados pro launcher (ex: --dangerously-skip-permissions). */
   extraArgs?: string[]
+  /** Perfil de custo do runtime. Ausente preserva o comportamento completo legado. */
+  runtimeProfile?: AgentRuntimeProfile
 }
+
+export type AgentRuntimeProfile = 'full' | 'lean' | 'diagnostic'
 
 /** Flag de "modo irrestrito" por agente (skip permissions / approvals). */
 export const UNRESTRICTED_FLAG: Record<AgentType, string | null> = {
@@ -68,9 +84,9 @@ export const UNRESTRICTED_FLAG: Record<AgentType, string | null> = {
 
 /**
  * Tipo de pane. Ausente = 'terminal' (back-compat, sem migração).
- * 'markdown' | 'file' | 'image' são viewers de arquivo (usam `tabs: []` + `filePath`).
+ * Viewers usam `tabs: []`; arquivos usam `filePath` e páginas web usam `url`.
  */
-export type PaneKind = 'terminal' | 'markdown' | 'file' | 'image'
+export type PaneKind = 'terminal' | 'markdown' | 'file' | 'image' | 'web'
 
 export type Terminal = {
   id: string
@@ -86,6 +102,8 @@ export type Terminal = {
   kind?: PaneKind
   /** Caminho absoluto do arquivo quando o pane é um viewer (markdown/file/image). */
   filePath?: string
+  /** URL http(s) normalizada quando kind === 'web'. */
+  url?: string
 }
 
 export type Project = {
@@ -212,12 +230,23 @@ export type Preferences = {
   topbarShowSync: boolean
   topbarShowProfile: boolean
   topbarShowMemory: boolean
-  /** Exibe a aba Source Control na sidebar. */
-  showGitControl: boolean
+  /** Módulos opcionais habilitados para este perfil. */
+  enabledFeatures: Record<FeatureId, boolean>
+  /** Folder configured as the base location for the global Todo list. */
+  todoStoragePath: string
+  /** Estado persistente do shell principal. */
+  leftSidebarVisible: boolean
+  rightSidebarVisible: boolean
+  leftSidebarWidth: number
+  rightSidebarWidth: number
   /** Notifica quando uma janela de uso do Claude/Codex reseta, indicando qual. Default true. */
   notifyOnLimitReset: boolean
+  /** Ditado por voz (speech-to-text) escreve no terminal ativo. Default false. */
+  dictationEnabled: boolean
   /** Quantos PTYs podem ser spawnados em paralelo (fila global). Default 3. */
   spawnConcurrency: number
+  /** Limites de RAM e política de estacionamento automático dos runtimes. */
+  resourcePolicy: ResourcePolicyPreferences
   /** v2.2 — grid layout custom da workspace inteira (cross-grupo). */
   workspaceGridLayout?: GridLayout
   /**
@@ -228,12 +257,26 @@ export type Preferences = {
   nativeTerminalMacos?: boolean
 }
 
+export type ResourcePolicyMode = 'smart-lru' | 'manual'
+
+export type ResourcePolicyPreferences = {
+  mode: ResourcePolicyMode
+  memoryBudgetMb: number
+  warningThresholdMb: number
+  recoveryTargetMb: number
+  hiddenAgentIdleMinutes: number
+  hiddenShellIdleMinutes: number
+  spawnGraceSeconds: number
+}
+
 export type ProjectsFile = {
-  version: 4
+  version: 6
   groups: Group[]
   /** Ordem manual dos projetos sem grupo (Solto). */
   ungroupedOrder: string[]
   projects: Project[]
+  /** Lista pessoal global, independente do projeto ativo. */
+  todos: TodoItem[]
   activeProjectId: string | null
   /** Estado da workspace — quais containers estão abertos e em que ordem. */
   workspace: {
@@ -276,16 +319,32 @@ export const DEFAULT_PREFERENCES: Preferences = {
   topbarShowSync: true,
   topbarShowProfile: true,
   topbarShowMemory: true,
-  showGitControl: true,
+  enabledFeatures: { todos: true, git: true },
+  todoStoragePath: '',
+  leftSidebarVisible: true,
+  rightSidebarVisible: true,
+  leftSidebarWidth: 286,
+  rightSidebarWidth: 300,
   notifyOnLimitReset: true,
+  dictationEnabled: false,
   spawnConcurrency: 3,
+  resourcePolicy: {
+    mode: 'smart-lru',
+    memoryBudgetMb: 1536,
+    warningThresholdMb: 1229,
+    recoveryTargetMb: 1152,
+    hiddenAgentIdleMinutes: 15,
+    hiddenShellIdleMinutes: 30,
+    spawnGraceSeconds: 120,
+  },
 }
 
 export const EMPTY_PROJECTS_FILE: ProjectsFile = {
-  version: 4,
+  version: 6,
   groups: [],
   ungroupedOrder: [],
   projects: [],
+  todos: [],
   activeProjectId: null,
   workspace: {
     containers: [],

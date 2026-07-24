@@ -80,6 +80,15 @@ export function useKeybindings() {
         return
       }
 
+      // Ctrl+Shift+A → modal de conteúdo (Markdown ou browser)
+      if (ctrl && e.shiftKey && !e.altKey && (e.key === 'A' || e.key === 'a')) {
+        e.preventDefault()
+        const project = selectActiveProject(useProjectsStore.getState())
+        if (!project) return
+        useUiStore.getState().openModal_('addContent', { projectId: project.id })
+        return
+      }
+
       // Ctrl+W → fecha (oculta) o primeiro pane do container ativo
       if (ctrl && !e.shiftKey && (e.key === 'w' || e.key === 'W')) {
         e.preventDefault()

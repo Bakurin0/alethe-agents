@@ -122,7 +122,7 @@ export function gridContainerStyle(layout: GridLayout): CSSProperties {
     display: 'grid',
     gridTemplateColumns: trackTemplate(layout.cols, layout.colSizes),
     gridTemplateRows: trackTemplate(layout.rows, layout.rowSizes),
-    gap: 4,
+    gap: 0,
     width: '100%',
     height: '100%',
   }

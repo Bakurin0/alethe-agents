@@ -461,7 +461,7 @@ function GroupGridOuter({
         if (!project) return null
         const group = resolveGroup(project, groupsById)
         return (
-          <div key={c.projectId} style={cellStyle(cell)}>
+          <div key={c.projectId} className={styles.gridCell} style={cellStyle(cell)}>
             <ProjectContainer container={c} project={project} group={group} />
           </div>
         )

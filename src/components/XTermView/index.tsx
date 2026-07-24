@@ -10,6 +10,7 @@ import '@xterm/xterm/css/xterm.css'
 
 import { pickFile } from '../../lib/dialog'
 import { AgentCompletionMonitor } from '../../lib/agentCompletionMonitor'
+import { preparePtyRuntimeLaunch } from '../../lib/agentRuntimeAdapter'
 import { recordAgentActivityInput } from '../../lib/activityTracker'
 import { buildAgentLaunch } from '../../lib/sessionLaunch'
 import { claimDiscoveredSession, registerSessionClaim } from '../../lib/sessionDiscovery'
@@ -17,6 +18,7 @@ import { consumeSession, removeSession, saveSession } from '../../lib/sessionRes
 import { waitForSessionHint } from '../../lib/sessionWatch'
 import { acquireSpawnSlot, releaseSpawnSlot } from '../../lib/spawnQueue'
 import { readScopedStorage, writeScopedStorage } from '../../lib/storageNamespace'
+import { acquireWebglContext } from '../../lib/webglPool'
 import {
   attachPty,
   findCliLauncher,
@@ -25,6 +27,7 @@ import {
   listenPtyExit,
   openInBrowser,
   openInFileExplorer,
+  ptyExists,
   readClipboardText,
   resizePty,
   spawnPty,
@@ -34,7 +37,7 @@ import {
   writePty,
 } from '../../lib/tauri'
 import { getLocale, translate, useT } from '../../lib/i18n'
-import type { AgentType, Theme } from '../../lib/types'
+import type { AgentRuntimeProfile, AgentType, Theme } from '../../lib/types'
 import { useProjectsStore } from '../../stores/projectsStore'
 import { useTerminalsStore } from '../../stores/terminalsStore'
 import { useUiStore } from '../../stores/uiStore'
@@ -228,18 +231,14 @@ function makeXtermLink(
   columns: number,
   link: DetectedTerminalLink,
   handlers: {
-    open: (text: string) => void
-    hover: (event: MouseEvent, link: DetectedTerminalLink) => void
-    leave: () => void
+    openMenu: (event: MouseEvent, link: DetectedTerminalLink) => void
   },
 ): ILink {
   return {
     text: link.text,
     range: terminalLinkRange(logicalLineStart, columns, link),
     decorations: { pointerCursor: true, underline: true },
-    activate: (_event: MouseEvent, text: string) => handlers.open(text),
-    hover: (event: MouseEvent) => handlers.hover(event, link),
-    leave: handlers.leave,
+    activate: (event: MouseEvent) => handlers.openMenu(event, link),
   }
 }
 
@@ -255,6 +254,7 @@ export type XTermViewProps = {
   sessionId?: string
   /** Env extra só deste PTY. */
   env?: Record<string, string>
+  runtimeProfile?: AgentRuntimeProfile
   terminalTheme?: Theme
   onSpawned?: (id: string) => void
   onSessionId?: (id: string) => void
@@ -265,6 +265,10 @@ export type XTermViewProps = {
 const PROMPT_HISTORY_KEY = (id: string) => `prompt-history:${id}`
 const PASTE_CHUNK_SIZE = 1024
 const PASTE_CHUNK_DELAY_MS = 8
+const LINK_MENU_WIDTH = 272
+const LINK_MENU_MAX_HEIGHT = 276
+const LINK_MENU_MARGIN = 10
+const LINK_MENU_OFFSET = 6
 
 function loadPromptHistory(ptyId: string): string[] {
   const raw = readScopedStorage(PROMPT_HISTORY_KEY(ptyId), true)
@@ -307,6 +311,7 @@ export function XTermView({
   extraArgs,
   sessionId,
   env,
+  runtimeProfile = 'full',
   terminalTheme = 'dark',
   onSpawned,
   onSessionId,
@@ -318,9 +323,7 @@ export function XTermView({
   const terminalRef = useRef<Terminal | null>(null)
   const ptyIdRef = useRef<string | null>(null)
   const lastCtrlCRef = useRef(0)
-  const linkTooltipHideTimerRef = useRef<number | null>(null)
-  const linkTooltipShowTimerRef = useRef<number | null>(null)
-  const pendingLinkRef = useRef<LinkActionState | null>(null)
+  const linkMenuRef = useRef<HTMLDivElement | null>(null)
   const linkActionsRef = useRef<LinkActionState | null>(null)
 
   const cliPathOverride = useProjectsStore((s) =>
@@ -345,73 +348,79 @@ export function XTermView({
 
   const [commandNotFound, setCommandNotFound] = useState<string | null>(null)
   const [retryKey, setRetryKey] = useState(0)
-  const [bootPhase, setBootPhase] = useState<'queued' | 'spawning' | 'attaching' | 'ready'>('queued')
+  const [bootPhase, setBootPhase] = useState<
+    'preparing' | 'queued' | 'spawning' | 'attaching' | 'ready'
+  >('preparing')
   const [linkActions, setLinkActions] = useState<LinkActionState | null>(null)
   const [dropActive, setDropActive] = useState(false)
 
-  const clearLinkTooltipHideTimer = useCallback(() => {
-    if (linkTooltipHideTimerRef.current === null) return
-    window.clearTimeout(linkTooltipHideTimerRef.current)
-    linkTooltipHideTimerRef.current = null
-  }, [])
-
-  const clearLinkTooltipShowTimer = useCallback(() => {
-    if (linkTooltipShowTimerRef.current === null) return
-    window.clearTimeout(linkTooltipShowTimerRef.current)
-    linkTooltipShowTimerRef.current = null
-  }, [])
-
   const hideLinkActions = useCallback(() => {
-    clearLinkTooltipShowTimer()
-    clearLinkTooltipHideTimer()
-    pendingLinkRef.current = null
     setLinkActions(null)
-  }, [clearLinkTooltipShowTimer, clearLinkTooltipHideTimer])
+  }, [])
 
-  // Saiu do link (ou do tooltip): fecha com folga pra dar tempo de atravessar o
-  // gap link→tooltip sem ele sumir — a causa clássica do "some antes de clicar".
-  const scheduleHideLinkActions = useCallback(() => {
-    clearLinkTooltipShowTimer()
-    clearLinkTooltipHideTimer()
-    linkTooltipHideTimerRef.current = window.setTimeout(() => {
-      linkTooltipHideTimerRef.current = null
-      pendingLinkRef.current = null
-      setLinkActions(null)
-    }, 450)
-  }, [clearLinkTooltipShowTimer, clearLinkTooltipHideTimer])
-
-  // Hover num link: só abre depois de uma intenção de hover (~320ms) pra não
-  // poluir a tela quando o mouse só passa por cima. Se já há um tooltip aberto,
-  // troca na hora (transição suave entre links vizinhos).
-  const showLinkActions = useCallback(
+  // Clique no link abre um menu compacto junto ao cursor. A posição usa uma
+  // estimativa conservadora do tamanho para nunca cortar o menu na viewport.
+  const showLinkActionsMenu = useCallback(
     (event: MouseEvent, link: DetectedTerminalLink) => {
-      clearLinkTooltipHideTimer()
-      const next: LinkActionState = {
+      event.preventDefault()
+      event.stopPropagation()
+      // O xterm inicia seleção no pointerdown antes de chamar `activate` no
+      // clique. Limpa esse gesto residual para o menu não parecer estar
+      // "segurando" e selecionando o conteúdo que ficou atrás dele.
+      terminalRef.current?.clearSelection()
+      window.getSelection()?.removeAllRanges()
+
+      const maxLeft = window.innerWidth - LINK_MENU_WIDTH - LINK_MENU_MARGIN
+      const x = Math.max(
+        LINK_MENU_MARGIN,
+        Math.min(event.clientX + LINK_MENU_OFFSET, maxLeft),
+      )
+      const below = event.clientY + LINK_MENU_OFFSET
+      const y =
+        below + LINK_MENU_MAX_HEIGHT <= window.innerHeight - LINK_MENU_MARGIN
+          ? below
+          : Math.max(
+              LINK_MENU_MARGIN,
+              event.clientY - LINK_MENU_MAX_HEIGHT - LINK_MENU_OFFSET,
+            )
+
+      setLinkActions({
         text: link.text,
         kind: link.kind,
         fileKind: link.fileKind,
-        x: Math.min(Math.max(event.clientX, 180), window.innerWidth - 180),
-        y: Math.max(event.clientY, 72),
-      }
-      pendingLinkRef.current = next
-      if (linkActionsRef.current) {
-        setLinkActions(next)
-        return
-      }
-      clearLinkTooltipShowTimer()
-      linkTooltipShowTimerRef.current = window.setTimeout(() => {
-        linkTooltipShowTimerRef.current = null
-        if (pendingLinkRef.current) setLinkActions(pendingLinkRef.current)
-      }, 320)
+        x,
+        y,
+      })
     },
-    [clearLinkTooltipHideTimer, clearLinkTooltipShowTimer],
+    [],
   )
 
-  // Espelha o estado num ref pra os handlers (que rodam no provider do xterm)
-  // lerem "tem tooltip aberto?" sem virar dependência e recriar o listener.
+  // Espelha o estado num ref pro listener do xterm, criado uma vez por PTY.
   useEffect(() => {
     linkActionsRef.current = linkActions
   }, [linkActions])
+
+  useEffect(() => {
+    if (!linkActions) return
+
+    const closeOnOutsidePointer = (event: PointerEvent) => {
+      if (!linkMenuRef.current?.contains(event.target as Node)) hideLinkActions()
+    }
+    const closeOnEscape = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') hideLinkActions()
+    }
+
+    document.addEventListener('pointerdown', closeOnOutsidePointer, true)
+    window.addEventListener('keydown', closeOnEscape, true)
+    window.addEventListener('blur', hideLinkActions)
+    window.addEventListener('resize', hideLinkActions)
+    return () => {
+      document.removeEventListener('pointerdown', closeOnOutsidePointer, true)
+      window.removeEventListener('keydown', closeOnEscape, true)
+      window.removeEventListener('blur', hideLinkActions)
+      window.removeEventListener('resize', hideLinkActions)
+    }
+  }, [hideLinkActions, linkActions])
 
   const openFileInGrid = useCallback(
     (target: string) => {
@@ -515,6 +524,7 @@ export function XTermView({
     if (!container) return
 
     let disposed = false
+    const spawnQueueAbort = new AbortController()
     let unlistenData: (() => void) | null = null
     let unlistenExit: (() => void) | null = null
     let unlistenDragDrop: (() => void) | null = null
@@ -528,11 +538,15 @@ export function XTermView({
     let linkProviderDisposable: { dispose: () => void } | null = null
     let linkScrollDisposable: { dispose: () => void } | null = null
 
+    const resourcePolicy = useProjectsStore.getState().preferences.resourcePolicy
     const terminal = new Terminal({
       cursorBlink: true,
       convertEol: false,
       allowProposedApi: true,
-      scrollback: getTerminalScrollbackRows(),
+      scrollback: getTerminalScrollbackRows({
+        agent: command != null && command !== 'shell',
+        memoryBudgetMb: resourcePolicy.memoryBudgetMb,
+      }),
       windowsPty: { backend: 'conpty', buildNumber: 22000 },
       fontFamily: 'Cascadia Mono, Consolas, "Courier New", monospace',
       fontSize: 14,
@@ -544,6 +558,15 @@ export function XTermView({
     terminal.loadAddon(searchAddon)
     terminal.open(container)
     terminalRef.current = terminal
+    const clampHorizontalScroll = () => {
+      container.scrollLeft = 0
+      const xterm = container.querySelector<HTMLElement>('.xterm')
+      const viewport = container.querySelector<HTMLElement>('.xterm-viewport')
+      const screen = container.querySelector<HTMLElement>('.xterm-screen')
+      if (xterm) xterm.scrollLeft = 0
+      if (viewport) viewport.scrollLeft = 0
+      if (screen) screen.style.maxWidth = '100%'
+    }
     linkProviderDisposable = terminal.registerLinkProvider({
       provideLinks: (bufferLineNumber, callback) => {
         const logicalLine = getLogicalTerminalLine(terminal.buffer.active, bufferLineNumber)
@@ -553,63 +576,57 @@ export function XTermView({
         }
         const links = detectTerminalLinks(logicalLine.text).map((link) =>
           makeXtermLink(logicalLine.startLine, terminal.cols, link, {
-            // Clique default: URL abre no browser externo, path abre no app
-            // padrão do SO. O visualizador in-app fica opcional no botão do tooltip.
-            open: (text) => void openLinkInBrowser(text),
-            hover: showLinkActions,
-            leave: scheduleHideLinkActions,
+            openMenu: showLinkActionsMenu,
           }),
         )
         callback(links.length > 0 ? links : undefined)
       },
     })
 
-    // Se a tela rola (stream do agente), o tooltip — ancorado no ponto do cursor —
+    // Se a tela rola (stream do agente), o menu — ancorado no ponto do clique —
     // apontaria pro vazio; fecha junto pra não virar fantasma.
     linkScrollDisposable = terminal.onScroll(() => {
-      if (
-        linkActionsRef.current ||
-        pendingLinkRef.current ||
-        linkTooltipShowTimerRef.current !== null
-      ) {
-        clearLinkTooltipShowTimer()
-        clearLinkTooltipHideTimer()
-        pendingLinkRef.current = null
-        setLinkActions(null)
-      }
+      if (linkActionsRef.current) setLinkActions(null)
     })
 
     // Renderer WebGL (GPU) — o renderer DOM padrão trava a digitação,
     // principalmente com zoom da WebView ≠ 100%. Fallback: DOM renderer.
     let webglAddon: WebglAddon | null = null
-    try {
-      webglAddon = new WebglAddon()
-      webglAddon.onContextLoss(() => {
-        // Perda de contexto GL (ex.: muitos terminais estouram o limite de
-        // contextos da WebView, ou soluço do processo de GPU). Descarta o addon
-        // (o xterm volta pro renderer DOM) e NÃO recria — evita thrash.
+    let releaseWebglContext: (() => void) | null = acquireWebglContext()
+    if (releaseWebglContext) {
+      try {
+        webglAddon = new WebglAddon()
+        webglAddon.onContextLoss(() => {
+          // Perda de contexto GL (ex.: muitos terminais estouram o limite de
+          // contextos da WebView, ou soluço do processo de GPU). Descarta o addon
+          // (o xterm volta pro renderer DOM) e NÃO recria — evita thrash.
+          webglAddon?.dispose()
+          webglAddon = null
+          releaseWebglContext?.()
+          releaseWebglContext = null
+          // Um syncScrollArea assíncrono já agendado pode ler `dimensions` de um
+          // renderer morto e lançar ("Cannot read properties of undefined
+          // (reading 'dimensions')"), o que cascateia e derruba a render. Força um
+          // re-fit/refresh no próximo frame pra reestabelecer as dimensões — só se
+          // o container tiver tamanho válido, e sempre dentro de try/catch.
+          window.requestAnimationFrame(() => {
+            try {
+              const rect = container.getBoundingClientRect()
+              if (rect.width < 50 || rect.height < 30) return
+              fitAddon.fit()
+              terminal.refresh(0, Math.max(0, terminal.rows - 1))
+            } catch {
+              /* container invisível / em teardown — ignora */
+            }
+          })
+        })
+        terminal.loadAddon(webglAddon)
+      } catch {
         webglAddon?.dispose()
         webglAddon = null
-        // Um syncScrollArea assíncrono já agendado pode ler `dimensions` de um
-        // renderer morto e lançar ("Cannot read properties of undefined
-        // (reading 'dimensions')"), o que cascateia e derruba a render. Força um
-        // re-fit/refresh no próximo frame pra reestabelecer as dimensões — só se
-        // o container tiver tamanho válido, e sempre dentro de try/catch.
-        window.requestAnimationFrame(() => {
-          try {
-            const rect = container.getBoundingClientRect()
-            if (rect.width < 50 || rect.height < 30) return
-            fitAddon.fit()
-            terminal.refresh(0, Math.max(0, terminal.rows - 1))
-          } catch {
-            /* container invisível / em teardown — ignora */
-          }
-        })
-      })
-      terminal.loadAddon(webglAddon)
-    } catch {
-      webglAddon?.dispose()
-      webglAddon = null
+        releaseWebglContext()
+        releaseWebglContext = null
+      }
     }
 
     terminal.focus()
@@ -620,6 +637,7 @@ export function XTermView({
       const chunk = pendingWrite
       pendingWrite = ''
       terminal.write(chunk)
+      clampHorizontalScroll()
     }
 
     const queueTerminalWrite = (chunk: string) => {
@@ -654,6 +672,7 @@ export function XTermView({
       const id = ptyIdRef.current
       if (!id) return
       const text = normalizePastedText(raw)
+      useTerminalsStore.getState().recordIo(id)
       recordPromptInput(text)
       void writePtyChunked(id, text, terminal.modes.bracketedPasteMode)
     }
@@ -783,6 +802,7 @@ export function XTermView({
       } catch {
         /* refresh pode falhar durante teardown/layout invisível */
       }
+      clampHorizontalScroll()
       const force = forceNextResize
       forceNextResize = false
       if (!force && terminal.cols === lastCols && terminal.rows === lastRows) return
@@ -791,6 +811,9 @@ export function XTermView({
       void resizePty(id, terminal.cols, terminal.rows)
     }
     const scheduleResize = (force = false) => {
+      // Guard de unmount: neutraliza os setTimeout(120/320ms) de onResizeRequest
+      // e evita re-armar o resizeTimer que o cleanup já limpou.
+      if (disposed) return
       forceNextResize ||= force
       if (resizeTimer !== null) window.clearTimeout(resizeTimer)
       resizeTimer = window.setTimeout(runResize, 80)
@@ -813,13 +836,76 @@ export function XTermView({
       scheduleResize()
     }, 150)
 
+    const attachExistingPty = async (existingId: string) => {
+      setBootPhase('attaching')
+      ptyIdRef.current = existingId
+      useTerminalsStore.getState().registerPty(existingId)
+      onSpawnedRef.current?.(existingId)
+
+      if (command === 'claude' || command === 'codex' || command === 'opencode') {
+        completionMonitor = new AgentCompletionMonitor({
+          ptyId: existingId,
+          agent: command,
+          label: command,
+          cwd,
+          onStatusChange: (status) =>
+            useTerminalsStore.getState().setStatus(existingId, status),
+          onComplete: () => onAgentCompleteRef.current?.(),
+        })
+      }
+
+      const replay = await attachPty(existingId)
+      if (disposed) return
+      if (replay) queueTerminalWrite(replay)
+
+      const dataUnlisten = await listenPtyData(existingId, (chunk) => {
+        useTerminalsStore.getState().recordIo(existingId)
+        queueTerminalWrite(chunk)
+        completionMonitor?.handleOutput(chunk)
+      })
+      if (disposed) {
+        dataUnlisten()
+        return
+      }
+      unlistenData = dataUnlisten
+
+      const exitUnlisten = await listenPtyExit(existingId, (payload) => {
+        if (payload.reason === 'restarted') {
+          useTerminalsStore.getState().markExited(existingId)
+          return
+        }
+        if (payload.reason === 'suspended') {
+          useTerminalsStore.getState().markSuspended(existingId)
+          completionMonitor?.dispose()
+          completionMonitor = null
+          return
+        }
+        useTerminalsStore.getState().markExited(existingId)
+        completionMonitor?.dispose()
+        completionMonitor = null
+        removeSession(ptyId)
+        onExitRef.current?.(payload.code)
+      })
+      if (disposed) {
+        exitUnlisten()
+        return
+      }
+      unlistenExit = exitUnlisten
+
+      scheduleResize()
+      if (!disposed) setBootPhase('ready')
+    }
+
     terminal.onData((data) => {
       const id = ptyIdRef.current
       if (!id) return
+      useTerminalsStore.getState().recordIo(id)
       recordPromptInput(data)
       completionMonitor?.handleInput(data)
       const trackedPtyId = ptyIdRef.current
       if (trackedPtyId) recordAgentActivityInput(trackedPtyId, data)
+      if (container.scrollWidth > container.clientWidth + 2) scheduleResize(true)
+      clampHorizontalScroll()
       void writePty(id, data)
     })
 
@@ -839,7 +925,18 @@ export function XTermView({
           /* sem layout ainda — o resize agendado cobre */
         }
         setCommandNotFound(null)
-        setBootPhase('queued')
+        setBootPhase('preparing')
+
+        const existingRuntime = useTerminalsStore.getState().byPtyId[ptyId]
+        if (existingRuntime?.alive && !existingRuntime.parked) {
+          await attachExistingPty(ptyId)
+          return
+        }
+        const backendHasPty = await ptyExists(ptyId).catch(() => false)
+        if (backendHasPty) {
+          await attachExistingPty(ptyId)
+          return
+        }
 
         // Pré-resolve CLI: se for agent, precisa achar override OU launcher
         // auto-detectado antes de spawnar. Sem isso, o pwsh executa `& 'claude'`
@@ -889,14 +986,17 @@ export function XTermView({
           }
           if (disposed) return
         }
+        const preparedRuntime = command
+          ? preparePtyRuntimeLaunch(command, runtimeProfile, extraArgs ?? [], env)
+          : { args: extraArgs ?? [], env }
         const launch = command
-          ? buildAgentLaunch(command, extraArgs ?? [], resumeId)
-          : { args: extraArgs ?? [], sessionId: undefined, createdSession: false }
+          ? buildAgentLaunch(command, preparedRuntime.args, resumeId)
+          : { args: preparedRuntime.args, sessionId: undefined, createdSession: false }
         const spawnArgs = launch.args.length > 0 ? launch.args : undefined
         if (launch.sessionId && launch.sessionId !== sessionId) {
           onSessionIdRef.current?.(launch.sessionId)
         }
-        if (command && cwd) registerSessionClaim(command, cwd, launch.sessionId)
+        if (command && cwd) registerSessionClaim(command, cwd, launch.sessionId, ptyId)
 
         // Snapshot leve das sessões Codex existentes antes do spawn para
         // identificar e persistir o ID novo sem usar `resume --last`.
@@ -906,7 +1006,9 @@ export function XTermView({
 
         // Serializa spawns globalmente — sem isso, abrir grupo com N×M terminais
         // dispara muitos spawn_pty em paralelo e trava o app.
-        await acquireSpawnSlot()
+        setBootPhase('queued')
+        const acquiredSpawnSlot = await acquireSpawnSlot(spawnQueueAbort.signal)
+        if (!acquiredSpawnSlot) return
         if (disposed) {
           releaseSpawnSlot()
           return
@@ -922,7 +1024,7 @@ export function XTermView({
             cwd: cwd ?? undefined,
             extraArgs: spawnArgs,
             launcherOverride,
-            env,
+            env: preparedRuntime.env,
           })
         } finally {
           releaseSpawnSlot()
@@ -962,7 +1064,10 @@ export function XTermView({
           if (command === 'codex' && cwd && codexSessionsBeforePromise) {
             const detectCodexSession = async () => {
               const before = new Set((await codexSessionsBeforePromise).map((s) => s.id))
-              for (let attempt = 0; attempt < 4; attempt++) {
+              // Janela ~30s (10×3s): o Codex às vezes leva a escrever o arquivo de
+              // sessão (init do app-server, cwd frio), e sem detectar o id o boot
+              // seguinte começa do zero. Para assim que acha; sem custo se detectar rápido.
+              for (let attempt = 0; attempt < 10; attempt++) {
                 // Acorda no hint do watcher (session://new) ou no teto de 3s.
                 await Promise.race([
                   new Promise((r) => setTimeout(r, 3000)),
@@ -970,7 +1075,7 @@ export function XTermView({
                 ])
                 if (disposed) return
                 const sessions = await snapshotCodexSessions(cwd).catch(() => [])
-                const newSession = claimDiscoveredSession('codex', cwd, before, sessions)
+                const newSession = claimDiscoveredSession('codex', cwd, before, sessions, ptyId)
                 if (newSession) {
                   saveSession(ptyId, {
                     sessionId: response.id,
@@ -996,6 +1101,7 @@ export function XTermView({
         // a cleanup function já rodou com unlistenData/unlistenExit ainda
         // undefined — chamamos manualmente pra evitar listener órfão.
         const dataUnlisten = await listenPtyData(response.id, (chunk) => {
+          useTerminalsStore.getState().recordIo(response.id)
           queueTerminalWrite(chunk)
           completionMonitor?.handleOutput(chunk)
         })
@@ -1005,13 +1111,23 @@ export function XTermView({
         }
         unlistenData = dataUnlisten
 
-        const exitUnlisten = await listenPtyExit(response.id, (code) => {
+        const exitUnlisten = await listenPtyExit(response.id, (payload) => {
+          if (payload.reason === 'restarted') {
+            useTerminalsStore.getState().markExited(response.id)
+            return
+          }
+          if (payload.reason === 'suspended') {
+            useTerminalsStore.getState().markSuspended(response.id)
+            completionMonitor?.dispose()
+            completionMonitor = null
+            return
+          }
           useTerminalsStore.getState().markExited(response.id)
           completionMonitor?.dispose()
           completionMonitor = null
           // Clean exit → não resume na próxima vez
           removeSession(ptyId)
-          onExitRef.current?.(code)
+          onExitRef.current?.(payload.code)
         })
         if (disposed) {
           exitUnlisten()
@@ -1030,6 +1146,7 @@ export function XTermView({
 
     return () => {
       disposed = true
+      spawnQueueAbort.abort()
       container.removeEventListener('wheel', onWheel, true)
       container.removeEventListener('click', focusTerminal)
       container.removeEventListener('paste', onPaste)
@@ -1047,13 +1164,12 @@ export function XTermView({
       linkScrollDisposable?.dispose()
       completionMonitor?.dispose()
       completionMonitor = null
-      clearLinkTooltipShowTimer()
-      clearLinkTooltipHideTimer()
-      pendingLinkRef.current = null
       setLinkActions(null)
       if (terminalRef.current === terminal) terminalRef.current = null
       ptyIdRef.current = null
       terminal.dispose()
+      releaseWebglContext?.()
+      releaseWebglContext = null
     }
     // ptyId/retryKey são as chaves de identidade. Outros props lidos via refs.
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -1083,12 +1199,14 @@ export function XTermView({
   )
 
   const bootLabel =
-    bootPhase === 'queued'
-      ? 'Aguardando vez na fila…'
+    bootPhase === 'preparing'
+      ? t('term.bootPreparing')
+      : bootPhase === 'queued'
+        ? t('term.bootQueued')
       : bootPhase === 'spawning'
-        ? 'Iniciando processo…'
+        ? t('term.bootSpawning')
         : bootPhase === 'attaching'
-          ? 'Conectando ao terminal…'
+          ? t('term.bootAttaching')
           : null
 
   return (
@@ -1120,89 +1238,103 @@ export function XTermView({
       ) : null}
       {linkActions ? (
         <div
-          className={`${styles.linkActions} xterm-hover`}
+          ref={linkMenuRef}
+          className={styles.linkMenu}
           style={{ left: linkActions.x, top: linkActions.y }}
-          onMouseEnter={clearLinkTooltipHideTimer}
-          onMouseLeave={scheduleHideLinkActions}
+          role="menu"
+          aria-label={t('xterm.linkMenu')}
+          onPointerDown={(event) => {
+            event.stopPropagation()
+            if (event.target === event.currentTarget) event.preventDefault()
+          }}
         >
-          <span className={styles.linkActionsText} title={linkActions.text}>
-            {linkActions.text}
-          </span>
-          <div className={styles.linkActionsButtons}>
-            {(linkActions.fileKind === 'markdown' || linkActions.fileKind === 'text') &&
-            projectId ? (
-              <button
-                type="button"
-                className={styles.linkActionBtn}
-                onClick={() => {
-                  openFileInGrid(linkActions.text)
-                  hideLinkActions()
-                }}
-                title={t('xterm.openInGrid')}
-                aria-label={t('xterm.openInGrid')}
-              >
-                <LayoutGrid size={14} />
-              </button>
-            ) : null}
+          <div className={styles.linkMenuHeader}>
+            <span className={styles.linkMenuText} title={linkActions.text}>
+              {linkActions.text}
+            </span>
             <button
               type="button"
-              className={styles.linkActionBtn}
-              onClick={() => {
-                void openLinkInFolder(linkActions.text)
-                hideLinkActions()
-              }}
-              disabled={linkActions.kind === 'url'}
-              title={t('xterm.openInFolder')}
-              aria-label={t('xterm.openInFolder')}
-            >
-              <FolderOpen size={14} />
-            </button>
-            <button
-              type="button"
-              className={styles.linkActionBtn}
-              onClick={() => {
-                void copyLinkText(linkActions.text)
-                hideLinkActions()
-              }}
-              title={t('xterm.copy')}
-              aria-label={t('xterm.copy')}
-            >
-              <Copy size={14} />
-            </button>
-            {linkActions.kind === 'url' ? (
-              <button
-                type="button"
-                className={styles.linkActionBtn}
-                onClick={() => {
-                  openLinkInAppViewer(linkActions.text)
-                  hideLinkActions()
-                }}
-                title={t('xterm.openInApp')}
-                aria-label={t('xterm.openInApp')}
-              >
-                <AppWindow size={14} />
-              </button>
-            ) : null}
-            <button
-              type="button"
-              className={styles.linkActionBtn}
-              onClick={() => {
-                void openLinkInBrowser(linkActions.text)
-                hideLinkActions()
-              }}
-              title={t(linkActions.kind === 'url' ? 'xterm.openInBrowser' : 'xterm.openInDefaultApp')}
-              aria-label={t(linkActions.kind === 'url' ? 'xterm.openInBrowser' : 'xterm.openInDefaultApp')}
-            >
-              <ExternalLink size={14} />
-            </button>
-            <button
-              type="button"
-              className={styles.linkActionBtn}
+              className={styles.linkMenuClose}
               onClick={hideLinkActions}
               title={t('common.close')}
               aria-label={t('common.close')}
             >
               <X size={14} />
+            </button>
+          </div>
+          <div className={styles.linkMenuItems}>
+            {(linkActions.fileKind === 'markdown' || linkActions.fileKind === 'text') &&
+            projectId ? (
+              <button
+                type="button"
+                className={styles.linkMenuItem}
+                role="menuitem"
+                onClick={() => {
+                  openFileInGrid(linkActions.text)
+                  hideLinkActions()
+                }}
+              >
+                <LayoutGrid size={15} />
+                <span>{t('xterm.openInGrid')}</span>
+              </button>
+            ) : null}
+            {linkActions.kind === 'url' ? (
+              <button
+                type="button"
+                className={styles.linkMenuItem}
+                role="menuitem"
+                onClick={() => {
+                  openLinkInAppViewer(linkActions.text)
+                  hideLinkActions()
+                }}
+              >
+                <AppWindow size={15} />
+                <span>{t('xterm.openInApp')}</span>
+              </button>
+            ) : null}
+            <button
+              type="button"
+              className={styles.linkMenuItem}
+              role="menuitem"
+              onClick={() => {
+                void openLinkInBrowser(linkActions.text)
+                hideLinkActions()
+              }}
+            >
+              <ExternalLink size={15} />
+              <span>
+                {t(
+                  linkActions.kind === 'url'
+                    ? 'xterm.openInBrowser'
+                    : 'xterm.openInDefaultApp',
+                )}
+              </span>
+            </button>
+            {linkActions.kind === 'path' ? (
+              <button
+                type="button"
+                className={styles.linkMenuItem}
+                role="menuitem"
+                onClick={() => {
+                  void openLinkInFolder(linkActions.text)
+                  hideLinkActions()
+                }}
+              >
+                <FolderOpen size={15} />
+                <span>{t('xterm.openInFolder')}</span>
+              </button>
+            ) : null}
+            <button
+              type="button"
+              className={styles.linkMenuItem}
+              role="menuitem"
+              onClick={() => {
+                void copyLinkText(linkActions.text)
+                hideLinkActions()
+              }}
+            >
+              <Copy size={15} />
+              <span>{t('xterm.copy')}</span>
             </button>
           </div>
         </div>

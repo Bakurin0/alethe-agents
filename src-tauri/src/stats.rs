@@ -3,7 +3,7 @@ use std::sync::{Mutex, OnceLock};
 use std::time::{Duration, Instant};
 use sysinfo::System;
 
-#[derive(Serialize, Clone)]
+#[derive(Serialize, Clone, Debug)]
 pub struct MemoryStats {
     pub total_mb: f64,
     pub app_mb: f64,

@@ -19,12 +19,12 @@ import {
   LayoutGrid,
   MoreHorizontal,
   FileText,
+  PanelTopOpen,
   Pause,
   Plus,
   Sidebar as SidebarIcon,
   type LucideIcon,
 } from 'lucide-react'
-import { open as openFileDialog } from '@tauri-apps/plugin-dialog'
 import { useEffect, useMemo, useState } from 'react'
 import { useShallow } from 'zustand/react/shallow'
 
@@ -37,6 +37,7 @@ import { useUiStore } from '../../stores/uiStore'
 import { useT } from '../../lib/i18n'
 import type { AgentType, Group, LayoutMode, Project, Terminal } from '../../lib/types'
 import { EmptyState } from '../EmptyState/EmptyState'
+import { Favicon } from '../Favicon'
 import { FileExplorer } from './FileExplorer'
 import { GitControl } from './GitControl'
 import { AgentIcon } from '../icons/AgentIcons'
@@ -63,7 +64,7 @@ export function ProjectSidebar() {
   const ungroupedOrder = useProjectsStore((s) => s.ungroupedOrder)
   const containers = useProjectsStore((s) => s.workspace.containers)
   const activeProjectId = useProjectsStore((s) => s.activeProjectId)
-  const showGitControl = useProjectsStore((s) => s.preferences.showGitControl)
+  const showGitControl = useProjectsStore((s) => s.preferences.enabledFeatures.git)
 
   // --- action selectors (stable refs, grouped for readability) ---
   const actions = useProjectsStore(useShallow((s) => ({
@@ -95,7 +96,6 @@ export function ProjectSidebar() {
     reorderGroups: s.reorderGroups,
     togglePane: s.togglePane,
     setSubTabCompletionUnread: s.setSubTabCompletionUnread,
-    createFilePane: s.createFilePane,
   })))
 
   const requestPaneFocus = useUiStore((s) => s.requestPaneFocus)
@@ -104,6 +104,8 @@ export function ProjectSidebar() {
   const setActiveView = useUiStore((s) => s.setActiveView)
   const activeTerminalRef = useUiStore((s) => s.activeTerminal)
   const setActiveTerminal = useUiStore((s) => s.setActiveTerminal)
+  const openMarkdownSidebar = useUiStore((s) => s.openMarkdownSidebar)
+  const setPreferences = useProjectsStore((s) => s.setPreferences)
   const [menu, setMenu] = useState<ContextMenuState>(null)
   const [sidebarTab, setSidebarTab] = useState<'files' | 'git' | 'projects'>('projects')
   const keepHome = activeView === 'home'
@@ -111,22 +113,6 @@ export function ProjectSidebar() {
   useEffect(() => {
     if (!showGitControl && sidebarTab === 'git') setSidebarTab('projects')
   }, [showGitControl, sidebarTab])
-
-  const onAddMarkdownViewer = async () => {
-    if (!activeProjectId) {
-      useUiStore.getState().pushToast({
-        title: t('ui.markdown.title'),
-        body: t('ui.markdown.noActiveProject'),
-      })
-      return
-    }
-    const selected = await openFileDialog({
-      multiple: false,
-      filters: [{ name: 'Markdown', extensions: ['md', 'markdown'] }],
-    })
-    if (typeof selected !== 'string') return
-    actions.createFilePane(activeProjectId, { filePath: selected })
-  }
 
   // map projectId → Set<paneIds> pra checar se cada terminal está aberto
   const openPaneSets = useMemo(() => {
@@ -465,6 +451,18 @@ export function ProjectSidebar() {
         label: inSplit ? t('ui.sidebar.hideFromSplit') : t('ui.sidebar.showInSplit'),
         onClick: () => actions.togglePane(projectId, term.id),
       },
+      ...(term.kind === 'markdown' && term.filePath
+        ? [
+            {
+              kind: 'item' as const,
+              label: t('rightSidebar.openMarkdown'),
+              onClick: () => {
+                openMarkdownSidebar(term.filePath!, term.name)
+                setPreferences({ rightSidebarVisible: true })
+              },
+            },
+          ]
+        : []),
       {
         kind: 'item',
         label: term.disabled ? t('ui.sidebar.reactivate') : t('ui.sidebar.disable'),
@@ -575,10 +573,12 @@ export function ProjectSidebar() {
 
   return (
     <aside className={styles.sidebar}>
-      <div className={styles.homeRow}>
+      <div className={styles.sidebarTabs} role="tablist" aria-label={t('ui.sidebar.navigation')}>
         <button
           type="button"
-          className={`${styles.homeBtn} ${activeView === 'home' ? styles.homeBtnActive : ''}`}
+          role="tab"
+          aria-selected={activeView === 'home'}
+          className={`${styles.sidebarTab} ${activeView === 'home' ? styles.sidebarTabActive : ''}`}
           onClick={() => {
             if (activeView !== 'home') {
               setActiveView('home')
@@ -590,9 +590,6 @@ export function ProjectSidebar() {
           <Home size={14} />
           <span>{t('ui.sidebar.home')}</span>
         </button>
-      </div>
-
-      <div className={styles.sidebarTabs} role="tablist" aria-label={t('ui.sidebar.navigation')}>
         <button
           type="button"
           role="tab"
@@ -606,6 +603,7 @@ export function ProjectSidebar() {
           }}
         >
           <Grid3x3 size={14} />
+          <span>{t('ui.sidebar.projects')}</span>
         </button>
         <button
           type="button"
@@ -620,6 +618,7 @@ export function ProjectSidebar() {
           }}
         >
           <Folder size={14} />
+          <span>{t('ui.sidebar.files')}</span>
         </button>
         {showGitControl ? (
           <button
@@ -635,6 +634,7 @@ export function ProjectSidebar() {
             }}
           >
             <GitBranch size={14} />
+            <span>{t('ui.sidebar.git')}</span>
           </button>
         ) : null}
       </div>
@@ -645,12 +645,14 @@ export function ProjectSidebar() {
           <button
             type="button"
             className={styles.iconBtn}
-            onClick={() => void onAddMarkdownViewer()}
+            onClick={() =>
+              activeProjectId && openModal('addContent', { projectId: activeProjectId })
+            }
             disabled={!activeProjectId}
-            title={t('ui.markdown.addViewerTitle')}
-            aria-label={t('ui.markdown.addViewer')}
+            title={t('addContent.shortcutTitle', { shortcut: 'Ctrl+Shift+A' })}
+            aria-label={t('addContent.title')}
           >
-            <FileText size={14} />
+            <PanelTopOpen size={14} />
           </button>
           <button
             type="button"
@@ -1162,10 +1164,14 @@ function TerminalNode({ project, terminal, selected, onClick, onDoubleClick, onM
         e.stopPropagation()
         onMenu(e)
       }}
-      title={terminal.filePath || terminal.cwd || terminal.name}
+      title={terminal.url || terminal.filePath || terminal.cwd || terminal.name}
     >
       <span className={styles.agentStack}>
-        {terminal.kind && terminal.kind !== 'terminal' ? (
+        {terminal.kind === 'web' ? (
+          <span className={styles.agentIcon}>
+            <Favicon url={terminal.url ?? ''} size={14} />
+          </span>
+        ) : terminal.kind && terminal.kind !== 'terminal' ? (
           <span className={styles.agentIcon}>
             <FileText size={14} />
           </span>

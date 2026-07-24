@@ -159,6 +159,7 @@ export function MemoryAnalyticsModal() {
   const open = useUiStore((s) => s.openModal === 'memoryAnalytics')
   const onClose = useUiStore((s) => s.closeModal)
   const history = useUiStore((s) => s.memoryHistory)
+  const runtimeSnapshot = useUiStore((s) => s.runtimeSnapshot)
   const clearMemoryHistory = useUiStore((s) => s.clearMemoryHistory)
 
   // Relatório da sessão anterior, se ela caiu/foi morta (saída suja).
@@ -181,6 +182,9 @@ export function MemoryAnalyticsModal() {
   const diagnostics = buildDiagnostics(history, t)
   const top = dominantBucket(latest, t)
   const latestRows = history.slice(-12).reverse()
+  const runtimeRows = [...(runtimeSnapshot?.ptys ?? [])].sort(
+    (a, b) => b.effectiveMemoryMb - a.effectiveMemoryMb,
+  )
 
   return (
     <Modal
@@ -291,6 +295,62 @@ export function MemoryAnalyticsModal() {
             <CategoryBars latest={latest} />
           </section>
         </div>
+
+        {runtimeSnapshot ? (
+          <section className={styles.panel}>
+            <div className={styles.panelHeader}>
+              <div>
+                <h3>{t('mod.runtimeBreakdown')}</h3>
+                <p>
+                  {t('mod.runtimeBreakdownSubtitle', {
+                    effective: formatMb(runtimeSnapshot.effectiveTotalMb),
+                    private: formatMb(runtimeSnapshot.privateCommitMb),
+                    count: runtimeRows.length,
+                  })}
+                </p>
+              </div>
+              <span className={styles.pressureBadge} data-level={runtimeSnapshot.pressure.level}>
+                {t(`mod.pressure.${runtimeSnapshot.pressure.level}`)}
+              </span>
+            </div>
+            <div className={styles.runtimeList}>
+              {runtimeRows.length === 0 ? (
+                <div className={styles.emptyRows}>{t('mod.noLiveRuntimes')}</div>
+              ) : (
+                runtimeRows.map((runtime) => (
+                  <details key={runtime.id} className={styles.runtimeRow}>
+                    <summary>
+                      <span className={styles.runtimeIdentity}>
+                        <strong>{runtime.command || t('mod.unknownRuntime')}</strong>
+                        <small title={runtime.cwd ?? runtime.id}>{runtime.cwd ?? runtime.id}</small>
+                      </span>
+                      <span>{runtime.processCount} proc.</span>
+                      <strong>{formatMb(runtime.effectiveMemoryMb)}</strong>
+                    </summary>
+                    <div className={styles.processList}>
+                      <div className={styles.processHead}>
+                        <span>PID</span>
+                        <span>{t('mod.processName')}</span>
+                        <span>{t('mod.workingSet')}</span>
+                        <span>{t('mod.privateCommit')}</span>
+                        <span>CPU</span>
+                      </div>
+                      {runtime.processes.map((process) => (
+                        <div key={process.pid} className={styles.processRow}>
+                          <span>{process.pid}</span>
+                          <span title={process.name}>{process.name}</span>
+                          <span>{formatMb(process.workingSetMb)}</span>
+                          <span>{formatMb(process.privateCommitMb)}</span>
+                          <span>{process.cpuPercent.toFixed(1)}%</span>
+                        </div>
+                      ))}
+                    </div>
+                  </details>
+                ))
+              )}
+            </div>
+          </section>
+        ) : null}
 
         <section className={styles.panel}>
           <div className={styles.panelHeader}>

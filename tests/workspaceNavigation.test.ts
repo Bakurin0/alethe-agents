@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
 
-import type { Preferences, Project, WorkspaceViewSnapshot } from '../src/lib/types.ts'
+import { DEFAULT_PREFERENCES, type Preferences, type Project, type WorkspaceViewSnapshot } from '../src/lib/types.ts'
 import {
   MAX_WORKSPACE_HISTORY,
   captureWorkspaceSnapshot,
@@ -12,23 +12,10 @@ import {
 } from '../src/lib/workspaceNavigation.ts'
 
 const preferences: Preferences = {
-  language: 'en',
-  uiTheme: 'dark',
-  uiZoom: 1,
-  terminalTheme: null,
-  enabledAgents: { shell: true, claude: true, codex: true, opencode: true },
+  ...DEFAULT_PREFERENCES,
   onboardingDone: true,
-  workspaceFlat: false,
-  fullscreenContainerId: null,
-  firstLaunchAt: null,
-  displayName: '',
-  profileImageUrl: '',
   accountCreated: true,
-  alwaysStartOnHome: false,
-  spotifyClientId: '',
-  spotifyClientSecret: '',
   discordRichPresenceEnabled: false,
-  showGitControl: true,
 }
 
 const projects: Project[] = [

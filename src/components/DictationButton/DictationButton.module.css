@@ -1,0 +1,45 @@
+.btn {
+  position: fixed;
+  right: 18px;
+  bottom: 18px;
+  z-index: 80;
+  width: 44px;
+  height: 44px;
+  display: grid;
+  place-items: center;
+  border-radius: 999px;
+  border: 1px solid var(--border);
+  background: var(--bg-elevated, var(--bg-sunken));
+  color: var(--fg-muted, var(--fg));
+  cursor: pointer;
+  box-shadow: 0 6px 20px rgba(0, 0, 0, 0.28);
+  transition: color 0.12s, border-color 0.12s, background 0.12s;
+}
+
+.btn:hover:not(:disabled) {
+  color: var(--fg);
+  border-color: var(--border-strong, var(--accent));
+}
+
+.btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.listening {
+  color: var(--status-offline);
+  border-color: var(--status-offline);
+  animation: dictationPulse 1.1s ease-in-out infinite;
+}
+
+@keyframes dictationPulse {
+  0%,
+  100% {
+    box-shadow: 0 6px 20px rgba(0, 0, 0, 0.28),
+      0 0 0 0 color-mix(in srgb, var(--status-offline) 45%, transparent);
+  }
+  50% {
+    box-shadow: 0 6px 20px rgba(0, 0, 0, 0.28),
+      0 0 0 6px color-mix(in srgb, var(--status-offline) 0%, transparent);
+  }
+}

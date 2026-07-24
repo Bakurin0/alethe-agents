@@ -1,8 +1,9 @@
 import * as Dialog from '@radix-ui/react-dialog'
-import { Check, GitBranch, Globe, Palette, Users } from 'lucide-react'
+import { Check, GitBranch, Globe, ListTodo, Palette, Users } from 'lucide-react'
 import { useEffect, useMemo, useRef, useState } from 'react'
 
 import aletheLogo from '../../assets/alethe-logo.png'
+import { FEATURES } from '../../lib/features'
 import { LOCALES, useT } from '../../lib/i18n'
 import { getProfileInitial } from '../../lib/profile'
 import { THEME_OPTIONS, themeDescription, themeLabel } from '../../lib/themes'
@@ -23,6 +24,11 @@ const AGENTS: { id: AgentType; label: string }[] = [
   { id: 'freebuff', label: 'Freebuff' },
   { id: 'mimo', label: 'Mimo' },
 ]
+
+const FEATURE_ICONS = {
+  todos: ListTodo,
+  git: GitBranch,
+} as const
 
 export function OnboardingModal() {
   const t = useT()
@@ -394,33 +400,40 @@ export function OnboardingModal() {
                   {step === 3 ? (
                     <>
                       <div className={styles.sectionIntro}>
-                        <h2 className={styles.sectionTitle}>{t('onboarding.gitTitle')}</h2>
-                        <p className={styles.sectionSubtitle}>{t('onboarding.gitSubtitle')}</p>
+                        <h2 className={styles.sectionTitle}>{t('onboarding.featuresTitle')}</h2>
+                        <p className={styles.sectionSubtitle}>{t('onboarding.featuresSubtitle')}</p>
                       </div>
                       <div className={styles.agentGrid}>
-                        {[true, false].map((enabled) => {
-                          const active = preferences.showGitControl === enabled
+                        {FEATURES.map((feature) => {
+                          const active = preferences.enabledFeatures[feature.id]
+                          const FeatureIcon = FEATURE_ICONS[feature.id]
                           return (
                             <button
-                              key={String(enabled)}
+                              key={feature.id}
                               type="button"
                               className={[styles.agentOption, active ? styles.agentOptionActive : '']
                                 .filter(Boolean)
                                 .join(' ')}
-                              onClick={() => setPreferences({ showGitControl: enabled })}
+                              onClick={() =>
+                                setPreferences({
+                                  enabledFeatures: {
+                                    ...preferences.enabledFeatures,
+                                    [feature.id]: !active,
+                                  },
+                                  ...(feature.id === 'todos' && !active
+                                    ? { rightSidebarVisible: true }
+                                    : {}),
+                                })
+                              }
                               data-autofocus={active ? 'true' : undefined}
                             >
-                              <div className={styles.agentIconWrap}><GitBranch size={20} /></div>
+                              <div className={styles.agentIconWrap}><FeatureIcon size={20} /></div>
                               <div className={styles.agentOptionBody}>
                                 <div className={styles.agentNameRow}>
-                                  <span className={styles.agentName}>
-                                    {enabled ? t('onboarding.gitEnable') : t('onboarding.gitDisable')}
-                                  </span>
+                                  <span className={styles.agentName}>{t(feature.titleKey)}</span>
                                   {active ? <Check size={15} className={styles.checkMark} /> : null}
                                 </div>
-                                <div className={styles.agentDesc}>
-                                  {enabled ? t('onboarding.gitEnableDesc') : t('onboarding.gitDisableDesc')}
-                                </div>
+                                <div className={styles.agentDesc}>{t(feature.descriptionKey)}</div>
                               </div>
                             </button>
                           )

@@ -4,17 +4,32 @@ export type SessionSnapshot = {
 }
 
 const claimedIds = new Map<string, Set<string>>()
+/** ptyId → claims que ele fez, para eviction quando o PTY fecha (evita crescimento sem limite). */
+const claimOwners = new Map<string, Array<{ key: string; sessionId: string }>>()
 
 function claimKey(agent: string, cwd: string): string {
   return `${agent}\0${cwd.toLowerCase()}`
 }
 
-export function registerSessionClaim(agent: string, cwd: string, sessionId?: string): void {
+function trackOwner(ptyId: string | undefined, key: string, sessionId: string): void {
+  if (!ptyId) return
+  const list = claimOwners.get(ptyId) ?? []
+  list.push({ key, sessionId })
+  claimOwners.set(ptyId, list)
+}
+
+export function registerSessionClaim(
+  agent: string,
+  cwd: string,
+  sessionId?: string,
+  ptyId?: string,
+): void {
   if (!sessionId) return
   const key = claimKey(agent, cwd)
   const claimed = claimedIds.get(key) ?? new Set<string>()
   claimed.add(sessionId)
   claimedIds.set(key, claimed)
+  trackOwner(ptyId, key, sessionId)
 }
 
 /**
@@ -26,6 +41,7 @@ export function claimDiscoveredSession(
   cwd: string,
   beforeIds: ReadonlySet<string>,
   sessions: readonly SessionSnapshot[],
+  ptyId?: string,
 ): SessionSnapshot | undefined {
   const key = claimKey(agent, cwd)
   const claimed = claimedIds.get(key) ?? new Set<string>()
@@ -35,9 +51,29 @@ export function claimDiscoveredSession(
   if (!candidate) return undefined
   claimed.add(candidate.id)
   claimedIds.set(key, claimed)
+  trackOwner(ptyId, key, candidate.id)
   return candidate
+}
+
+/**
+ * Libera os claims feitos por um pane quando seu PTY fecha. Sem isto, o
+ * `claimedIds` cresceria monotonicamente (uma entrada por cwd já aberto + um id
+ * por sessão já spawnada) pela vida inteira do app. Só remove os ids do próprio
+ * ptyId, então não afeta o guard anti-duplo-claim de outros panes vivos.
+ */
+export function releaseSessionClaim(ptyId: string): void {
+  const owned = claimOwners.get(ptyId)
+  if (!owned) return
+  claimOwners.delete(ptyId)
+  for (const { key, sessionId } of owned) {
+    const set = claimedIds.get(key)
+    if (!set) continue
+    set.delete(sessionId)
+    if (set.size === 0) claimedIds.delete(key)
+  }
 }
 
 export function resetSessionClaimsForTests(): void {
   claimedIds.clear()
+  claimOwners.clear()
 }

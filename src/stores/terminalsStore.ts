@@ -19,6 +19,12 @@ export type PtyRuntime = {
   lastTransitionAt: number
   /** true entre spawn_pty bem-sucedido e pty://exit. */
   alive: boolean
+  /** PTY encerrado automaticamente, com sessão/scrollback preservados para retomada. */
+  parked: boolean
+  /** Nascimento do processo atual, usado pela janela de graça do supervisor. */
+  spawnedAt: number
+  /** Último input ou output observado pelo frontend. */
+  lastIoAt: number
   /**
    * Contador de exit events pendentes de PTYs antigos (após restarts). Cada
    * `beginRestart` incrementa; cada exit event recebido decrementa antes de
@@ -36,16 +42,22 @@ type TerminalsState = {
   /** Sinaliza que um restart foi iniciado — o próximo exit event será ignorado. */
   beginRestart: (ptyId: string) => void
   setStatus: (ptyId: string, status: PtyStatus) => void
+  recordIo: (ptyId: string) => void
   markExited: (ptyId: string) => void
+  markSuspended: (ptyId: string) => void
   unregister: (ptyId: string) => void
 }
 
 function emptyRuntime(ptyId: string): PtyRuntime {
+  const now = Date.now()
   return {
     ptyId,
     status: 'waiting',
-    lastTransitionAt: Date.now(),
+    lastTransitionAt: now,
     alive: true,
+    parked: false,
+    spawnedAt: now,
+    lastIoAt: now,
     expectedOldExits: 0,
   }
 }
@@ -69,8 +81,11 @@ export const useTerminalsStore = create<TerminalsState>((set) => ({
           [ptyId]: {
             ...base,
             alive: true,
+            parked: false,
             status: 'waiting',
             lastTransitionAt: Date.now(),
+            spawnedAt: Date.now(),
+            lastIoAt: Date.now(),
             expectedOldExits: base.expectedOldExits + 1,
           },
         },
@@ -85,6 +100,18 @@ export const useTerminalsStore = create<TerminalsState>((set) => ({
         byPtyId: {
           ...state.byPtyId,
           [ptyId]: { ...current, status, lastTransitionAt: Date.now() },
+        },
+      }
+    }),
+
+  recordIo: (ptyId) =>
+    set((state) => {
+      const current = state.byPtyId[ptyId]
+      if (!current) return state
+      return {
+        byPtyId: {
+          ...state.byPtyId,
+          [ptyId]: { ...current, lastIoAt: Date.now() },
         },
       }
     }),
@@ -108,6 +135,25 @@ export const useTerminalsStore = create<TerminalsState>((set) => ({
           [ptyId]: {
             ...current,
             alive: false,
+            parked: false,
+            status: 'stopped',
+            lastTransitionAt: Date.now(),
+          },
+        },
+      }
+    }),
+
+  markSuspended: (ptyId) =>
+    set((state) => {
+      const current = state.byPtyId[ptyId]
+      if (!current) return state
+      return {
+        byPtyId: {
+          ...state.byPtyId,
+          [ptyId]: {
+            ...current,
+            alive: false,
+            parked: true,
             status: 'stopped',
             lastTransitionAt: Date.now(),
           },

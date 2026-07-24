@@ -23,6 +23,7 @@ mod paths;
 mod projects;
 mod profiles;
 mod pty;
+mod resources;
 mod session_watcher;
 mod spotify;
 mod stats;
@@ -40,11 +41,18 @@ pub fn run() {
     // Instala o panic hook cedo (antes do builder). O diretório de logs só é
     // resolvido no .setup(); panics anteriores a isso caem só no stderr.
     logging::install_panic_hook();
+    // Rede de segurança contra terminais órfãos: se o app morrer por crash/kill
+    // forçado (onde RunEvent::Exit não roda), o Job Object mata a árvore de PTYs.
+    pty::install_kill_on_close_guard();
     let sessions: PtySessions = Arc::new(Mutex::new(HashMap::<String, PtySession>::new()));
     let sessions_for_exit = Arc::clone(&sessions);
+    let sessions_for_resources = Arc::clone(&sessions);
+    let resource_supervisor = Arc::new(resources::ResourceSupervisor::default());
+    let resource_supervisor_for_setup = Arc::clone(&resource_supervisor);
 
     tauri::Builder::default()
         .manage(sessions)
+        .manage(resource_supervisor)
         .manage(ghostty_bridge::GhosttySurfaces::default())
         .manage(filesystem::FileWatchers::default())
         .manage(discord_presence::DiscordPresence::new())
@@ -52,7 +60,7 @@ pub fn run() {
         .plugin(tauri_plugin_notification::init())
         .plugin(tauri_plugin_process::init())
         .plugin(tauri_plugin_updater::Builder::new().build())
-        .setup(|app| {
+        .setup(move |app| {
             #[cfg(debug_assertions)]
             if let Some(window) = app.get_webview_window("main") {
                 let _ = window.set_title("(DEV) Alethe");
@@ -60,6 +68,11 @@ pub fn run() {
             logging::set_logs_dir(app.handle());
             // Detecta saída suja anterior (crash/OOM/kill) e sobe o heartbeat.
             crash_watch::start(app.handle().clone());
+            resources::start(
+                app.handle().clone(),
+                Arc::clone(&sessions_for_resources),
+                Arc::clone(&resource_supervisor_for_setup),
+            );
             // Limpa scrollback órfão antes de qualquer spawn (sem corrida).
             pty::cleanup_orphan_scrollback(app.handle());
             agent_events::start_listener(app.handle().clone());
@@ -79,14 +92,17 @@ pub fn run() {
             economy_agents::economy_agents_enabled,
             filesystem::list_directory,
             filesystem::read_text_file,
+            filesystem::ensure_todo_template,
             filesystem::watch_file,
             filesystem::unwatch_file,
+            pty::pty_exists,
             pty::spawn_pty,
             pty::attach_pty,
             pty::restart_pty,
             pty::write_pty,
             pty::resize_pty,
             pty::kill_pty,
+            pty::suspend_pty,
             pty::get_pty_cwd,
             ghostty_bridge::ghostty_spawn,
             ghostty_bridge::ghostty_sync_frame,
@@ -132,6 +148,9 @@ pub fn run() {
             discord_presence::set_discord_presence,
             discord_presence::clear_discord_presence,
             stats::get_memory_stats,
+            resources::get_runtime_snapshot,
+            resources::set_resource_policy,
+            resources::update_pty_runtime_meta,
             spotify::spotify_login,
             spotify::spotify_logout,
             spotify::spotify_status,
@@ -146,6 +165,7 @@ pub fn run() {
             agent_cost::get_transcript_cost,
             agent_cost::get_model_pricing,
             crash_watch::get_last_crash_report,
+            quit_app,
             ping,
         ])
         .build(tauri::generate_context!())
@@ -159,6 +179,11 @@ pub fn run() {
                 crash_watch::mark_clean_exit();
             }
         });
+}
+
+#[tauri::command]
+fn quit_app(app: tauri::AppHandle) {
+    app.exit(0);
 }
 
 #[tauri::command]

@@ -28,6 +28,12 @@ test('getTerminalScrollbackRows keeps enough rows for long agent chats', () => {
   assert.ok(getTerminalScrollbackRows() >= 10_000)
 })
 
+test('getTerminalScrollbackRows scales live buffers to the configured memory budget', () => {
+  assert.equal(getTerminalScrollbackRows({ agent: true, memoryBudgetMb: 1536 }), 6_000)
+  assert.equal(getTerminalScrollbackRows({ agent: false, memoryBudgetMb: 1536 }), 3_000)
+  assert.equal(getTerminalScrollbackRows({ agent: true, memoryBudgetMb: 4096 }), 10_000)
+})
+
 test('shouldScrollHostScrollback scrolls the host buffer in a plain shell', () => {
   assert.equal(shouldScrollHostScrollback('normal', false), true)
 })

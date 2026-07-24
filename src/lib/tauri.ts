@@ -71,6 +71,10 @@ export async function spawnPty(args: SpawnPtyArgs): Promise<{ id: string }> {
   })
 }
 
+export async function ptyExists(id: string): Promise<boolean> {
+  return invoke<boolean>('pty_exists', { id })
+}
+
 export async function attachPty(id: string, maxBytes = 512 * 1024): Promise<string> {
   return invoke<string>('attach_pty', { id, maxBytes })
 }
@@ -93,6 +97,8 @@ export async function restartPty(args: SpawnPtyArgs & { id: string }): Promise<{
     command: args.command,
     cwd: args.cwd,
     extraArgs: args.extraArgs,
+    launcherOverride: args.launcherOverride,
+    env: args.env,
   })
 }
 
@@ -222,6 +228,10 @@ export async function readTextFile(path: string): Promise<string> {
   return invoke<string>('read_text_file', { path })
 }
 
+export async function ensureTodoTemplate(directory: string): Promise<string> {
+  return invoke<string>('ensure_todo_template', { directory })
+}
+
 export async function watchFile(path: string): Promise<void> {
   await invoke('watch_file', { path })
 }
@@ -244,11 +254,16 @@ export function listenPtyData(
 
 export function listenPtyExit(
   id: string,
-  handler: (code: number | null) => void,
+  handler: (payload: PtyExitPayload) => void,
 ): Promise<UnlistenFn> {
-  return listen<{ code: number | null }>(`pty://exit/${id}`, (event) =>
-    handler(event.payload.code),
-  )
+  return listen<PtyExitPayload>(`pty://exit/${id}`, (event) => handler(event.payload))
+}
+
+export type PtyExitReason = 'exited' | 'killed' | 'suspended' | 'restarted'
+
+export type PtyExitPayload = {
+  code: number | null
+  reason: PtyExitReason
 }
 
 export type MemoryStats = {
@@ -261,6 +276,111 @@ export type MemoryStats = {
 
 export async function getMemoryStats(): Promise<MemoryStats> {
   return invoke<MemoryStats>('get_memory_stats')
+}
+
+export type ResourcePolicyInput = {
+  mode: 'smart-lru' | 'manual'
+  memoryBudgetMb: number
+  warningThresholdMb: number
+  recoveryTargetMb: number
+  hiddenAgentIdleMinutes: number
+  hiddenShellIdleMinutes: number
+  spawnGraceSeconds: number
+}
+
+export type PtyRuntimeMeta = {
+  id: string
+  kind: string
+  status: string
+  visible: boolean
+  focused: boolean
+  protected: boolean
+  lastIoAtMs: number
+  spawnedAtMs: number
+  lastUsedAtMs: number
+  reportedAtMs: number
+}
+
+export type RuntimeProcess = {
+  pid: number
+  parentPid: number | null
+  name: string
+  workingSetMb: number
+  privateCommitMb: number
+  cpuPercent: number
+}
+
+export type PtyResourceStats = {
+  id: string
+  rootPid: number | null
+  command: string | null
+  cwd: string | null
+  processCount: number
+  workingSetMb: number
+  privateCommitMb: number
+  effectiveMemoryMb: number
+  processes: RuntimeProcess[]
+}
+
+export type ResourcePressureState = {
+  level: 'normal' | 'warning' | 'critical'
+  spawnBlocked: boolean
+  automatic: boolean
+  candidateCount: number
+  lastSuspendedId: string | null
+}
+
+export type RuntimeSnapshot = {
+  sampledAtMs: number
+  memory: MemoryStats
+  privateCommitMb: number
+  effectiveTotalMb: number
+  ptys: PtyResourceStats[]
+  pressure: ResourcePressureState
+}
+
+export type ResourcePressurePayload = {
+  level: ResourcePressureState['level']
+  totalMb: number
+  budgetMb: number
+  spawnBlocked: boolean
+  candidateCount: number
+  suspendedId: string | null
+}
+
+export type PtySuspendedPayload = {
+  id: string
+  reason: 'memory-pressure' | string
+}
+
+export async function getRuntimeSnapshot(): Promise<RuntimeSnapshot> {
+  return invoke<RuntimeSnapshot>('get_runtime_snapshot')
+}
+
+export async function setResourcePolicy(policy: ResourcePolicyInput): Promise<void> {
+  await invoke('set_resource_policy', { policy })
+}
+
+export async function updatePtyRuntimeMeta(metas: PtyRuntimeMeta[]): Promise<void> {
+  await invoke('update_pty_runtime_meta', { metas })
+}
+
+export async function suspendPty(id: string): Promise<boolean> {
+  return invoke<boolean>('suspend_pty', { id })
+}
+
+export function listenResourcePressure(
+  handler: (payload: ResourcePressurePayload) => void,
+): Promise<UnlistenFn> {
+  return listen<ResourcePressurePayload>('resource://pressure', (event) => handler(event.payload))
+}
+
+export function listenPtySuspended(
+  handler: (payload: PtySuspendedPayload) => void,
+): Promise<UnlistenFn> {
+  return listen<PtySuspendedPayload>('resource://pty-suspended', (event) =>
+    handler(event.payload),
+  )
 }
 
 /** Estado da sessão anterior, se ela não saiu limpa (provável crash/OOM/kill). */

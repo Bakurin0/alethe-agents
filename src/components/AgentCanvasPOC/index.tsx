@@ -584,7 +584,10 @@ function AgentCanvasInner() {
           // Captura o término mesmo com o terminal fechado — senão o card de um
           // one-shot ficaria "running" pra sempre.
           let unlistenExit: (() => void) | null = null
-          void listenPtyExit(ptyId, (code) => {
+          let exited = false
+          void listenPtyExit(ptyId, (payload) => {
+            const code = payload.code
+            exited = true
             unlistenExit?.()
             workerExitUnlistenersRef.current.delete(ptyId)
             console.log('[AgentCanvasPOC] worker', ptyId, 'saiu, code', code)
@@ -604,7 +607,10 @@ function AgentCanvasInner() {
               .catch(() => {})
           }).then((unlisten) => {
             unlistenExit = unlisten
-            workerExitUnlistenersRef.current.set(ptyId, unlisten)
+            // Se o exit já disparou antes do promise resolver, desfaz agora e NÃO
+            // guarda (senão ficaria um listener órfão já-disparado no ref).
+            if (exited) unlisten()
+            else workerExitUnlistenersRef.current.set(ptyId, unlisten)
           }).catch(() => {})
         })
         .catch((err) => console.error('[AgentCanvasPOC] falha spawnando PTY do worker:', err))

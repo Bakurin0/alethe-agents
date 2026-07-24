@@ -5,6 +5,7 @@ import {
   DEFAULT_PREFERENCES,
   EMPTY_PROJECTS_FILE,
   GROUP_COLORS,
+  type AgentRuntimeProfile,
   type AgentType,
   type GridLayout,
   type Group,
@@ -16,11 +17,13 @@ import {
   type SubTab,
   type Terminal,
   type Theme,
+  type TodoItem,
   type WorkspaceContainer,
   type WorkspaceTab,
   type WorkspaceRecentTab,
   type WorkspaceViewSnapshot,
 } from '../lib/types'
+import { DEFAULT_TODOS, normalizeTodoTags, normalizeTodoTitle, reorderTodoItems } from '../lib/todos'
 import {
   MAX_WORKSPACE_TABS,
   captureWorkspaceSnapshot,
@@ -39,6 +42,7 @@ import {
 } from '../lib/tauri'
 import { setStorageNamespace } from '../lib/storageNamespace'
 import { cleanupPtys } from '../lib/terminalLifecycle'
+import { normalizeEnabledFeatures } from '../lib/features'
 
 const SAVE_DEBOUNCE_MS = 500
 const MIN_UI_ZOOM = 0.8
@@ -104,17 +108,28 @@ type ProjectsState = ProjectsFile & {
   setGroupGridLayout: (groupId: string, layout: GridLayout) => void
   setWorkspaceGridLayout: (layout: GridLayout | null) => void
 
+  // todos globais
+  createTodo: (title: string, tags?: string[]) => TodoItem | null
+  renameTodo: (id: string, title: string) => void
+  updateTodoTags: (id: string, tags: string[]) => void
+  resetTodosToDefault: () => void
+  toggleTodo: (id: string) => void
+  deleteTodo: (id: string) => void
+  reorderTodo: (draggedId: string, targetId: string) => void
+
   // terminals
   createTerminal: (
     projectId: string,
     args: {
       name: string
       cwd: string
-      firstTab: { type: AgentType; cwd: string; extraArgs?: string[] }
+      firstTab: { type: AgentType; cwd: string; extraArgs?: string[]; runtimeProfile?: AgentRuntimeProfile }
     },
   ) => Terminal
   /** Cria um pane viewer (markdown/arquivo) e adiciona ao grid do projeto. */
   createFilePane: (projectId: string, args: { filePath: string; name?: string }) => Terminal
+  /** Cria um pane web persistente e adiciona ao grid do projeto. */
+  createWebPane: (projectId: string, args: { url: string; name?: string }) => Terminal
   renameTerminal: (projectId: string, terminalId: string, name: string) => void
   deleteTerminal: (projectId: string, terminalId: string) => void
   /** Mata a árvore de processos do terminal + fecha o pane, mas MANTÉM o atalho na
@@ -160,7 +175,7 @@ type ProjectsState = ProjectsFile & {
   createSubTab: (
     projectId: string,
     terminalId: string,
-    args: { type: AgentType; cwd: string; name?: string; extraArgs?: string[] },
+    args: { type: AgentType; cwd: string; name?: string; extraArgs?: string[]; runtimeProfile?: AgentRuntimeProfile },
   ) => SubTab
   closeSubTab: (projectId: string, terminalId: string, tabId: string) => void
   setActiveTab: (projectId: string, terminalId: string, tabId: string) => void
@@ -208,10 +223,11 @@ function scheduleSave(getState: () => ProjectsState) {
     pendingSave = false
     const state = getState()
     const payload: ProjectsFile = {
-      version: 4,
+      version: 6,
       groups: state.groups,
       ungroupedOrder: state.ungroupedOrder,
       projects: state.projects,
+      todos: state.todos,
       activeProjectId: state.activeProjectId,
       workspace: state.workspace,
       preferences: state.preferences,
@@ -241,7 +257,7 @@ function rememberWorkspaceTab(
 function makeDefaultTerminal(args: {
   name: string
   cwd: string
-  firstTab: { type: AgentType; cwd: string; extraArgs?: string[] }
+  firstTab: { type: AgentType; cwd: string; extraArgs?: string[]; runtimeProfile?: AgentRuntimeProfile }
 }): Terminal {
   const tabId = nanoid()
   const now = Date.now()
@@ -262,6 +278,7 @@ function makeDefaultTerminal(args: {
         lastUsedAt: now,
         ptyId: null,
         extraArgs: args.firstTab.extraArgs,
+        runtimeProfile: args.firstTab.runtimeProfile,
       },
     ],
   }
@@ -296,6 +313,28 @@ function makeFilePane(args: { filePath: string; name?: string }): Terminal {
     tabs: [],
     kind: classifyPaneKind(filePath),
     filePath,
+  }
+}
+
+function makeWebPane(args: { url: string; name?: string }): Terminal {
+  const url = args.url.trim()
+  let host = url
+  try {
+    host = new URL(url).hostname
+  } catch {
+    // A validação ocorre no modal; mantém fallback defensivo para dados importados.
+  }
+  return {
+    id: nanoid(),
+    name: args.name?.trim() || host,
+    cwd: '',
+    activeTabId: '',
+    disabled: false,
+    laneVisible: null,
+    lastUsedAt: Date.now(),
+    tabs: [],
+    kind: 'web',
+    url,
   }
 }
 
@@ -401,8 +440,31 @@ export function clampSpawnConcurrency(n: number): number {
   )
 }
 
-function normalizePreferences(raw: Partial<Preferences> | undefined): Preferences {
-  const preferences = { ...DEFAULT_PREFERENCES, ...(raw ?? {}) }
+type LegacyPreferences = Partial<Preferences> & { showGitControl?: boolean }
+
+function normalizePreferences(raw: LegacyPreferences | undefined): Preferences {
+  const preferences = {
+    ...DEFAULT_PREFERENCES,
+    ...(raw ?? {}),
+  } as Preferences & { showGitControl?: boolean }
+  delete preferences.showGitControl
+  const rawResourcePolicy = raw?.resourcePolicy
+  const resourcePolicy = {
+    ...DEFAULT_PREFERENCES.resourcePolicy,
+    ...(rawResourcePolicy ?? {}),
+  }
+  const memoryBudgetMb = Math.min(
+    8192,
+    Math.max(768, Math.round(resourcePolicy.memoryBudgetMb)),
+  )
+  const warningThresholdMb = Math.min(
+    memoryBudgetMb - 64,
+    Math.max(512, Math.round(resourcePolicy.warningThresholdMb)),
+  )
+  const recoveryTargetMb = Math.min(
+    warningThresholdMb - 64,
+    Math.max(384, Math.round(resourcePolicy.recoveryTargetMb)),
+  )
   const legacyAccountCreated =
     raw?.accountCreated ??
     Boolean(raw?.onboardingDone && raw?.displayName && raw.displayName.trim().length > 0)
@@ -411,15 +473,57 @@ function normalizePreferences(raw: Partial<Preferences> | undefined): Preference
     // Backfill: instalações antigas não têm os agentes novos em enabledAgents;
     // preserva os toggles do usuário e habilita os que faltam pelo default.
     enabledAgents: { ...DEFAULT_PREFERENCES.enabledAgents, ...preferences.enabledAgents },
+    // Todo não existia nas instalações antigas: não muda a UI sem consentimento.
+    enabledFeatures: normalizeEnabledFeatures(raw),
+    leftSidebarVisible: raw?.leftSidebarVisible ?? true,
+    rightSidebarVisible: raw?.rightSidebarVisible ?? true,
+    leftSidebarWidth: Math.min(380, Math.max(220, Math.round(raw?.leftSidebarWidth ?? 286))),
+    rightSidebarWidth: Math.min(420, Math.max(260, Math.round(raw?.rightSidebarWidth ?? 300))),
     language: preferences.language === 'pt-BR' ? 'pt-BR' : 'en',
     accountCreated: legacyAccountCreated,
     displayName: preferences.displayName.trim(),
     profileImageUrl: preferences.profileImageUrl.trim(),
+    todoStoragePath: preferences.todoStoragePath.trim(),
     spotifyClientId: preferences.spotifyClientId.trim(),
     spotifyClientSecret: preferences.spotifyClientSecret.trim(),
     uiZoom: clampUiZoom(preferences.uiZoom),
     spawnConcurrency: clampSpawnConcurrency(preferences.spawnConcurrency),
+    resourcePolicy: {
+      mode: resourcePolicy.mode === 'manual' ? 'manual' : 'smart-lru',
+      memoryBudgetMb,
+      warningThresholdMb,
+      recoveryTargetMb,
+      hiddenAgentIdleMinutes: Math.min(
+        240,
+        Math.max(5, Math.round(resourcePolicy.hiddenAgentIdleMinutes)),
+      ),
+      hiddenShellIdleMinutes: Math.min(
+        480,
+        Math.max(5, Math.round(resourcePolicy.hiddenShellIdleMinutes)),
+      ),
+      spawnGraceSeconds: Math.min(
+        900,
+        Math.max(30, Math.round(resourcePolicy.spawnGraceSeconds)),
+      ),
+    },
   }
+}
+
+function normalizeTodos(raw: unknown): TodoItem[] {
+  if (!Array.isArray(raw)) return []
+  const seen = new Set<string>()
+  const result: TodoItem[] = []
+  for (const item of raw) {
+    const id = typeof item?.id === 'string' ? item.id : ''
+    const title = normalizeTodoTitle(item?.title)
+    if (!id || !title || seen.has(id)) continue
+    seen.add(id)
+    result.push({ id, title, completed: Boolean(item?.completed), tags: normalizeTodoTags(item?.tags) })
+  }
+  return [
+    ...result.filter((item) => !item.completed),
+    ...result.filter((item) => item.completed),
+  ]
 }
 
 function migrateWorkspaceNavigation(base: {
@@ -525,7 +629,13 @@ function migrateWorkspaceNavigation(base: {
 
 /** Migra arquivos antigos e normaliza snapshots restauráveis. */
 function migrate(parsed: any): ProjectsFile {
-  if (parsed.version === 2 || parsed.version === 3 || parsed.version === 4) {
+  if (
+    parsed.version === 2 ||
+    parsed.version === 3 ||
+    parsed.version === 4 ||
+    parsed.version === 5 ||
+    parsed.version === 6
+  ) {
     // backfill parentGroupId (v2.1) — grupos antigos viram raiz.
     const groups = (parsed.groups ?? []).map((g: any) => ({
       ...g,
@@ -535,10 +645,11 @@ function migrate(parsed: any): ProjectsFile {
     const base = {
       ...EMPTY_PROJECTS_FILE,
       ...parsed,
-      version: 4 as const,
+      version: 6 as const,
       preferences,
       groups,
       ungroupedOrder: parsed.ungroupedOrder ?? [],
+      todos: normalizeTodos(parsed.todos),
     }
     return {
       ...base,
@@ -576,10 +687,11 @@ function migrate(parsed: any): ProjectsFile {
     }))
 
   return {
-    version: 4,
+    version: 6,
     groups: [],
     ungroupedOrder: projects.map((p) => p.id),
     projects,
+    todos: [],
     activeProjectId: parsed.activeProjectId ?? projects[0]?.id ?? null,
     workspace: migrateWorkspaceNavigation({
       workspace: {
@@ -1966,6 +2078,49 @@ export const useProjectsStore = create<ProjectsState>((set, get) => {
       return pane
     },
 
+    createWebPane: (projectId, args) => {
+      const pane = makeWebPane(args)
+      update((state) => {
+        const projects = state.projects.map((project) =>
+          project.id === projectId
+            ? { ...project, terminals: [...project.terminals, pane] }
+            : project,
+        )
+        const project = projects.find((entry) => entry.id === projectId)
+        const layout = project?.layoutMode ?? 'auto'
+        const existing = state.workspace.containers.find(
+          (container) => container.projectId === projectId,
+        )
+        const containers = existing
+          ? state.workspace.containers.map((container) =>
+              container.projectId === projectId
+                ? {
+                    ...container,
+                    paneIds: [...container.paneIds, pane.id],
+                    lastUsedAt: Date.now(),
+                  }
+                : container,
+            )
+          : [...state.workspace.containers, newContainer(projectId, [pane.id], layout)]
+        return {
+          projects,
+          workspace: {
+            ...state.workspace,
+            containers,
+            recentProjectIds: rememberProjectTab(
+              state.workspace.recentProjectIds,
+              projectId,
+            ),
+            recentTabs: rememberWorkspaceTab(state.workspace.recentTabs, {
+              kind: 'project',
+              id: projectId,
+            }),
+          },
+        }
+      })
+      return pane
+    },
+
     renameTerminal: (projectId, terminalId, name) =>
       updateTerminal(projectId, terminalId, (t) => ({ ...t, name })),
 
@@ -2362,6 +2517,70 @@ export const useProjectsStore = create<ProjectsState>((set, get) => {
         preferences: { ...state.preferences, workspaceFlat: flat },
       })),
 
+    /* ------------ todos globais ------------ */
+
+    createTodo: (rawTitle, rawTags = []) => {
+      const title = normalizeTodoTitle(rawTitle)
+      if (!title) return null
+      const todo: TodoItem = { id: nanoid(), title, completed: false, tags: normalizeTodoTags(rawTags) }
+      update((state) => {
+        const completedIndex = state.todos.findIndex((item) => item.completed)
+        const insertAt = completedIndex === -1 ? state.todos.length : completedIndex
+        return {
+          todos: [
+            ...state.todos.slice(0, insertAt),
+            todo,
+            ...state.todos.slice(insertAt),
+          ],
+        }
+      })
+      return todo
+    },
+
+    renameTodo: (id, rawTitle) => {
+      const title = normalizeTodoTitle(rawTitle)
+      if (!title) return
+      update((state) => ({
+        todos: state.todos.map((item) => (item.id === id ? { ...item, title } : item)),
+      }))
+    },
+
+    updateTodoTags: (id, tags) =>
+      update((state) => ({
+        todos: state.todos.map((item) =>
+          item.id === id ? { ...item, tags: normalizeTodoTags(tags) } : item,
+        ),
+      })),
+
+    resetTodosToDefault: () =>
+      update(() => ({
+        todos: DEFAULT_TODOS.map((item) => ({ ...item, id: nanoid() })),
+      })),
+
+    toggleTodo: (id) =>
+      update((state) => {
+        const current = state.todos.find((item) => item.id === id)
+        if (!current) return
+        const changed = { ...current, completed: !current.completed }
+        const remaining = state.todos.filter((item) => item.id !== id)
+        if (changed.completed) return { todos: [...remaining, changed] }
+        const firstCompleted = remaining.findIndex((item) => item.completed)
+        const insertAt = firstCompleted === -1 ? remaining.length : firstCompleted
+        return {
+          todos: [
+            ...remaining.slice(0, insertAt),
+            changed,
+            ...remaining.slice(insertAt),
+          ],
+        }
+      }),
+
+    deleteTodo: (id) =>
+      update((state) => ({ todos: state.todos.filter((item) => item.id !== id) })),
+
+    reorderTodo: (draggedId, targetId) =>
+      update((state) => ({ todos: reorderTodoItems(state.todos, draggedId, targetId) })),
+
     /* ------------ sub-tabs ------------ */
 
     createSubTab: (projectId, terminalId, args) => {
@@ -2374,6 +2593,7 @@ export const useProjectsStore = create<ProjectsState>((set, get) => {
         lastUsedAt: now,
         ptyId: null,
         extraArgs: args.extraArgs,
+        runtimeProfile: args.runtimeProfile,
       }
       updateTerminal(projectId, terminalId, (t) => ({
         ...t,

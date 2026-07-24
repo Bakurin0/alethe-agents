@@ -1,3 +1,4 @@
+import { releaseSessionClaim } from './sessionDiscovery'
 import { removeSession } from './sessionResume'
 import { killPty } from './tauri'
 import { useTerminalsStore } from '../stores/terminalsStore'
@@ -9,6 +10,7 @@ export function cleanupPtys(ptyIds: Array<string | null | undefined>): void {
   const { unregister } = useTerminalsStore.getState()
   for (const ptyId of uniqueIds) {
     removeSession(ptyId)
+    releaseSessionClaim(ptyId)
     unregister(ptyId)
     void killPty(ptyId).catch(() => {
       // The PTY may already have exited or been killed by another action.

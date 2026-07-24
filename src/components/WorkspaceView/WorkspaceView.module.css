@@ -1,22 +1,43 @@
 .workspace {
   flex: 1;
+  width: 100%;
+  height: 100%;
   display: flex;
   flex-direction: column;
   background: var(--bg);
   min-width: 0;
+  min-height: 0;
+  overflow: hidden;
 }
 
 .area {
   flex: 1;
   position: relative;
-  padding: 10px;
+  padding: 0;
   overflow: hidden;
+  min-width: 0;
+  min-height: 0;
 }
 
 .singlePane,
 .fullSize {
   width: 100%;
   height: 100%;
+  min-width: 0;
+  min-height: 0;
+  overflow: hidden;
+}
+
+.fullSize :global([data-panel]) {
+  min-width: 0;
+  min-height: 0;
+  overflow: hidden;
+}
+
+.gridCell {
+  min-width: 0;
+  min-height: 0;
+  overflow: hidden;
 }
 
 /* Separators visíveis com gap + dot handle ao hover. Usadas via prop
@@ -31,12 +52,14 @@
   transition: background 0.12s ease;
 }
 .sepH {
-  width: 12px;
+  width: 1px;
   cursor: col-resize;
+  background: var(--border);
 }
 .sepV {
-  height: 12px;
+  height: 1px;
   cursor: row-resize;
+  background: var(--border);
 }
 
 /* Linha sutil sempre visível no meio do separator. */
@@ -53,11 +76,11 @@
   transform: translate(-50%, -50%);
 }
 .sepH::before {
-  width: 2px;
+  width: 0;
   height: 100%;
 }
 .sepV::before {
-  height: 2px;
+  height: 0;
   width: 100%;
 }
 
@@ -79,11 +102,11 @@
   transform: translate(-50%, -50%);
 }
 .sepH::after {
-  width: 4px;
+  width: 3px;
   height: 36px;
 }
 .sepV::after {
-  height: 4px;
+  height: 3px;
   width: 36px;
 }
 .sepH:hover::after,

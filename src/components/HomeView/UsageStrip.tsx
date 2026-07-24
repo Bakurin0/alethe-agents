@@ -366,15 +366,15 @@ function CodexCard({ usage }: { usage: CodexUsage | null }) {
   )
 }
 
-export function UsageStrip() {
+export function UsageStrip({ showActivity = true }: { showActivity?: boolean }) {
   const claudeUsage = useUiStore((s) => s.claudeUsage)
   const codexUsage = useUiStore((s) => s.codexUsage)
 
   return (
-    <div className={styles.usageStrip}>
+    <div className={`${styles.usageStrip} ${showActivity ? '' : styles.usageStripTwo}`}>
       <ClaudeCard usage={claudeUsage} />
       <CodexCard usage={codexUsage} />
-      <ActivityGraph />
+      {showActivity ? <ActivityGraph /> : null}
     </div>
   )
 }

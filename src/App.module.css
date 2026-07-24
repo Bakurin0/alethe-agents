@@ -1,8 +1,62 @@
+.appShell {
+  width: 100vw;
+  height: 100dvh;
+  max-height: 100dvh;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  background: var(--bg);
+}
+
+.shellBody {
+  flex: 1 1 0;
+  width: 100%;
+  height: auto !important;
+  min-height: 0;
+  min-width: 0;
+  overflow: hidden;
+}
+
+.shellBody :global([data-panel]) {
+  min-width: 0;
+  min-height: 0;
+  overflow: hidden;
+}
+
+.mainView {
+  display: flex;
+  width: 100%;
+  height: 100%;
+  min-width: 0;
+  min-height: 0;
+  overflow: hidden;
+  background: var(--bg);
+}
+
+.shellSeparator {
+  position: relative;
+  width: 1px;
+  flex: 0 0 1px;
+  background: var(--border);
+  transition: background-color 120ms ease;
+}
+
+.shellSeparator::after {
+  content: '';
+  position: absolute;
+  inset: 0 -3px;
+}
+
+.shellSeparator:hover,
+.shellSeparator[data-resize-handle-active] {
+  background: var(--border-strong);
+}
+
 .loadingScreen {
   display: grid;
   place-items: center;
-  width: 100vw;
-  height: 100vh;
+  width: 100%;
+  height: 100%;
   overflow: hidden;
   background:
     radial-gradient(circle at 50% 42%, var(--accent-soft), transparent 30%),

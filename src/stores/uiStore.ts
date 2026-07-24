@@ -1,5 +1,5 @@
 import { create } from 'zustand'
-import type { ClaudeUsage, CodexUsage, MemoryStats } from '../lib/tauri'
+import type { ClaudeUsage, CodexUsage, MemoryStats, RuntimeSnapshot } from '../lib/tauri'
 import type { AgentType } from '../lib/types'
 import type { UpdateInfo } from '../lib/updater'
 
@@ -15,6 +15,7 @@ type ModalKind =
   | 'editGroup'
   | 'editProject'
   | 'newTerminal'
+  | 'addContent'
   | 'newSubTab'
   | 'preferences'
   | 'findJump'
@@ -23,14 +24,17 @@ type ModalKind =
   | 'layoutDesigner'
   | 'suspendGroup'
   | 'memoryAnalytics'
+  | 'aiUsage'
   | 'themePicker'
   | 'profiles'
   | 'sync'
+  | 'todoSettings'
   | 'topbarSettings'
   | 'updateAvailable'
   | null
 
 export type ActiveView = 'home' | 'workspace' | 'agentCanvas'
+export type RightSidebarMode = 'todo' | 'markdown'
 
 export type MemorySample = MemoryStats & {
   ts: number
@@ -53,9 +57,9 @@ type UiState = {
   openModal: ModalKind
   modalContext: Record<string, unknown> | null
   showMainMenu: boolean
-  sidebarVisible: boolean
   ramMb: number | null
   memoryStats: MemoryStats | null
+  runtimeSnapshot: RuntimeSnapshot | null
   memoryHistory: MemorySample[]
   claudeUsage: ClaudeUsage | null
   codexUsage: CodexUsage | null
@@ -66,6 +70,9 @@ type UiState = {
   activeTerminal: { projectId: string; terminalId: string } | null
   /** View principal sendo exibida no main. */
   activeView: ActiveView
+  /** Conteúdo contextual da sidebar direita. */
+  rightSidebarMode: RightSidebarMode
+  rightSidebarMarkdown: { path: string; title: string } | null
   /** POC do agent canvas: pasta escolhida + id do PTY do claude embutido. */
   agentCanvasSession: { folder: string; ptyId: string } | null
   /** Teto de gasto (USD) da sessão do canvas. null = sem teto. */
@@ -82,9 +89,9 @@ type UiState = {
   openModal_: (kind: Exclude<ModalKind, null>, context?: Record<string, unknown>) => void
   closeModal: () => void
   toggleMainMenu: () => void
-  toggleSidebar: () => void
   setRamMb: (value: number | null) => void
   addMemorySample: (value: MemoryStats) => void
+  setRuntimeSnapshot: (value: RuntimeSnapshot | null) => void
   clearMemoryHistory: () => void
   setClaudeUsage: (value: ClaudeUsage | null) => void
   setCodexUsage: (value: CodexUsage | null) => void
@@ -93,6 +100,8 @@ type UiState = {
   setActiveTerminal: (projectId: string, terminalId: string) => void
   setActiveView: (v: ActiveView) => void
   toggleHome: () => void
+  openMarkdownSidebar: (path: string, title?: string) => void
+  showTodoSidebar: () => void
   setAgentCanvasSession: (session: { folder: string; ptyId: string } | null) => void
   setAgentCanvasBudget: (usd: number | null) => void
   pushToast: (toast: {
@@ -113,9 +122,9 @@ export const useUiStore = create<UiState>((set) => ({
   openModal: null,
   modalContext: null,
   showMainMenu: false,
-  sidebarVisible: true,
   ramMb: null,
   memoryStats: null,
+  runtimeSnapshot: null,
   memoryHistory: [],
   claudeUsage: null,
   codexUsage: null,
@@ -123,6 +132,8 @@ export const useUiStore = create<UiState>((set) => ({
   focusRequest: null,
   activeTerminal: null,
   activeView: 'workspace',
+  rightSidebarMode: 'todo',
+  rightSidebarMarkdown: null,
   agentCanvasSession: null,
   agentCanvasBudgetUsd: null,
   toasts: [],
@@ -133,7 +144,6 @@ export const useUiStore = create<UiState>((set) => ({
   openModal_: (kind, context) => set({ openModal: kind, modalContext: context ?? null }),
   closeModal: () => set({ openModal: null, modalContext: null }),
   toggleMainMenu: () => set((s) => ({ showMainMenu: !s.showMainMenu })),
-  toggleSidebar: () => set((s) => ({ sidebarVisible: !s.sidebarVisible })),
   setRamMb: (value) => set({ ramMb: value }),
   addMemorySample: (value) =>
     set((s) => ({
@@ -141,6 +151,7 @@ export const useUiStore = create<UiState>((set) => ({
       memoryStats: value,
       memoryHistory: [...s.memoryHistory, { ...value, ts: Date.now() }].slice(-MAX_MEMORY_HISTORY),
     })),
+  setRuntimeSnapshot: (value) => set({ runtimeSnapshot: value }),
   clearMemoryHistory: () => set({ memoryHistory: [] }),
   setClaudeUsage: (value) => set({ claudeUsage: value }),
   setCodexUsage: (value) => set({ codexUsage: value }),
@@ -151,6 +162,12 @@ export const useUiStore = create<UiState>((set) => ({
     set((s) => (s.activeView === v ? s : { activeView: v })),
   toggleHome: () =>
     set((s) => ({ activeView: s.activeView === 'home' ? 'workspace' : 'home' })),
+  openMarkdownSidebar: (path, title) =>
+    set({
+      rightSidebarMode: 'markdown',
+      rightSidebarMarkdown: { path, title: title || path.split(/[\\/]/).pop() || path },
+    }),
+  showTodoSidebar: () => set({ rightSidebarMode: 'todo', rightSidebarMarkdown: null }),
   setAgentCanvasSession: (session) => set({ agentCanvasSession: session }),
   setAgentCanvasBudget: (usd) => set({ agentCanvasBudgetUsd: usd }),
   pushToast: ({ title, body, agent, silent }) =>

@@ -1,7 +1,10 @@
 import * as Dialog from '@radix-ui/react-dialog'
 import {
   Check,
+  Blocks,
   ChevronRight,
+  GitBranch,
+  ListTodo,
   Minus,
   Palette,
   Plug,
@@ -16,6 +19,7 @@ import {
 import { useEffect, useMemo, useRef, useState } from 'react'
 
 import { AgentIcon } from '../icons/AgentIcons'
+import { FEATURES } from '../../lib/features'
 import { LOCALES, useT } from '../../lib/i18n'
 import { isMacOS } from '../../lib/platform'
 import { getProfileImageUrl, getProfileInitial } from '../../lib/profile'
@@ -32,7 +36,7 @@ import { ImageInput } from './ImageInput'
 import controls from './controls.module.css'
 import styles from './PreferencesModal.module.css'
 
-type CategoryId = 'account' | 'appearance' | 'terminal' | 'integrations'
+type CategoryId = 'account' | 'appearance' | 'features' | 'terminal' | 'integrations'
 
 type Category = {
   id: CategoryId
@@ -58,6 +62,11 @@ const AGENTS: { id: AgentType; label: string }[] = [
   { id: 'mimo', label: 'Mimo Code' },
 ]
 
+const FEATURE_ICONS = {
+  todos: ListTodo,
+  git: GitBranch,
+} as const
+
 export function PreferencesModal() {
   const t = useT()
   const open = useUiStore((state) => state.openModal === 'preferences')
@@ -75,6 +84,7 @@ export function PreferencesModal() {
     () => [
       { id: 'account', label: t('prefs.categoryAccount'), description: t('prefs.categoryAccountDesc'), Icon: UserRound },
       { id: 'appearance', label: t('prefs.categoryAppearance'), description: t('prefs.categoryAppearanceDesc'), Icon: Palette },
+      { id: 'features', label: t('prefs.features'), description: t('prefs.featuresDesc'), Icon: Blocks },
       { id: 'terminal', label: t('prefs.categoryTerminal'), description: t('prefs.categoryTerminalDesc'), Icon: TerminalSquare },
       { id: 'integrations', label: t('prefs.categoryIntegrations'), description: t('prefs.categoryIntegrationsDesc'), Icon: Plug },
     ],
@@ -88,8 +98,9 @@ export function PreferencesModal() {
       { category: 'account', target: 'local-accounts', label: t('prefs.localAccounts'), description: t('prefs.localAccountsDesc'), keywords: 'account profile conta perfil local switch trocar' },
       { category: 'appearance', target: 'ui-theme', label: t('prefs.uiTheme'), description: t('prefs.uiThemeDesc'), keywords: 'theme tema colors cores light dark claro escuro' },
       { category: 'appearance', target: 'ui-zoom', label: t('prefs.uiZoom'), description: t('prefs.uiZoomDesc'), keywords: 'zoom scale escala tamanho interface' },
-      { category: 'appearance', target: 'git-control', label: t('prefs.gitControl'), description: t('prefs.gitControlDesc'), keywords: 'git source control sidebar version controle versao' },
+      { category: 'features', target: 'optional-features', label: t('prefs.features'), description: t('prefs.featuresDesc'), keywords: 'features recursos modules módulos todo task tarefa git source control sidebar' },
       { category: 'terminal', target: 'terminal-theme', label: t('prefs.terminalTheme'), description: t('prefs.terminalThemeDesc'), keywords: 'terminal theme tema colors cores' },
+      { category: 'terminal', target: 'resource-policy', label: t('prefs.resourcePolicy'), description: t('prefs.resourcePolicyDesc'), keywords: 'memory ram performance budget limit lru suspend memória desempenho limite' },
       { category: 'terminal', target: 'spawn-concurrency', label: t('prefs.spawnConcurrency'), description: t('prefs.spawnConcurrencyDesc'), keywords: 'spawn concurrency parallel paralelo fila queue performance pty' },
       { category: 'terminal', target: 'agents', label: t('prefs.agentsTitle'), description: t('prefs.agentsDesc'), keywords: 'agents agentes claude codex opencode shell' },
       { category: 'terminal', target: 'reset-session', label: t('prefs.resetSession'), description: t('prefs.resetSessionDesc'), keywords: 'reset session resume retomar resetar sessão última last recover recuperar resume crash boot' },
@@ -269,6 +280,7 @@ export function PreferencesModal() {
                   />
                 ) : null}
                 {category === 'appearance' ? <AppearancePage /> : null}
+                {category === 'features' ? <FeaturesPage /> : null}
                 {category === 'terminal' ? <TerminalPage enabledCount={enabledCount} /> : null}
                 {category === 'integrations' ? <IntegrationsPage /> : null}
               </div>
@@ -353,7 +365,6 @@ function AppearancePage() {
   const preferences = useProjectsStore((state) => state.preferences)
   const setUiTheme = useProjectsStore((state) => state.setUiTheme)
   const setUiZoom = useProjectsStore((state) => state.setUiZoom)
-  const setPreferences = useProjectsStore((state) => state.setPreferences)
   return (
     <>
       <SettingsSection id="ui-theme" title={t('prefs.uiTheme')} description={t('prefs.uiThemeDesc')}>
@@ -405,13 +416,59 @@ function AppearancePage() {
         </div>
       </SettingsSection>
 
-      <SettingsSection id="git-control" title={t('prefs.gitControl')} description={t('prefs.gitControlDesc')}>
-        <div className={styles.segmented}>
-          <button type="button" className={preferences.showGitControl ? styles.segmentActive : undefined} onClick={() => setPreferences({ showGitControl: true })}>{t('prefs.gitControlShow')}</button>
-          <button type="button" className={!preferences.showGitControl ? styles.segmentActive : undefined} onClick={() => setPreferences({ showGitControl: false })}>{t('prefs.gitControlHide')}</button>
-        </div>
-      </SettingsSection>
     </>
+  )
+}
+
+function FeaturesPage() {
+  const t = useT()
+  const preferences = useProjectsStore((state) => state.preferences)
+  const setPreferences = useProjectsStore((state) => state.setPreferences)
+
+  return (
+    <SettingsSection
+      id="optional-features"
+      title={t('prefs.features')}
+      description={t('prefs.featuresDesc')}
+    >
+      <div className={styles.featureList}>
+        {FEATURES.map((feature) => {
+          const enabled = preferences.enabledFeatures[feature.id]
+          const FeatureIcon = FEATURE_ICONS[feature.id]
+          return (
+            <button
+              key={feature.id}
+              type="button"
+              className={enabled ? styles.featureEnabled : undefined}
+              onClick={() =>
+                setPreferences({
+                  enabledFeatures: {
+                    ...preferences.enabledFeatures,
+                    [feature.id]: !enabled,
+                  },
+                  ...(feature.id === 'todos' && !enabled
+                    ? { rightSidebarVisible: true }
+                    : {}),
+                })
+              }
+              aria-pressed={enabled}
+            >
+              <span className={styles.featureIcon}><FeatureIcon size={17} /></span>
+              <span className={styles.featureCopy}>
+                <strong>{t(feature.titleKey)}</strong>
+                <span>{t(feature.descriptionKey)}</span>
+              </span>
+              <span className={styles.featureStatus}>
+                {enabled ? t('prefs.featureEnabled') : t('prefs.featureDisabled')}
+              </span>
+              <span className={styles.featureSwitch} aria-hidden>
+                <span />
+              </span>
+            </button>
+          )
+        })}
+      </div>
+    </SettingsSection>
   )
 }
 
@@ -424,6 +481,30 @@ function TerminalPage({ enabledCount }: { enabledCount: number }) {
   const pushToast = useUiStore((state) => state.pushToast)
   const [resetting, setResetting] = useState(false)
   const concurrency = preferences.spawnConcurrency
+  const resourcePolicy = preferences.resourcePolicy
+  const setResourcePolicy = (
+    patch: Partial<typeof resourcePolicy>,
+  ) => {
+    const next = { ...resourcePolicy, ...patch }
+    next.memoryBudgetMb = Math.min(8192, Math.max(768, Math.round(next.memoryBudgetMb)))
+    next.warningThresholdMb = Math.min(
+      next.memoryBudgetMb - 64,
+      Math.max(512, Math.round(next.warningThresholdMb)),
+    )
+    next.recoveryTargetMb = Math.min(
+      next.warningThresholdMb - 64,
+      Math.max(384, Math.round(next.recoveryTargetMb)),
+    )
+    next.hiddenAgentIdleMinutes = Math.min(
+      240,
+      Math.max(5, Math.round(next.hiddenAgentIdleMinutes)),
+    )
+    next.hiddenShellIdleMinutes = Math.min(
+      480,
+      Math.max(5, Math.round(next.hiddenShellIdleMinutes)),
+    )
+    setPreferences({ resourcePolicy: next })
+  }
   const setConcurrency = (n: number) =>
     setPreferences({
       spawnConcurrency: Math.min(
@@ -451,6 +532,38 @@ function TerminalPage({ enabledCount }: { enabledCount: number }) {
 
   return (
     <>
+      <SettingsSection id="resource-policy" title={t('prefs.resourcePolicy')} description={t('prefs.resourcePolicyDesc')}>
+        <div className={styles.resourceControls}>
+          <div className={styles.segmented}>
+            <button type="button" className={resourcePolicy.mode === 'smart-lru' ? styles.segmentActive : undefined} onClick={() => setResourcePolicy({ mode: 'smart-lru' })}>{t('prefs.resourcePolicySmart')}</button>
+            <button type="button" className={resourcePolicy.mode === 'manual' ? styles.segmentActive : undefined} onClick={() => setResourcePolicy({ mode: 'manual' })}>{t('prefs.resourcePolicyManual')}</button>
+          </div>
+          <div className={styles.resourceGrid}>
+            <label>
+              <span>{t('prefs.resourceBudget')}</span>
+              <input type="number" min={768} max={8192} step={128} value={resourcePolicy.memoryBudgetMb} onChange={(event) => setResourcePolicy({ memoryBudgetMb: Number(event.target.value) })} />
+            </label>
+            <label>
+              <span>{t('prefs.resourceWarning')}</span>
+              <input type="number" min={512} max={resourcePolicy.memoryBudgetMb - 64} step={64} value={resourcePolicy.warningThresholdMb} onChange={(event) => setResourcePolicy({ warningThresholdMb: Number(event.target.value) })} />
+            </label>
+            <label>
+              <span>{t('prefs.resourceRecovery')}</span>
+              <input type="number" min={384} max={resourcePolicy.warningThresholdMb - 64} step={64} value={resourcePolicy.recoveryTargetMb} onChange={(event) => setResourcePolicy({ recoveryTargetMb: Number(event.target.value) })} />
+            </label>
+            <label>
+              <span>{t('prefs.resourceAgentIdle')}</span>
+              <input type="number" min={5} max={240} step={5} value={resourcePolicy.hiddenAgentIdleMinutes} onChange={(event) => setResourcePolicy({ hiddenAgentIdleMinutes: Number(event.target.value) })} />
+            </label>
+            <label>
+              <span>{t('prefs.resourceShellIdle')}</span>
+              <input type="number" min={5} max={480} step={5} value={resourcePolicy.hiddenShellIdleMinutes} onChange={(event) => setResourcePolicy({ hiddenShellIdleMinutes: Number(event.target.value) })} />
+            </label>
+          </div>
+          <p className={styles.resourceHint}>{resourcePolicy.mode === 'smart-lru' ? t('prefs.resourcePolicySmartHint') : t('prefs.resourcePolicyManualHint')}</p>
+        </div>
+      </SettingsSection>
+
       <SettingsSection id="spawn-concurrency" title={t('prefs.spawnConcurrency')} description={t('prefs.spawnConcurrencyDesc')}>
         <div className={styles.zoomControl}>
           <button
@@ -514,6 +627,13 @@ function TerminalPage({ enabledCount }: { enabledCount: number }) {
         <div className={styles.segmented}>
           <button type="button" className={preferences.notifyOnLimitReset ? styles.segmentActive : undefined} onClick={() => setPreferences({ notifyOnLimitReset: true })}>{t('prefs.limitResetNotifyOn')}</button>
           <button type="button" className={!preferences.notifyOnLimitReset ? styles.segmentActive : undefined} onClick={() => setPreferences({ notifyOnLimitReset: false })}>{t('prefs.limitResetNotifyOff')}</button>
+        </div>
+      </SettingsSection>
+
+      <SettingsSection id="dictation" title={t('prefs.dictation')} description={t('prefs.dictationDesc')}>
+        <div className={styles.segmented}>
+          <button type="button" className={preferences.dictationEnabled ? styles.segmentActive : undefined} onClick={() => setPreferences({ dictationEnabled: true })}>{t('prefs.dictationOn')}</button>
+          <button type="button" className={!preferences.dictationEnabled ? styles.segmentActive : undefined} onClick={() => setPreferences({ dictationEnabled: false })}>{t('prefs.dictationOff')}</button>
         </div>
       </SettingsSection>
 

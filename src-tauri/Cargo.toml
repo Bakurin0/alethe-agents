@@ -55,8 +55,11 @@ winreg = "0.52"
 windows-sys = { version = "0.61", features = [
   "Win32_Foundation",
   "Win32_System_DataExchange",
+  "Win32_System_JobObjects",
   "Win32_System_Memory",
   "Win32_System_Ole",
+  "Win32_System_ProcessStatus",
+  "Win32_System_Threading",
 ] }
 
 # Em dev, unwind permite que um panic de comando vire Err em vez de derrubar o
