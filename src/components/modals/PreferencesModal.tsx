@@ -120,6 +120,7 @@ export function PreferencesModal() {
       { category: 'terminal', target: 'reset-session', label: t('prefs.resetSession'), description: t('prefs.resetSessionDesc'), keywords: 'reset session resume retomar resetar sessão última last recover recuperar resume crash boot' },
       { category: 'integrations', target: 'spotify', label: t('prefs.spotify'), description: t('prefs.spotifyDesc'), keywords: 'spotify music música client id secret' },
       { category: 'integrations', target: 'discord', label: t('prefs.discordPresence'), description: t('prefs.discordPresenceHint'), keywords: 'discord rich presence status integração' },
+      { category: 'integrations', target: 'dictation', label: t('prefs.dictation'), description: t('prefs.dictationDesc'), keywords: 'dictation voice mic microphone ditado voz microfone handy speech' },
     ],
     [t],
   )
@@ -645,13 +646,6 @@ function TerminalPage({ enabledCount }: { enabledCount: number }) {
         </div>
       </SettingsSection>
 
-      <SettingsSection id="dictation" title={t('prefs.dictation')} description={t('prefs.dictationDesc')}>
-        <div className={styles.segmented}>
-          <button type="button" className={preferences.dictationEnabled ? styles.segmentActive : undefined} onClick={() => setPreferences({ dictationEnabled: true })}>{t('prefs.dictationOn')}</button>
-          <button type="button" className={!preferences.dictationEnabled ? styles.segmentActive : undefined} onClick={() => setPreferences({ dictationEnabled: false })}>{t('prefs.dictationOff')}</button>
-        </div>
-      </SettingsSection>
-
       {isMacOS() ? (
         <SettingsSection
           id="native-terminal-macos"
@@ -714,6 +708,14 @@ function IntegrationsPage() {
           <button type="button" className={preferences.discordRichPresenceEnabled ? styles.segmentActive : undefined} onClick={() => setPreferences({ discordRichPresenceEnabled: true })}>{t('prefs.discordPresenceEnabled')}</button>
           <button type="button" className={!preferences.discordRichPresenceEnabled ? styles.segmentActive : undefined} onClick={() => setPreferences({ discordRichPresenceEnabled: false })}>{t('prefs.discordPresenceDisabled')}</button>
         </div>
+      </SettingsSection>
+
+      <SettingsSection id="dictation" title={t('prefs.dictation')} description={t('prefs.dictationDesc')}>
+        <div className={styles.segmented}>
+          <button type="button" className={preferences.dictationEnabled ? styles.segmentActive : undefined} onClick={() => setPreferences({ dictationEnabled: true })}>{t('prefs.dictationOn')}</button>
+          <button type="button" className={!preferences.dictationEnabled ? styles.segmentActive : undefined} onClick={() => setPreferences({ dictationEnabled: false })}>{t('prefs.dictationOff')}</button>
+        </div>
+        <p>{t('prefs.dictationHandyHint')}</p>
       </SettingsSection>
     </>
   )

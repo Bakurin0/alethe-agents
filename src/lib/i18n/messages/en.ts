@@ -235,6 +235,7 @@ export const en = {
   'prefs.dictationDesc': 'Show a mic button to dictate (speech-to-text) into the active terminal. Off by default.',
   'prefs.dictationOn': 'On',
   'prefs.dictationOff': 'Off',
+  'prefs.dictationHandyHint': 'For richer dictation (open-source, more control over the model), try Handy (github.com/cjpais/Handy) alongside this — it types straight into the focused terminal, same as this built-in toggle.',
   'dictation.label': 'Voice dictation',
   'dictation.start': 'Start dictation',
   'dictation.stop': 'Stop dictation',

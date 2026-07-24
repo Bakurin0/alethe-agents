@@ -235,6 +235,7 @@ export const ptBR: Record<MessageKey, string> = {
   'prefs.dictationDesc': 'Mostra um botão de microfone pra ditar (voz → texto) no terminal ativo. Desligado por padrão.',
   'prefs.dictationOn': 'Ligado',
   'prefs.dictationOff': 'Desligado',
+  'prefs.dictationHandyHint': 'Pra um ditado mais rico (open-source, mais controle sobre o modelo), experimente o Handy (github.com/cjpais/Handy) junto com isso — ele digita direto no terminal focado, igual esse toggle nativo.',
   'dictation.label': 'Ditado por voz',
   'dictation.start': 'Iniciar ditado',
   'dictation.stop': 'Parar ditado',
