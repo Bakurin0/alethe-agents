@@ -10,6 +10,12 @@ edition = "2021"
 name = "alethe_lib"
 crate-type = ["staticlib", "cdylib", "rlib"]
 
+[lints.rust]
+# ghostty_linked é um cfg custom (ligado só quando o backend nativo Ghostty é
+# linkado no build, ver build.rs) — sem isso o compilador avisa "unexpected
+# cfg" toda vez que aparece em #[cfg(...)] (lib.rs, ghostty_bridge.rs).
+unexpected_cfgs = { level = "warn", check-cfg = ["cfg(ghostty_linked)"] }
+
 [build-dependencies]
 tauri-build = { version = "2", features = [] }
 

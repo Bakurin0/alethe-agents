@@ -980,6 +980,12 @@
 
 .activityCol {
   display: grid;
+  /* grid-template-columns explícito é o que garante 1 coluna × 7 linhas
+     empilhadas verticalmente — sem isso o auto-placement do grid pode
+     preencher os 7 .activityCell na horizontal (colunas implícitas) em vez
+     de descer pelas linhas definidas, causando desalinhamento/instabilidade
+     visual dependendo de como o motor resolve o auto-flow. */
+  grid-template-columns: 1fr;
   grid-template-rows: repeat(7, 1fr);
   gap: 2px;
   flex: 1;

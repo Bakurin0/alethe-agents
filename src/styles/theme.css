@@ -3,6 +3,36 @@
    hierarquia. Agent colors (shell verde, claude laranja, codex ciano,
    opencode cinza) batem com os ícones existentes. */
 
+/* Transição suave ao trocar de tema (App.tsx seta
+   document.documentElement.dataset.theme = uiTheme, instantâneo por padrão).
+   Custom properties em si não são animáveis, mas as propriedades que as
+   CONSOMEM são — então transicionar essas é o que faz a troca de paleta
+   parecer suave. Curta (150ms) de propósito: rápida o bastante pra não virar
+   "delay perceptível" em feedback de hover/status que hoje é instantâneo;
+   seletores mais específicos (ex.: .activityCell:hover) continuam vencendo a
+   cascata com sua própria transição, então não é 100% universal, mas cobre a
+   grande maioria da UI sem tocar em cada componente. Desliga se o usuário
+   pediu menos animação no SO. */
+*,
+*::before,
+*::after {
+  transition:
+    background-color 0.15s ease,
+    color 0.15s ease,
+    border-color 0.15s ease,
+    fill 0.15s ease,
+    stroke 0.15s ease,
+    box-shadow 0.15s ease;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    transition: none !important;
+  }
+}
+
 :root,
 [data-theme='dark'] {
   /* superfícies */
