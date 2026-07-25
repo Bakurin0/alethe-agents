@@ -807,16 +807,16 @@ pub fn set_pty_read_state(
 
 #[tauri::command]
 pub fn set_pty_priority(
-    sessions: State<'_, PtySessions>,
-    id: String,
-    active: bool,
+    _sessions: State<'_, PtySessions>,
+    _id: String,
+    _active: bool,
 ) -> Result<(), String> {
     #[cfg(windows)]
     unsafe {
-        let sessions = sessions
+        let sessions = _sessions
             .lock()
             .map_err(|_| "PTY sessions lock poisoned".to_string())?;
-        if let Some(session) = sessions.get(&id) {
+        if let Some(session) = sessions.get(&_id) {
             if let Ok(child) = session.child.lock() {
                 if let Some(pid) = child.process_id() {
                     use windows_sys::Win32::Foundation::CloseHandle;

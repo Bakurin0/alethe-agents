@@ -1,7 +1,8 @@
 import { useEffect, useMemo, useRef } from 'react'
 import cytoscape from 'cytoscape'
-import { RefreshCw, Camera, Scissors, RotateCcw } from 'lucide-react'
+import { RefreshCw, Camera, Scissors, RotateCcw, X } from 'lucide-react'
 import { useGraphifyStore } from '../../stores/graphifyStore'
+import { useProjectsStore } from '../../stores/projectsStore'
 import { useT } from '../../lib/i18n'
 import styles from './GraphifyView.module.css'
 
@@ -19,7 +20,9 @@ type GraphifyViewProps = {
   /** Caminho do repositório do projeto ativo (raiz git). */
   repo: string
   /** Id do projeto, para correlacionar eventos no Event Bus. */
-  projectId?: string
+  projectId: string
+  /** Id do terminal (pane) — precisa pra poder se remover do projeto. */
+  terminalId: string
 }
 
 /**
@@ -27,10 +30,11 @@ type GraphifyViewProps = {
  * reusando o Cytoscape. Estados: sem repo, sem grafo, erro, e o grafo em si com
  * snapshots + memory policy.
  */
-export function GraphifyView({ repo, projectId }: GraphifyViewProps) {
+export function GraphifyView({ repo, projectId, terminalId }: GraphifyViewProps) {
   const t = useT()
   const { graph, snapshots, error, loading, load, refreshGraph, snapshot, rollback, prune } =
     useGraphifyStore()
+  const deleteTerminal = useProjectsStore((state) => state.deleteTerminal)
   const canvasRef = useRef<HTMLDivElement>(null)
   const cyRef = useRef<cytoscape.Core | null>(null)
 
@@ -174,6 +178,15 @@ export function GraphifyView({ repo, projectId }: GraphifyViewProps) {
           title={t('graphify.pruneHint', { keep: KEEP_LAST })}
         >
           <Scissors size={13} /> {t('graphify.prune')}
+        </button>
+        <button
+          type="button"
+          className={styles.closeButton}
+          onClick={() => deleteTerminal(projectId, terminalId)}
+          title={t('graphify.close')}
+          aria-label={t('graphify.close')}
+        >
+          <X size={15} />
         </button>
       </div>
 

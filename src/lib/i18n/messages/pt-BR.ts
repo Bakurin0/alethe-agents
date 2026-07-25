@@ -1065,6 +1065,7 @@ export const ptBR: Record<MessageKey, string> = {
   'graphify.reload': 'Recarregar',
   'graphify.snapshot': 'Snapshot',
   'graphify.prune': 'Compactar',
+  'graphify.close': 'Fechar painel do grafo',
   'graphify.pruneHint': 'Mantém os últimos {keep} snapshots',
   'graphify.empty': 'Nenhum grafo encontrado. Rode o Graphify neste repo (graphify-out/graph.json).',
   'graphify.snapshotsTitle': 'Snapshots',

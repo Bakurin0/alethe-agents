@@ -53,6 +53,22 @@
   cursor: default;
 }
 
+.closeButton {
+  width: 22px;
+  height: 22px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 5px;
+  color: var(--fg-faint);
+  cursor: pointer;
+  transition: background 0.1s ease, color 0.1s ease;
+}
+.closeButton:hover {
+  background: var(--status-offline-soft, var(--accent-soft));
+  color: var(--status-offline, var(--fg));
+}
+
 .body {
   display: flex;
   flex: 1;

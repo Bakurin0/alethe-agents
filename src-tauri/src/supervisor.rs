@@ -3,6 +3,7 @@ use std::sync::{Mutex, OnceLock};
 use serde_json::json;
 use nanoid::nanoid;
 
+#[allow(dead_code)]
 pub struct MonitoredAgent {
     pub agent_id: String,
     pub worktree_path: String,

@@ -52,6 +52,7 @@ pub struct ResourceMetrics {
 }
 
 // ── Task Priority ────────────────────────────────────────────────────────
+#[allow(dead_code)]
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
 pub enum TaskPriority {
     Idle = 0,
@@ -60,6 +61,7 @@ pub enum TaskPriority {
     High = 3,
 }
 
+#[allow(dead_code)]
 pub struct ScheduledTask {
     pub priority: TaskPriority,
     pub description: &'static str,
@@ -68,6 +70,7 @@ pub struct ScheduledTask {
 }
 
 impl ScheduledTask {
+    #[allow(dead_code)]
     pub fn new(
         priority: TaskPriority,
         description: &'static str,
@@ -81,6 +84,7 @@ impl ScheduledTask {
         }
     }
 
+    #[allow(dead_code)]
     pub fn with_cancel_key(mut self, key: &str) -> Self {
         self.cancel_key = Some(key.to_string());
         self
@@ -88,6 +92,7 @@ impl ScheduledTask {
 }
 
 // ── Global State ─────────────────────────────────────────────────────────
+#[allow(dead_code)]
 struct ResourceState {
     pressure: MemoryPressureLevel,
     cooldowns: HashMap<MemoryPressureLevel, Instant>,

@@ -384,6 +384,7 @@ pub(crate) fn build_rebuilt_path() -> String {
         .join(";")
 }
 
+#[allow(dead_code)]
 fn split_windows_path_expanded(path: &str) -> Vec<PathBuf> {
     path.split(';')
         .filter_map(|item| {
@@ -397,6 +398,7 @@ fn split_windows_path_expanded(path: &str) -> Vec<PathBuf> {
         .collect()
 }
 
+#[allow(dead_code)]
 fn expand_windows_env_vars(input: &str) -> String {
     let mut output = input.to_string();
     for (key, value) in env::vars() {

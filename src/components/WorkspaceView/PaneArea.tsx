@@ -20,7 +20,7 @@ function Pane({
   paneDragEnabled?: boolean
 }) {
   if (terminal.kind === 'graphify') {
-    return <GraphifyView repo={terminal.cwd} projectId={projectId} />
+    return <GraphifyView repo={terminal.cwd} projectId={projectId} terminalId={terminal.id} />
   }
   if (terminal.kind === 'markdown' || terminal.kind === 'file') {
     return <MarkdownPane projectId={projectId} terminal={terminal} />

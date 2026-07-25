@@ -1064,6 +1064,7 @@ export const en = {
   'graphify.reload': 'Reload',
   'graphify.snapshot': 'Snapshot',
   'graphify.prune': 'Compact',
+  'graphify.close': 'Close graph pane',
   'graphify.pruneHint': 'Keep the last {keep} snapshots',
   'graphify.empty': 'No graph found. Run Graphify in this repo (graphify-out/graph.json).',
   'graphify.snapshotsTitle': 'Snapshots',
