@@ -24,6 +24,13 @@ fn build_parent_map(sys: &mut System) -> HashMap<u32, Vec<u32>> {
     sys.refresh_processes(ProcessesToUpdate::All);
     let mut map: HashMap<u32, Vec<u32>> = HashMap::new();
     for (pid, process) in sys.processes() {
+        // Threads de /proc/<pid>/task/<tid> entram no mesmo mapa do sysinfo
+        // (thread_kind() == Some) — sem filtrar, a árvore fica cheia de
+        // "PIDs" que na verdade são threads do mesmo processo, inflando
+        // contagem/kill de PTY tree e deixando spawn/kill bem mais lentos.
+        if process.thread_kind().is_some() {
+            continue;
+        }
         if let Some(parent) = process.parent() {
             let parent_pid = parent.as_u32();
             map.entry(parent_pid).or_default().push(pid.as_u32());

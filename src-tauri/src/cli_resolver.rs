@@ -105,6 +105,7 @@ pub fn command_builder_for_terminal(
         builder.env("Path", combined);
     }
     builder.env("TERM", "xterm-256color");
+    builder.env("COLORTERM", "truecolor");
     scrub_editor_environment(&mut builder);
     builder.env_remove("EDITOR");
     builder.env_remove("VISUAL");

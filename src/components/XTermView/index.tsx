@@ -16,9 +16,10 @@ import { AgentCompletionMonitor } from '../../lib/agentCompletionMonitor'
 import { preparePtyRuntimeLaunch } from '../../lib/agentRuntimeAdapter'
 import { recordAgentActivityInput } from '../../lib/activityTracker'
 import { buildAgentLaunch } from '../../lib/sessionLaunch'
-import { claimDiscoveredSession, registerSessionClaim } from '../../lib/sessionDiscovery'
+import { claimDiscoveredSession, claimMostRecentSession, registerSessionClaim } from '../../lib/sessionDiscovery'
 import { consumeSession, removeSession, saveSession } from '../../lib/sessionResume'
 import { waitForSessionHint } from '../../lib/sessionWatch'
+import { acquireMountSlot } from '../../lib/mountQueue'
 import { acquireSpawnSlot, releaseSpawnSlot } from '../../lib/spawnQueue'
 import { readScopedStorage, writeScopedStorage } from '../../lib/storageNamespace'
 import { acquireWebglContext } from '../../lib/webglPool'
@@ -456,6 +457,41 @@ export function XTermView({
   >('preparing')
   const [linkActions, setLinkActions] = useState<LinkActionState | null>(null)
   const [dropActive, setDropActive] = useState(false)
+  const [canMount, setCanMount] = useState(false)
+
+  // Enfileira o setup pesado do xterm.js (new Terminal + terminal.open +
+  // addon WebGL/Canvas) quando vários terminais montam juntos (abrir um
+  // container inteiro) — sem isso, todo mundo faz esse trabalho síncrono no
+  // mesmo commit do React e trava o frontend até todos terminarem.
+  useEffect(() => {
+    if (isDormant) {
+      setCanMount(false)
+      return
+    }
+    let cancelled = false
+    let release: (() => void) | null = null
+    void acquireMountSlot().then((rel) => {
+      if (cancelled) {
+        rel()
+        return
+      }
+      release = rel
+      setCanMount(true)
+      // Libera a vaga só depois que o efeito síncrono de montagem (abaixo)
+      // já rodou nesta task — deixa o próximo terminal da fila começar
+      // numa task separada, cedendo o thread pro navegador entre um e outro.
+      window.setTimeout(() => {
+        release?.()
+        release = null
+      }, 0)
+    })
+    return () => {
+      cancelled = true
+      release?.()
+      release = null
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isDormant, ptyId, retryKey])
 
   const hideLinkActions = useCallback(() => {
     setLinkActions(null)
@@ -624,7 +660,7 @@ export function XTermView({
 
   useEffect(() => {
     const container = containerRef.current
-    if (!container || isDormant) return
+    if (!container || isDormant || !canMount) return
 
     let disposed = false
     const spawnQueueAbort = new AbortController()
@@ -668,16 +704,20 @@ export function XTermView({
     const searchAddon = new SearchAddon()
     terminal.loadAddon(fitAddon)
     terminal.loadAddon(searchAddon)
-    // Unicode 11: sem ele o xterm usa tabelas do Unicode 6 e trata emoji como
-    // largura 1 — os glifos saem cortados/sobrepostos. Requer allowProposedApi.
     terminal.loadAddon(new Unicode11Addon())
     try {
       terminal.unicode.activeVersion = '11'
     } catch (e) {
       console.warn('[XTermView] Não foi possível ativar Unicode 11:', e)
     }
+    for (const ident of [4, 10, 11, 12]) {
+      terminal.parser.registerOscHandler(ident, (data) => data.includes('?'))
+    }
     terminal.open(container)
     terminalRef.current = terminal
+    if (command === 'opencode') {
+      terminal.write('\x1b[?7l')
+    }
     const clampHorizontalScroll = () => {
       container.scrollLeft = 0
       const xterm = container.querySelector<HTMLElement>('.xterm')
@@ -721,7 +761,17 @@ export function XTermView({
     } else {
       let webglAddon: WebglAddon | null = null
       releaseWebglContext = acquireWebglContext()
-      if (releaseWebglContext) {
+      if (!releaseWebglContext) {
+        // Pool de contextos WebGL esgotado (orçamento de 4) — sem isso o
+        // terminal ficava preso no renderer DOM padrão (o pior: trava
+        // digitação e "recarrega" visualmente a cada resize). Canvas é bem
+        // mais leve que WebGL mas ainda longe do DOM renderer.
+        try {
+          terminal.loadAddon(new CanvasAddon())
+        } catch (canvasErr) {
+          console.error('[XTermView] Canvas fallback (pool WebGL esgotado) falhou:', canvasErr)
+        }
+      } else {
       try {
         webglAddon = new WebglAddon()
         webglAddon.onContextLoss(() => {
@@ -826,10 +876,16 @@ export function XTermView({
       })
     }
 
+    const QUERY_RESPONSE_REGEX = /\x1b\[(?:\d+;\d+R|\?\d+;\d+\$y|\?\d+;\d+c)/g
+
     const queueTerminalWrite = (chunk: string) => {
       if (!chunk || disposed) return
-      pendingWrite += chunk
-      pendingWriteBytes += chunk.length
+      // Filtra vazamentos de respostas a queries de terminal (ex.: CPR, DECRQM, DA1)
+      // que foram ecoadas de volta pelo PTY antes de entrar em modo raw.
+      const cleaned = chunk.replace(QUERY_RESPONSE_REGEX, '')
+      if (!cleaned) return
+      pendingWrite += cleaned
+      pendingWriteBytes += cleaned.length
 
       if (!backpressurePaused && pendingWriteBytes >= HIGH_WATERMARK) {
         backpressurePaused = true
@@ -1028,6 +1084,11 @@ export function XTermView({
         /* refresh pode falhar durante teardown/layout invisível */
       }
       clampHorizontalScroll()
+      try {
+        terminal.scrollToBottom()
+      } catch {
+        /* ignore se unmounted */
+      }
       const force = forceNextResize
       forceNextResize = false
       if (!force && terminal.cols === lastCols && terminal.rows === lastRows) return
@@ -1041,9 +1102,7 @@ export function XTermView({
       if (disposed) return
       forceNextResize ||= force
       if (resizeTimer !== null) window.clearTimeout(resizeTimer)
-      // OpenCode redesenha a TUI inteira a cada resize — debounce maior evita
-      // rajada de reflows enquanto o usuário arrasta o splitter.
-      const debounceMs = command === 'opencode' ? 250 : 80
+      const debounceMs = 80
       resizeTimer = window.setTimeout(runResize, debounceMs)
     }
     const scheduleObservedResize = () => scheduleResize()
@@ -1058,10 +1117,13 @@ export function XTermView({
     ro.observe(container)
     window.addEventListener('alethe:zoom-changed', scheduleObservedResize)
     window.addEventListener('alethe:terminal-resize-request', onResizeRequest)
+    document.fonts?.ready?.then(() => {
+      if (!disposed) scheduleResize(true)
+    })
 
     // Fit adicional com delay pra garantir que o layout estabilizou
     const initialFitTimer = window.setTimeout(() => {
-      scheduleResize()
+      scheduleResize(true)
     }, 150)
 
     const attachExistingPty = async (existingId: string) => {
@@ -1127,6 +1189,10 @@ export function XTermView({
     terminal.onData((data) => {
       const id = ptyIdRef.current
       if (!id) return
+      // Não repassa pro PTY se o data gerado pelo xterm for apenas resposta automática a queries
+      if (/^\x1b\[(?:\d+;\d+R|\?\d+;\d+\$y|\?\d+;\d+c)$/.test(data)) {
+        return
+      }
       useTerminalsStore.getState().recordIo(id)
       recordPromptInput(data)
       completionMonitor?.handleInput(data)
@@ -1250,11 +1316,24 @@ export function XTermView({
               ? savedSession?.opencodeSessionId
               : undefined
         let resumeId = sessionId ?? savedConversationId
-        // OpenCode: quando temos savedSession mas não temos o ID da sessão,
-        // usar --continue pra retomar a última sessão (OpenCode não gera UUID
-        // no spawn como o Claude).
-        if (command === 'opencode' && savedSession && !resumeId) {
-          resumeId = '__continue__'
+        // OpenCode: NÃO cai pra --continue quando falta o ID específico —
+        // --continue não é por terminal, é "a última sessão do OpenCode" pra
+        // aquele cwd, então com 2+ terminais no mesmo projeto todos caem na
+        // MESMA sessão (conteúdo duplicado entre panes). Em vez disso,
+        // consulta as sessões existentes daquele cwd e reivindica (via
+        // claimMostRecentSession) a mais recente que NENHUM outro pane já
+        // pegou — --session <id> explícito é sempre mais confiável que
+        // --continue. Sem nenhuma disponível, começa sessão nova (honesto);
+        // a detecção pós-spawn abaixo captura o ID novo certinho.
+        if (command === 'opencode' && !resumeId && cwd) {
+          try {
+            const existing = await snapshotOpenCodeSessions(cwd)
+            const claimed = claimMostRecentSession('opencode', cwd, existing, ptyId)
+            if (claimed) resumeId = claimed.id
+          } catch {
+            /* sem sessões existentes ou consulta falhou — segue sem resume */
+          }
+          if (disposed) return
         }
         // Claude: valida que a conversa ainda existe no cwd antes de passar
         // --resume. Se o id ficou órfão (conversa apagada, cwd diferente de onde
@@ -1474,19 +1553,6 @@ export function XTermView({
                   onSessionIdRef.current?.(newSession.id)
                   return
                 }
-                // Se usamos --continue e não achou nova, pega a mais recente.
-                if (resumeId === '__continue__' && sessions.length > 0) {
-                  const mostRecent = sessions[0]
-                  saveSession(ptyId, {
-                    sessionId: response.id,
-                    opencodeSessionId: mostRecent.id,
-                    cwd: cwd ?? '',
-                    agent: command,
-                    timestamp: Date.now(),
-                  })
-                  onSessionIdRef.current?.(mostRecent.id)
-                  return
-                }
               }
             }
             void detectOpenCodeSession()
@@ -1598,8 +1664,10 @@ export function XTermView({
     // ptyId/retryKey/isDormant são as chaves de identidade. `isDormant` (e NÃO
     // `poolState` cru): hibernar desmonta 1×, acordar remonta 1×, e transições
     // intermediárias (HIBERNATING/RESTORING→ACTIVE) não recriam nada.
+    // `canMount` vem da fila de montagem (mountQueue) — vira true quando este
+    // terminal ganha a vaga pra fazer o setup síncrono pesado do xterm.js.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [ptyId, retryKey, isDormant])
+  }, [ptyId, retryKey, isDormant, canMount])
 
   useEffect(() => {
     const terminal = terminalRef.current

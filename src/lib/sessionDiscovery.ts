@@ -56,6 +56,32 @@ export function claimDiscoveredSession(
 }
 
 /**
+ * Reivindica a sessão EXISTENTE mais recente pra um cwd que ainda não foi
+ * pega por outro pane. Ao contrário de `claimDiscoveredSession` (que ordena
+ * ascendente pra achar sessões NOVAS na ordem em que apareceram), aqui
+ * queremos a mais recente de todas — usado antes do spawn, quando não temos
+ * ID salvo mas pode já existir uma conversa naquele diretório (ex.: reabrir
+ * terminal depois de restart do app).
+ */
+export function claimMostRecentSession(
+  agent: string,
+  cwd: string,
+  sessions: readonly SessionSnapshot[],
+  ptyId?: string,
+): SessionSnapshot | undefined {
+  const key = claimKey(agent, cwd)
+  const claimed = claimedIds.get(key) ?? new Set<string>()
+  const candidate = [...sessions]
+    .filter((session) => !claimed.has(session.id))
+    .sort((a, b) => b.modified_at_ms - a.modified_at_ms)[0]
+  if (!candidate) return undefined
+  claimed.add(candidate.id)
+  claimedIds.set(key, claimed)
+  trackOwner(ptyId, key, candidate.id)
+  return candidate
+}
+
+/**
  * Libera os claims feitos por um pane quando seu PTY fecha. Sem isto, o
  * `claimedIds` cresceria monotonicamente (uma entrada por cwd já aberto + um id
  * por sessão já spawnada) pela vida inteira do app. Só remove os ids do próprio

@@ -199,6 +199,32 @@ fn process_private_commit_bytes(pid: u32, fallback: u64) -> u64 {
             }
         }
     }
+    #[cfg(target_os = "linux")]
+    {
+        // smaps_rollup já vem agregado pelo kernel (rápido, sem parsear o
+        // /proc/<pid>/smaps inteiro). Private_Clean + Private_Dirty é a
+        // memória exclusiva do processo — soma entre processos sem contar
+        // páginas compartilhadas (libs, forks) mais de uma vez, ao contrário
+        // do RSS bruto do sysinfo.
+        if let Ok(content) = std::fs::read_to_string(format!("/proc/{pid}/smaps_rollup")) {
+            let mut private_kb = 0_u64;
+            let mut found = false;
+            for line in content.lines() {
+                let value = line
+                    .strip_prefix("Private_Clean:")
+                    .or_else(|| line.strip_prefix("Private_Dirty:"));
+                if let Some(rest) = value {
+                    if let Some(kb) = rest.trim().split_whitespace().next().and_then(|v| v.parse::<u64>().ok()) {
+                        private_kb += kb;
+                        found = true;
+                    }
+                }
+            }
+            if found {
+                return private_kb * 1024;
+            }
+        }
+    }
     fallback
 }
 
@@ -242,6 +268,16 @@ impl ResourceSupervisor {
 
         let mut children = HashMap::<u32, Vec<u32>>::new();
         for (pid, process) in system.processes() {
+            // No Linux, sysinfo lista as threads de /proc/<pid>/task/<tid> como
+            // entradas próprias no mesmo mapa de processos (cada uma com o pid
+            // real como "parent"). thread_kind() é Some(..) só pra essas —
+            // sem filtrar, cada thread reconta a memória inteira do processo
+            // (RSS/privada é por processo, compartilhada entre threads), o que
+            // infla processo e memória em várias vezes (WebKitWebProcess por
+            // ex. roda ~30 threads).
+            if process.thread_kind().is_some() {
+                continue;
+            }
             if let Some(parent) = process.parent() {
                 children
                     .entry(parent.as_u32())
@@ -261,14 +297,20 @@ impl ResourceSupervisor {
                 continue;
             };
             let working = process.memory();
-            private_total += process_private_commit_bytes(*pid, working);
+            // Soma de working-set/RSS bruto conta páginas compartilhadas
+            // (libs, forks) uma vez POR PROCESSO — com dezenas de processos
+            // isso infla o total muito além da RAM física real. A memória
+            // privada (não-compartilhada) é a que soma corretamente entre
+            // processos.
+            let private = process_private_commit_bytes(*pid, working);
+            private_total += private;
             let name = process.name().to_string_lossy().to_ascii_lowercase();
             if *pid == app_pid || name.contains("alethe") {
-                app_bytes += working;
-            } else if name.contains("msedgewebview2") {
-                webview_bytes += working;
+                app_bytes += private;
+            } else if name.contains("msedgewebview2") || name.contains("webkit") {
+                webview_bytes += private;
             } else {
-                pty_bytes += working;
+                pty_bytes += private;
             }
         }
 
@@ -417,7 +459,14 @@ fn run_cycle(
         )
     };
     let automatic = policy.mode == "smart-lru";
-    let critical = snapshot.effective_total_mb >= policy.memory_budget_mb;
+    // Histerese: sem isso, uso oscilando perto do orçamento vira "critical" e
+    // volta pra "warning"/"normal" a cada ciclo (5s), disparando uma
+    // notificação nova a cada troca — nunca "assenta". Uma vez crítico, só
+    // sai desse nível quando cair abaixo do recovery_target_mb (mesma lógica
+    // que pressure_active já usa).
+    let was_critical = previous_level == "critical";
+    let critical = snapshot.effective_total_mb >= policy.memory_budget_mb
+        || (was_critical && snapshot.effective_total_mb > policy.recovery_target_mb);
     let pressure_active = critical
         || (was_active && snapshot.effective_total_mb > policy.recovery_target_mb);
     let candidates = eligible_candidates(&snapshot, &metas, &policy, now);

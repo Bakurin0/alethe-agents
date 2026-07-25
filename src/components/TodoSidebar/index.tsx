@@ -32,6 +32,7 @@ export function TodoSidebar() {
   const deleteTodo = useProjectsStore((state) => state.deleteTodo)
   const reorderTodo = useProjectsStore((state) => state.reorderTodo)
   const setPreferences = useProjectsStore((state) => state.setPreferences)
+  const todoEnabled = useProjectsStore((state) => state.preferences.enabledFeatures.todos)
   const openModal = useUiStore((state) => state.openModal_)
   const [title, setTitle] = useState('')
   const [tagDraft, setTagDraft] = useState('')
@@ -236,18 +237,22 @@ export function TodoSidebar() {
         <div className={styles.heading}>
           <ListTodo size={15} />
           <span>{t('todo.title')}</span>
-          <span className={styles.pendingCount}>{t('todo.pendingCount', { count: active.length })}</span>
+          {todoEnabled ? (
+            <span className={styles.pendingCount}>{t('todo.pendingCount', { count: active.length })}</span>
+          ) : null}
         </div>
         <div className={styles.headerActions}>
-          <button
-            type="button"
-            className={styles.headerAction}
-            onClick={() => openModal('todoSettings')}
-            title={t('todo.openSettings')}
-            aria-label={t('todo.openSettings')}
-          >
-            <Settings size={15} />
-          </button>
+          {todoEnabled ? (
+            <button
+              type="button"
+              className={styles.headerAction}
+              onClick={() => openModal('todoSettings')}
+              title={t('todo.openSettings')}
+              aria-label={t('todo.openSettings')}
+            >
+              <Settings size={15} />
+            </button>
+          ) : null}
           <button
             type="button"
             className={styles.headerAction}
@@ -262,53 +267,57 @@ export function TodoSidebar() {
 
       <TerminalInspector />
 
-      <form
-        className={styles.addForm}
-        onSubmit={(event) => {
-          event.preventDefault()
-          submit()
-        }}
-      >
-        <input
-          className={styles.addInput}
-          value={title}
-          maxLength={TODO_TITLE_MAX_LENGTH}
-          onChange={(event) => setTitle(event.target.value)}
-          placeholder={t('todo.addPlaceholder')}
-          aria-label={t('todo.addPlaceholder')}
-        />
-        <input
-          className={`${styles.addInput} ${styles.addTagInput}`}
-          value={tagDraft}
-          onChange={(event) => setTagDraft(event.target.value)}
-          placeholder={t('todo.tagsPlaceholder')}
-          aria-label={t('todo.tagsPlaceholder')}
-        />
-        <button
-          type="submit"
-          className={styles.addButton}
-          disabled={!title.trim()}
-          title={t('todo.add')}
-          aria-label={t('todo.add')}
-        >
-          <Plus size={15} />
-        </button>
-      </form>
+      {todoEnabled ? (
+        <>
+          <form
+            className={styles.addForm}
+            onSubmit={(event) => {
+              event.preventDefault()
+              submit()
+            }}
+          >
+            <input
+              className={styles.addInput}
+              value={title}
+              maxLength={TODO_TITLE_MAX_LENGTH}
+              onChange={(event) => setTitle(event.target.value)}
+              placeholder={t('todo.addPlaceholder')}
+              aria-label={t('todo.addPlaceholder')}
+            />
+            <input
+              className={`${styles.addInput} ${styles.addTagInput}`}
+              value={tagDraft}
+              onChange={(event) => setTagDraft(event.target.value)}
+              placeholder={t('todo.tagsPlaceholder')}
+              aria-label={t('todo.tagsPlaceholder')}
+            />
+            <button
+              type="submit"
+              className={styles.addButton}
+              disabled={!title.trim()}
+              title={t('todo.add')}
+              aria-label={t('todo.add')}
+            >
+              <Plus size={15} />
+            </button>
+          </form>
 
-      <div className={styles.content}>
-        {todos.length === 0 ? (
-          <div className={styles.empty}>
-            <div className={styles.emptyIcon}><ListTodo size={20} /></div>
-            <strong>{t('todo.emptyTitle')}</strong>
-            <span>{t('todo.emptyDescription')}</span>
+          <div className={styles.content}>
+            {todos.length === 0 ? (
+              <div className={styles.empty}>
+                <div className={styles.emptyIcon}><ListTodo size={20} /></div>
+                <strong>{t('todo.emptyTitle')}</strong>
+                <span>{t('todo.emptyDescription')}</span>
+              </div>
+            ) : (
+              <>
+                {renderSection(active, false)}
+                {renderSection(completed, true)}
+              </>
+            )}
           </div>
-        ) : (
-          <>
-            {renderSection(active, false)}
-            {renderSection(completed, true)}
-          </>
-        )}
-      </div>
+        </>
+      ) : null}
     </aside>
   )
 }

@@ -182,7 +182,9 @@ export function NewSubTabModal() {
               </button>
             ))}
           </div>
-          <span className={controls.hint}>{t(`term.runtimeProfile.${runtimeProfile}.desc`)}</span>
+          <span className={controls.hint}>
+            {type === 'opencode' ? t('term.runtimeProfile.opencodeNote') : t(`term.runtimeProfile.${runtimeProfile}.desc`)}
+          </span>
         </div>
       ) : null}
       <div className={controls.field}>

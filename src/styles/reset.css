@@ -36,6 +36,18 @@ textarea {
   color: inherit;
 }
 
+/* WebKitGTK (Linux) ignora background/color de autor no <select> fechado e
+   desenha o widget nativo do GTK (fundo branco) por cima — appearance: none
+   força o motor a pintar com o CSS do componente em vez do skin nativo. */
+select {
+  appearance: none;
+  -webkit-appearance: none;
+  -moz-appearance: none;
+  font: inherit;
+  color: inherit;
+  background-color: inherit;
+}
+
 ::selection {
   background: var(--accent);
   color: var(--accent-on);

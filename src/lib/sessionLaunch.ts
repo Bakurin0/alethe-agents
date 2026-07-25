@@ -87,15 +87,10 @@ export function buildAgentLaunch(
 
   if (agent === 'opencode') {
     const clean = stripOpenCodeSessionArgs([...baseArgs])
-    // __continue__ é um sentinel: temos savedSession mas não o ID específico.
-    // Usa --continue pra retomar a última sessão do OpenCode.
-    if (sessionId === '__continue__') {
-      return {
-        args: ['--continue', ...clean],
-        sessionId: undefined,
-        createdSession: false,
-      }
-    }
+    // --session <id> explícito sempre — nunca --continue, que não é por
+    // terminal (pega "a última sessão do OpenCode" pro cwd inteiro e colide
+    // entre panes). O ID vem de sessionDiscovery.claimMostRecentSession,
+    // reivindicado antes do spawn.
     return {
       args: sessionId ? ['--session', sessionId, ...clean] : clean,
       sessionId,

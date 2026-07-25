@@ -40,6 +40,12 @@ pub fn collect_memory_stats() -> MemoryStats {
             continue;
         }
         for (other_pid, process) in sys.processes() {
+            // Threads de /proc/<pid>/task/<tid> aparecem como entradas próprias
+            // no sysinfo (thread_kind() == Some) — pular, senão cada thread
+            // reconta a memória inteira do processo pai.
+            if process.thread_kind().is_some() {
+                continue;
+            }
             if let Some(parent) = process.parent() {
                 if parent.as_u32() as usize == pid {
                     frontier.push(other_pid.as_u32() as usize);

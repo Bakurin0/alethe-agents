@@ -41,6 +41,12 @@ pub fn snapshot_opencode_sessions(cwd: String) -> Result<Vec<OpenCodeSessionSnap
     }
 
     let stdout = String::from_utf8_lossy(&output.stdout);
+    // Sem sessões pro cwd, o CLI devolve stdout vazio (nem `[]`) — trata como
+    // lista vazia em vez de erro de parse, senão mascara erros reais (binário
+    // não encontrado, etc.) por trás do mesmo sintoma no chamador.
+    if stdout.trim().is_empty() {
+        return Ok(Vec::new());
+    }
     let entries: Vec<serde_json::Value> =
         serde_json::from_str(&stdout).map_err(|e| format!("falha ao parsear JSON: {e}"))?;
 

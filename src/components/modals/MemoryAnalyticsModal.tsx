@@ -96,8 +96,35 @@ function buildDiagnostics(history: MemorySample[], t: TFunction): string[] {
   return diagnostics
 }
 
+type ChartPoint = { x: number; y: number }
+
+/** Catmull-Rom → Bézier cúbica (tensão 1/6): suaviza a linha sem inventar
+ * picos/vales que não existem nos dados (ao contrário de simplesmente
+ * arredondar o line-join do polyline cru). */
+function smoothPath(points: ChartPoint[]): string {
+  if (points.length < 2) return ''
+  if (points.length === 2) {
+    return `M ${points[0].x},${points[0].y} L ${points[1].x},${points[1].y}`
+  }
+  let d = `M ${points[0].x.toFixed(2)},${points[0].y.toFixed(2)}`
+  for (let i = 0; i < points.length - 1; i++) {
+    const p0 = points[i === 0 ? 0 : i - 1]
+    const p1 = points[i]
+    const p2 = points[i + 1]
+    const p3 = points[i + 2 < points.length ? i + 2 : i + 1]
+    const c1x = p1.x + (p2.x - p0.x) / 6
+    const c1y = p1.y + (p2.y - p0.y) / 6
+    const c2x = p2.x - (p3.x - p1.x) / 6
+    const c2y = p2.y - (p3.y - p1.y) / 6
+    d += ` C ${c1x.toFixed(2)},${c1y.toFixed(2)} ${c2x.toFixed(2)},${c2y.toFixed(2)} ${p2.x.toFixed(2)},${p2.y.toFixed(2)}`
+  }
+  return d
+}
+
 function Sparkline({ samples }: { samples: MemorySample[] }) {
   const t = useT()
+  const language = useProjectsStore((s) => s.preferences.language)
+  const [hoverIndex, setHoverIndex] = useState<number | null>(null)
   const chartSamples = samples.slice(-90)
   if (chartSamples.length < 2) {
     return <div className={styles.emptyChart}>{t('mod.waitingMoreSamples')}</div>
@@ -107,23 +134,69 @@ function Sparkline({ samples }: { samples: MemorySample[] }) {
   const min = Math.min(...values)
   const max = Math.max(...values)
   const range = Math.max(max - min, 1)
-  const points = chartSamples
-    .map((sample, index) => {
-      const x = (index / (chartSamples.length - 1)) * 100
-      const y = 100 - ((sample.total_mb - min) / range) * 84 - 8
-      return `${x.toFixed(2)},${y.toFixed(2)}`
-    })
-    .join(' ')
+  const points: ChartPoint[] = chartSamples.map((sample, index) => ({
+    x: (index / (chartSamples.length - 1)) * 100,
+    y: 100 - ((sample.total_mb - min) / range) * 84 - 8,
+  }))
+  const linePath = smoothPath(points)
+  const lastX = points[points.length - 1].x.toFixed(2)
+  const areaPath = `${linePath} L ${lastX},100 L 0,100 Z`
+
+  const hovered = hoverIndex != null ? chartSamples[hoverIndex] : null
+  const hoveredPoint = hoverIndex != null ? points[hoverIndex] : null
+
+  const handleMove = (event: React.PointerEvent<SVGRectElement>) => {
+    const rect = event.currentTarget.getBoundingClientRect()
+    const pct = Math.min(1, Math.max(0, (event.clientX - rect.left) / rect.width))
+    setHoverIndex(Math.round(pct * (chartSamples.length - 1)))
+  }
 
   return (
     <div className={styles.chartWrap}>
       <svg className={styles.chart} viewBox="0 0 100 100" preserveAspectRatio="none" aria-hidden="true">
-        <polyline className={styles.chartLine} points={points} />
+        <defs>
+          <linearGradient id="memChartFill" x1="0" y1="0" x2="0" y2="1">
+            <stop offset="0%" stopColor="var(--accent)" stopOpacity="0.32" />
+            <stop offset="100%" stopColor="var(--accent)" stopOpacity="0" />
+          </linearGradient>
+        </defs>
+        <path className={styles.chartArea} d={areaPath} fill="url(#memChartFill)" />
+        <path className={styles.chartLine} d={linePath} />
+        {hoveredPoint ? (
+          <>
+            <line
+              className={styles.chartCrosshair}
+              x1={hoveredPoint.x}
+              x2={hoveredPoint.x}
+              y1={4}
+              y2={96}
+            />
+            <circle className={styles.chartDot} cx={hoveredPoint.x} cy={hoveredPoint.y} r={2.4} />
+          </>
+        ) : null}
+        <rect
+          className={styles.chartHitArea}
+          x={0}
+          y={0}
+          width={100}
+          height={100}
+          onPointerMove={handleMove}
+          onPointerLeave={() => setHoverIndex(null)}
+        />
       </svg>
       <div className={styles.chartScale}>
         <span>{formatMb(max)}</span>
         <span>{formatMb(min)}</span>
       </div>
+      {hovered && hoveredPoint ? (
+        <div
+          className={styles.chartTooltip}
+          style={{ left: `${Math.min(90, Math.max(2, hoveredPoint.x))}%` }}
+        >
+          <strong>{formatMb(hovered.total_mb)}</strong>
+          <span>{formatTime(hovered.ts, language)}</span>
+        </div>
+      ) : null}
     </div>
   )
 }

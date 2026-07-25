@@ -8,7 +8,6 @@ import { getOpenCodeUsageSummary, type ClaudeUsage, type CodexUsage, type OpenCo
 import { useProjectsStore } from '../../stores/projectsStore'
 import { useUiStore } from '../../stores/uiStore'
 import { ClaudeIcon, CodexIcon, OpenCodeIcon } from '../icons/AgentIcons'
-import { ActivityGraph } from './ActivityGraph'
 import styles from './HomeView.module.css'
 
 function formatDiff(diff: number): string {
@@ -457,16 +456,15 @@ function OpenCodeCard() {
   )
 }
 
-export function UsageStrip({ showActivity = true }: { showActivity?: boolean }) {
+export function UsageStrip() {
   const claudeUsage = useUiStore((s) => s.claudeUsage)
   const codexUsage = useUiStore((s) => s.codexUsage)
 
   return (
-    <div className={`${styles.usageStrip} ${showActivity ? '' : styles.usageStripThree}`}>
+    <div className={styles.usageStripThree}>
       <ClaudeCard usage={claudeUsage} />
       <CodexCard usage={codexUsage} />
       <OpenCodeCard />
-      {showActivity ? <ActivityGraph /> : null}
     </div>
   )
 }

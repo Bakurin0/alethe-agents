@@ -660,10 +660,9 @@ pub fn resize_pty(
         })
         .map_err(|error| error.to_string())?;
 
-    // OpenCode no Windows/ConPTY nem sempre redesenha a TUI após resize — a
+    // OpenCode no Windows/Linux/macOS nem sempre redesenha a TUI após resize — a
     // tela fica truncada até a próxima tecla. Ctrl+L (Form Feed) força o
-    // redraw. Só pra opencode: num shell comum isso limparia a tela do usuário.
-    #[cfg(windows)]
+    // redraw em todas as plataformas.
     if session.command.as_deref() == Some("opencode") {
         if let Ok(mut writer) = session.writer.lock() {
             let _ = writer.write_all(&[12]);

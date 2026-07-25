@@ -141,6 +141,7 @@ export default function App() {
   const leftSidebarWidth = useProjectsStore((s) => s.preferences.leftSidebarWidth)
   const rightSidebarWidth = useProjectsStore((s) => s.preferences.rightSidebarWidth)
   const todoEnabled = useProjectsStore((s) => s.preferences.enabledFeatures.todos)
+  const activeTerminal = useUiStore((s) => s.activeTerminal)
   const setPreferences = useProjectsStore((s) => s.setPreferences)
 
   useKeybindings()
@@ -264,6 +265,10 @@ export default function App() {
       .catch(() => {})
   }, [hydrated])
 
+  useEffect(() => {
+    window.dispatchEvent(new CustomEvent('alethe:terminal-resize-request'))
+  }, [leftSidebarVisible, rightSidebarVisible, leftSidebarWidth, rightSidebarWidth])
+
   if (!hydrated) {
     return <LoadingScreen />
   }
@@ -284,6 +289,7 @@ export default function App() {
                 onResize={(size, _id, previous) => {
                   if (previous && Math.abs(size.inPixels - previous.inPixels) >= 1) {
                     setPreferences({ leftSidebarWidth: Math.round(size.inPixels) })
+                    window.dispatchEvent(new CustomEvent('alethe:terminal-resize-request'))
                   }
                 }}
               >
@@ -309,7 +315,7 @@ export default function App() {
             </main>
           </Panel>
 
-          {todoEnabled && rightSidebarVisible ? (
+          {(todoEnabled || activeTerminal) && rightSidebarVisible ? (
             <>
               <Separator className={styles.shellSeparator} />
               <Panel
@@ -321,6 +327,7 @@ export default function App() {
                 onResize={(size, _id, previous) => {
                   if (previous && Math.abs(size.inPixels - previous.inPixels) >= 1) {
                     setPreferences({ rightSidebarWidth: Math.round(size.inPixels) })
+                    window.dispatchEvent(new CustomEvent('alethe:terminal-resize-request'))
                   }
                 }}
               >
