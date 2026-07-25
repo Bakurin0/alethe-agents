@@ -5,7 +5,14 @@
   backdrop-filter: blur(10px);
   -webkit-backdrop-filter: blur(10px);
   z-index: 100;
-  animation: modalFadeIn 160ms cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+.overlay[data-state='open'] {
+  animation: modalFadeIn 200ms cubic-bezier(0.16, 1, 0.3, 1) forwards;
+}
+
+.overlay[data-state='closed'] {
+  animation: modalFadeOut 150ms ease-in forwards;
 }
 
 .content {
@@ -22,7 +29,14 @@
   display: flex;
   flex-direction: column;
   max-height: calc(100vh - 80px);
-  animation: modalSpringPop 220ms cubic-bezier(0.175, 0.885, 0.32, 1.275);
+}
+
+.content[data-state='open'] {
+  animation: modalSpringPop 250ms cubic-bezier(0.175, 0.885, 0.32, 1.275) forwards;
+}
+
+.content[data-state='closed'] {
+  animation: modalSpringPopOut 150ms cubic-bezier(0.4, 0, 0.2, 1) forwards;
 }
 
 .header {
@@ -70,7 +84,15 @@
   from { opacity: 0; }
   to { opacity: 1; }
 }
+@keyframes modalFadeOut {
+  from { opacity: 1; }
+  to { opacity: 0; }
+}
 @keyframes modalSpringPop {
-  from { opacity: 0; transform: translate(-50%, -46%) scale(0.94); }
+  from { opacity: 0; transform: translate(-50%, -45%) scale(0.92); }
   to { opacity: 1; transform: translate(-50%, -50%) scale(1); }
+}
+@keyframes modalSpringPopOut {
+  from { opacity: 1; transform: translate(-50%, -50%) scale(1); }
+  to { opacity: 0; transform: translate(-50%, -46%) scale(0.94); }
 }
