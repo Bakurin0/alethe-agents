@@ -35,6 +35,15 @@
 
 :root,
 [data-theme='dark'] {
+  /* animações e easings reativos */
+  --anim-instant: 80ms;
+  --anim-fast: 140ms;
+  --anim-normal: 220ms;
+  --anim-slow: 350ms;
+  --ease-spring: cubic-bezier(0.175, 0.885, 0.32, 1.275);
+  --ease-out-fluid: cubic-bezier(0.16, 1, 0.3, 1);
+  --ease-in-out-fluid: cubic-bezier(0.45, 0, 0.55, 1);
+
   /* superfícies */
   --bg: #101114;
   --bg-elevated: #1f2125;

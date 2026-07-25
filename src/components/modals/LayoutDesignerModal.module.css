@@ -2,7 +2,11 @@
   position: fixed;
   inset: 0;
   background: rgba(0, 0, 0, 0.55);
-  z-index: 80;
+  /* Essa modal ficava com z-index 80/81, bem abaixo da escala 100/101 que o
+     resto dos modais do app usa (Modal.tsx, Preferences, Onboarding...) —
+     qualquer widget com z-index nesse meio (ex.: SidebarNowPlaying) vazava
+     por cima dela. */
+  z-index: 100;
 }
 
 .content {
@@ -18,7 +22,7 @@
   border: 1px solid var(--border);
   border-radius: var(--radius-lg);
   box-shadow: var(--shadow-lg);
-  z-index: 81;
+  z-index: 101;
   overflow: hidden;
 }
 

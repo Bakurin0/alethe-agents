@@ -197,11 +197,13 @@
   font-family: inherit;
   text-align: left;
   cursor: pointer;
-  transition: border-color 0.15s, background 0.15s;
+  transition: transform 180ms cubic-bezier(0.16, 1, 0.3, 1), border-color 180ms ease, background-color 180ms ease, box-shadow 180ms ease;
 }
 .agentHero:hover {
   border-color: var(--border-strong);
   background: var(--bg-elevated);
+  transform: translateY(-2px);
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.3);
 }
 .agentHero:focus-visible {
   outline: 1px solid var(--accent);
@@ -995,11 +997,14 @@
   max-height: 18px;
   border-radius: 2px;
   background: var(--bg-elevated);
-  transition: outline-color 0.1s;
+  transition: transform 140ms cubic-bezier(0.16, 1, 0.3, 1), outline-color 140ms ease, box-shadow 140ms ease;
   outline: 1px solid transparent;
 }
 .activityCell:hover {
-  outline-color: var(--border-strong);
+  outline-color: var(--accent);
+  transform: scale(1.25);
+  z-index: 2;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.4);
 }
 
 .cell0 { background: var(--bg-elevated); }

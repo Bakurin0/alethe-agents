@@ -209,15 +209,24 @@
   flex-shrink: 0;
   cursor: help;
 }
-.status_working { background: var(--status-working); animation: pulse 1.4s infinite; }
+.status_working {
+  background: var(--status-working);
+  animation: glowPulse 2s infinite ease-in-out;
+}
 .status_waiting { background: var(--status-waiting); }
 .status_stopped { background: var(--status-stopped); }
 .status_disabled { background: var(--status-disabled); }
 .status_offline { background: var(--status-offline); }
 
-@keyframes pulse {
-  0%, 100% { opacity: 1; }
-  50% { opacity: 0.4; }
+@keyframes glowPulse {
+  0%, 100% {
+    box-shadow: 0 0 0 0px var(--status-working-soft), 0 0 4px var(--status-working);
+    opacity: 1;
+  }
+  50% {
+    box-shadow: 0 0 0 5px rgba(16, 185, 129, 0), 0 0 8px var(--status-working);
+    opacity: 0.8;
+  }
 }
 
 /* Actions sempre visíveis. As secundárias só aparecem quando expandido

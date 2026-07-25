@@ -17,13 +17,13 @@
   width: 26px;
   height: 26px;
   border-radius: 6px;
+  animation: subTabPop 180ms cubic-bezier(0.175, 0.885, 0.32, 1.275);
 }
 .itemWrap:hover .close {
   opacity: 1;
 }
 
-/* Indicador da tab ativa — barra de acento colada na borda esquerda da lane
-   (padrão activity-bar), some quando não-ativa. */
+/* Indicador da tab ativa — barra de acento colada na borda esquerda da lane */
 .active::before {
   content: '';
   position: absolute;
@@ -34,10 +34,10 @@
   height: 16px;
   border-radius: 0 2px 2px 0;
   background: var(--accent);
+  transition: height 160ms cubic-bezier(0.16, 1, 0.3, 1), background-color 160ms ease;
+  box-shadow: 0 0 8px var(--accent-ring);
 }
 
-/* Chip do agente — sem bg colorido, só o ícone do agente. Hover dá um
-   highlight sutil; tab ativa ganha bg neutro um pouco mais claro. */
 .item {
   width: 100%;
   height: 100%;
@@ -47,7 +47,15 @@
   background: transparent;
   cursor: pointer;
   position: relative;
-  transition: background 100ms;
+  transition: background 140ms ease, transform 140ms cubic-bezier(0.16, 1, 0.3, 1);
+}
+.item:hover {
+  transform: scale(1.06);
+}
+
+@keyframes subTabPop {
+  from { opacity: 0; transform: scale(0.85); }
+  to { opacity: 1; transform: scale(1); }
 }
 .item img {
   display: block;

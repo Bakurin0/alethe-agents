@@ -239,15 +239,23 @@ function DesignerInner({ context, onClose }: { context: Context; onClose: () => 
     // ignora se o user clicou no resize handle (handle pega o evento via stopPropagation)
     if ((e.target as HTMLElement).closest('[data-resize-handle="1"]')) return
     e.preventDefault()
+    // Sem capturar o ponteiro no elemento, o gesto de arrastar pode "vazar"
+    // pro nível do SO/gerenciador de janelas (no GNOME isso pode ser lido
+    // como arrastar a JANELA pra borda da tela — o "snap" pra esquerda que
+    // parece "jogar a interface inteira" pro lado). setPointerCapture garante
+    // que o próprio elemento recebe os eventos até soltar.
+    const target = e.currentTarget
+    target.setPointerCapture(e.pointerId)
     setDragging(id)
     setSelected(id)
     const onMove = (ev: PointerEvent) => {
       ev.preventDefault()
     }
     const onUp = (ev: PointerEvent) => {
+      target.releasePointerCapture(e.pointerId)
       window.removeEventListener('pointermove', onMove)
       window.removeEventListener('pointerup', onUp)
-      const target = pixelToCell(ev.clientX, ev.clientY)
+      const cell = pixelToCell(ev.clientX, ev.clientY)
       // só dropa se o cursor terminou DENTRO do canvas
       const el = canvasRef.current
       if (el) {
@@ -257,7 +265,7 @@ function DesignerInner({ context, onClose }: { context: Context; onClose: () => 
           ev.clientX <= rect.right &&
           ev.clientY >= rect.top &&
           ev.clientY <= rect.bottom
-        if (inside) dropAt(id, target.col, target.row)
+        if (inside) dropAt(id, cell.col, cell.row)
       }
       setDragging(null)
     }
@@ -298,12 +306,14 @@ function DesignerInner({ context, onClose }: { context: Context; onClose: () => 
   const startResize = (id: string, e: React.PointerEvent) => {
     e.stopPropagation()
     e.preventDefault()
+    const target = e.currentTarget
+    target.setPointerCapture(e.pointerId)
     const cur = cells[id]
     if (!cur) return
     const onMove = (ev: PointerEvent) => {
-      const target = pixelToCell(ev.clientX, ev.clientY)
-      const colSpan = Math.max(1, Math.min(cols - cur.col + 1, target.col - cur.col + 1))
-      const rowSpan = Math.max(1, Math.min(rows - cur.row + 1, target.row - cur.row + 1))
+      const cell = pixelToCell(ev.clientX, ev.clientY)
+      const colSpan = Math.max(1, Math.min(cols - cur.col + 1, cell.col - cur.col + 1))
+      const rowSpan = Math.max(1, Math.min(rows - cur.row + 1, cell.row - cur.row + 1))
       setCells((prev) => {
         const c = prev[id]
         if (!c) return prev
@@ -312,6 +322,7 @@ function DesignerInner({ context, onClose }: { context: Context; onClose: () => 
       })
     }
     const onUp = () => {
+      target.releasePointerCapture(e.pointerId)
       window.removeEventListener('pointermove', onMove)
       window.removeEventListener('pointerup', onUp)
     }
@@ -323,6 +334,8 @@ function DesignerInner({ context, onClose }: { context: Context; onClose: () => 
   const startColResize = (colIdx: number, e: React.PointerEvent) => {
     e.stopPropagation()
     e.preventDefault()
+    const target = e.currentTarget
+    target.setPointerCapture(e.pointerId)
     const el = canvasRef.current
     if (!el) return
     const rect = el.getBoundingClientRect()
@@ -330,9 +343,13 @@ function DesignerInner({ context, onClose }: { context: Context; onClose: () => 
     const total = initialSizes.reduce((a, b) => a + b, 0)
     const onMove = (ev: PointerEvent) => {
       const xFrac = Math.max(0, Math.min(1, (ev.clientX - rect.left) / rect.width))
-      // soma dos frações até `colIdx` exclusive
+      // Soma das frações ANTES do par (colIdx-1, colIdx) — exclui a própria
+      // col colIdx-1, que faz parte do par, não vem antes dele. Incluí-la
+      // por engano (i < colIdx) fazia o cálculo de leftFrac cair muito perto
+      // do mínimo assim que o arrasto começava, colapsando a coluna esquerda
+      // quase instantaneamente ("jogar tudo pra um lado").
       let before = 0
-      for (let i = 0; i < colIdx; i++) before += initialSizes[i] / total
+      for (let i = 0; i < colIdx - 1; i++) before += initialSizes[i] / total
       // tamanho combinado das duas cols envolvidas (colIdx-1 e colIdx)
       const combinedFrac = (initialSizes[colIdx - 1] + initialSizes[colIdx]) / total
       const leftFrac = Math.max(0.05, Math.min(combinedFrac - 0.05, xFrac - before))
@@ -343,6 +360,7 @@ function DesignerInner({ context, onClose }: { context: Context; onClose: () => 
       setColSizes(next)
     }
     const onUp = () => {
+      target.releasePointerCapture(e.pointerId)
       window.removeEventListener('pointermove', onMove)
       window.removeEventListener('pointerup', onUp)
     }
@@ -353,6 +371,8 @@ function DesignerInner({ context, onClose }: { context: Context; onClose: () => 
   const startRowResize = (rowIdx: number, e: React.PointerEvent) => {
     e.stopPropagation()
     e.preventDefault()
+    const target = e.currentTarget
+    target.setPointerCapture(e.pointerId)
     const el = canvasRef.current
     if (!el) return
     const rect = el.getBoundingClientRect()
@@ -360,8 +380,10 @@ function DesignerInner({ context, onClose }: { context: Context; onClose: () => 
     const total = initialSizes.reduce((a, b) => a + b, 0)
     const onMove = (ev: PointerEvent) => {
       const yFrac = Math.max(0, Math.min(1, (ev.clientY - rect.top) / rect.height))
+      // Mesmo bug do startColResize (ver comentário lá) — exclui a própria
+      // row rowIdx-1 da soma de "antes do par".
       let before = 0
-      for (let i = 0; i < rowIdx; i++) before += initialSizes[i] / total
+      for (let i = 0; i < rowIdx - 1; i++) before += initialSizes[i] / total
       const combinedFrac = (initialSizes[rowIdx - 1] + initialSizes[rowIdx]) / total
       const topFrac = Math.max(0.05, Math.min(combinedFrac - 0.05, yFrac - before))
       const bottomFrac = combinedFrac - topFrac
@@ -371,6 +393,7 @@ function DesignerInner({ context, onClose }: { context: Context; onClose: () => 
       setRowSizes(next)
     }
     const onUp = () => {
+      target.releasePointerCapture(e.pointerId)
       window.removeEventListener('pointermove', onMove)
       window.removeEventListener('pointerup', onUp)
     }
