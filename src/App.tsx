@@ -40,14 +40,15 @@ import { useDiscordPresence } from './hooks/useDiscordPresence'
 import { useCloseConfirmation } from './hooks/useCloseConfirmation'
 import { useResourceSupervisor } from './hooks/useResourceSupervisor'
 import { startActivityTracker } from './lib/activityTracker'
-import { intlLocale, translate } from './lib/i18n'
+import { intlLocale, translate, useT } from './lib/i18n'
 import { setMaxConcurrentSpawns } from './lib/spawnQueue'
 import { getLastCrashReport } from './lib/tauri'
 import { checkForUpdate } from './lib/updater'
 import { useProjectsStore } from './stores/projectsStore'
 import { type InAppToast, useUiStore } from './stores/uiStore'
 import styles from './App.module.css'
-import { DotmCircular2 } from './components/ui/dotm-circular-2'
+import { AsciiEffect } from './components/ui/ascii-effect'
+import aletheLoadingMark from './assets/alethe-loading-mark.png'
 
 const AgentCanvasPOC = lazy(() =>
   import('./components/AgentCanvasPOC').then((module) => ({ default: module.AgentCanvasPOC })),
@@ -67,21 +68,43 @@ const MemoryAnalyticsModal = lazy(() =>
 )
 
 function LoadingScreen() {
+  const t = useT()
   return (
-    <div className={styles.loadingScreen}>
+    <div className={styles.loadingScreen} role="status" aria-label={t('loading.initializing')}>
       <div className={styles.loadingInner}>
-        <span className={styles.loadingMark} role="img" aria-label="Alethe" />
-        <span className={styles.loadingWordmark}>Alethe</span>
-        <DotmCircular2
-          size={22}
-          dotSize={2}
-          cellPadding={1}
-          speed={1.2}
-          bloom
-          color="var(--fg-faint)"
-          ariaLabel="Alethe"
-          className={styles.loadingSpinner}
-        />
+        <div className={styles.loadingAscii} aria-hidden="true">
+          <AsciiEffect
+            imageSrc={aletheLoadingMark}
+            alt=""
+            variant="flow"
+            chars=" .:+=*#%@"
+            fontSize={7}
+            fontFamily="var(--font-mono)"
+            fontWeight={600}
+            brightnessBoost={2.6}
+            contrast={1.25}
+            threshold={0.02}
+            posterize={16}
+            dither="bayer"
+            ditherStrength={0.55}
+            flowSpeed={0.18}
+            flowStrength={6}
+            flowFrequency={0.024}
+            scale={0.9}
+            fit="contain"
+            colors={['var(--fg-faint)', 'var(--fg)']}
+            backgroundColor="transparent"
+          />
+        </div>
+        <div className={styles.loadingWordmark}>Alethe</div>
+        <div className={styles.loadingConsole}>
+          <span className={styles.loadingPrompt} aria-hidden="true">›</span>
+          <span>{t('loading.initializing')}</span>
+          <span className={styles.loadingCursor} aria-hidden="true" />
+        </div>
+        <div className={styles.loadingRail} aria-hidden="true">
+          {Array.from({ length: 12 }, (_, index) => <span key={index} />)}
+        </div>
       </div>
     </div>
   )

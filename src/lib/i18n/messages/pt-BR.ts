@@ -5,6 +5,9 @@ import type { MessageKey } from './en'
  * sobrar uma chave em relação a `en.ts`, o TypeScript acusa.
  */
 export const ptBR: Record<MessageKey, string> = {
+  /* ---- loading ---- */
+  'loading.initializing': 'Inicializando workspace',
+
   /* ---- common ---- */
   'common.back': 'Voltar',
   'common.next': 'Próximo',
@@ -854,7 +857,6 @@ export const ptBR: Record<MessageKey, string> = {
   "ui.sidebar.groupSuspendedHint": "Grupo suspenso — clique direito pra reativar",
   "ui.sidebar.newProjectInGroup": "Novo projeto neste grupo",
   "ui.sidebar.groupEmpty": "Sem projetos. Arraste um aqui ou clique +.",
-  "ui.sidebar.ungrouped": "Solto",
   "ui.sidebar.newTerminal": "Novo terminal",
   "ui.sidebar.primary": "primary",
   "ui.sidebar.focus": "foco",

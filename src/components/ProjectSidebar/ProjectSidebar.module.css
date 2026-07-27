@@ -359,18 +359,10 @@
   outline-offset: -2px;
 }
 
-/* Seção "Solto" */
+/* Projetos sem grupo, exibidos diretamente na lista. */
 .ungroupedSection {
-  margin-top: 8px;
+  margin-top: 2px;
   padding: 0;
-}
-.ungroupedHeader {
-  font-size: 10px;
-  font-weight: 700;
-  text-transform: uppercase;
-  letter-spacing: 0.06em;
-  color: var(--fg-faint);
-  padding: 6px 6px 3px;
 }
 .ungroupedBody {
   display: flex;

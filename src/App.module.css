@@ -82,14 +82,13 @@
 }
 
 .loadingScreen {
+  position: relative;
   display: grid;
   place-items: center;
   width: 100%;
   height: 100%;
   overflow: hidden;
-  background:
-    radial-gradient(circle at 50% 44%, var(--accent-soft), transparent 46%),
-    var(--bg);
+  background: var(--bg);
   color: var(--fg);
 }
 
@@ -97,62 +96,124 @@
   display: flex;
   flex-direction: column;
   align-items: center;
-  gap: 20px;
+  gap: 10px;
   user-select: none;
+  pointer-events: none;
+  animation: loadingEnter 360ms ease-out both;
+}
+
+.loadingAscii {
+  position: relative;
+  width: clamp(230px, 28vw, 310px);
+  height: clamp(250px, 34vh, 340px);
+  color: var(--fg);
+  opacity: 0.9;
+  overflow: hidden;
+}
+
+.loadingAscii::before,
+.loadingAscii::after {
+  content: '';
+  position: absolute;
+  z-index: 1;
+  width: 28px;
+  height: 28px;
   pointer-events: none;
 }
 
-/* Marca isolada (SVG) tingida por token → nítida e correta em dark e light,
-   sem o chrome glossy do ícone do app. */
-.loadingMark {
-  width: 128px;
-  height: 128px;
-  background: var(--fg);
-  -webkit-mask: url('./assets/alethe-mark.svg') center / contain no-repeat;
-  mask: url('./assets/alethe-mark.svg') center / contain no-repeat;
-  opacity: 0.94;
-  animation:
-    markIn 0.6s ease-out both,
-    breathe 4.6s ease-in-out 0.6s infinite;
+.loadingAscii::before {
+  top: 0;
+  left: 0;
+  border-top: 1px solid var(--border-strong);
+  border-left: 1px solid var(--border-strong);
+}
+
+.loadingAscii::after {
+  right: 0;
+  bottom: 0;
+  border-right: 1px solid var(--border-strong);
+  border-bottom: 1px solid var(--border-strong);
 }
 
 .loadingWordmark {
-  font-family: var(--font-sans);
-  font-size: 13px;
+  font-family: var(--font-mono);
+  font-size: 12px;
   font-weight: 600;
-  letter-spacing: 0.44em;
+  letter-spacing: 0.52em;
   text-transform: uppercase;
-  color: var(--fg-muted);
-  padding-left: 0.44em;
-  animation: markIn 0.6s ease-out 0.14s both;
+  color: var(--fg);
+  padding-left: 0.52em;
 }
 
-.loadingSpinner {
+.loadingConsole {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  min-height: 18px;
+  margin-top: 5px;
+  color: var(--fg-faint);
+  font: 10px var(--font-mono);
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+.loadingPrompt {
+  color: var(--accent);
+  font-weight: 700;
+}
+
+.loadingCursor {
+  width: 5px;
+  height: 10px;
+  background: var(--fg-muted);
+  animation: loadingCursor 900ms steps(1, end) infinite;
+}
+
+.loadingRail {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  height: 10px;
   margin-top: 2px;
-  animation: markIn 0.6s ease-out 0.28s both;
 }
 
-@keyframes markIn {
+.loadingRail span {
+  width: 3px;
+  height: 3px;
+  background: var(--border-strong);
+  animation: loadingCell 1.15s ease-in-out infinite;
+}
+
+.loadingRail span:nth-child(2) { animation-delay: 70ms; }
+.loadingRail span:nth-child(3) { animation-delay: 140ms; }
+.loadingRail span:nth-child(4) { animation-delay: 210ms; }
+.loadingRail span:nth-child(5) { animation-delay: 280ms; }
+.loadingRail span:nth-child(6) { animation-delay: 350ms; }
+.loadingRail span:nth-child(7) { animation-delay: 420ms; }
+.loadingRail span:nth-child(8) { animation-delay: 490ms; }
+.loadingRail span:nth-child(9) { animation-delay: 560ms; }
+.loadingRail span:nth-child(10) { animation-delay: 630ms; }
+.loadingRail span:nth-child(11) { animation-delay: 700ms; }
+.loadingRail span:nth-child(12) { animation-delay: 770ms; }
+
+@keyframes loadingEnter {
   from {
     opacity: 0;
-    transform: translateY(4px) scale(0.96);
+    transform: translateY(5px);
   }
   to {
     opacity: 1;
-    transform: translateY(0) scale(1);
+    transform: translateY(0);
   }
 }
 
-@keyframes breathe {
-  0%,
-  100% {
-    opacity: 0.82;
-    transform: scale(1);
-  }
-  50% {
-    opacity: 1;
-    transform: scale(1.015);
-  }
+@keyframes loadingCursor {
+  50% { opacity: 0; }
+}
+
+@keyframes loadingCell {
+  0%, 60%, 100% { background: var(--border-strong); transform: scale(1); }
+  30% { background: var(--accent); transform: scale(1.65); }
 }
 
 @media (prefers-reduced-motion: reduce) {
@@ -161,13 +222,9 @@
     transition: none;
   }
 
-  .loadingMark {
-    animation: none;
-    opacity: 0.94;
-  }
-
-  .loadingWordmark,
-  .loadingSpinner {
+  .loadingInner,
+  .loadingCursor,
+  .loadingRail span {
     animation: none;
   }
 }

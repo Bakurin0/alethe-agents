@@ -5,6 +5,9 @@
  * compilação. Mantenha as chaves em ordem por namespace.
  */
 export const en = {
+  /* ---- loading ---- */
+  'loading.initializing': 'Initializing workspace',
+
   /* ---- common ---- */
   'common.back': 'Back',
   'common.next': 'Next',
@@ -854,7 +857,6 @@ export const en = {
   "ui.sidebar.groupSuspendedHint": "Group suspended — right-click to reactivate",
   "ui.sidebar.newProjectInGroup": "New project in this group",
   "ui.sidebar.groupEmpty": "No projects. Drag one here or click +.",
-  "ui.sidebar.ungrouped": "Ungrouped",
   "ui.sidebar.newTerminal": "New terminal",
   "ui.sidebar.primary": "primary",
   "ui.sidebar.focus": "focus",

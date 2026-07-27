@@ -1009,14 +1009,12 @@ function UngroupedSection({
   projects: Project[]
   renderProject: (p: Project) => React.ReactNode
 }) {
-  const t = useT()
   const { setNodeRef, isOver } = useDroppable({ id: 'group:ungrouped' })
   return (
     <div
       ref={setNodeRef}
       className={`${styles.ungroupedSection} ${isOver ? styles.groupDropTarget : ''}`}
     >
-      <div className={styles.ungroupedHeader}>{t('ui.sidebar.ungrouped')}</div>
       <div className={styles.ungroupedBody}>{projects.map((p) => renderProject(p))}</div>
     </div>
   )
