@@ -827,7 +827,7 @@ pub fn set_pty_priority(
 
                     let handle = OpenProcess(PROCESS_SET_INFORMATION, 0, pid);
                     if !handle.is_null() {
-                        let priority = if active {
+                        let priority = if _active {
                             NORMAL_PRIORITY_CLASS
                         } else {
                             IDLE_PRIORITY_CLASS

@@ -1,9 +1,6 @@
-import { CanvasAddon } from '@xterm/addon-canvas'
 import { FitAddon } from '@xterm/addon-fit'
 import { SearchAddon } from '@xterm/addon-search'
-import { Unicode11Addon } from '@xterm/addon-unicode11'
 import { WebglAddon } from '@xterm/addon-webgl'
-import { SerializeAddon } from '@xterm/addon-serialize'
 import { Terminal } from '@xterm/xterm'
 import type { ILink } from '@xterm/xterm'
 import { getCurrentWebview } from '@tauri-apps/api/webview'
@@ -16,17 +13,19 @@ import { AgentCompletionMonitor } from '../../lib/agentCompletionMonitor'
 import { preparePtyRuntimeLaunch } from '../../lib/agentRuntimeAdapter'
 import { recordAgentActivityInput } from '../../lib/activityTracker'
 import { buildAgentLaunch } from '../../lib/sessionLaunch'
-import { claimDiscoveredSession, claimMostRecentSession, registerSessionClaim } from '../../lib/sessionDiscovery'
-import { consumeSession, removeSession, saveSession } from '../../lib/sessionResume'
+import { claimDiscoveredSession, registerSessionClaim } from '../../lib/sessionDiscovery'
+import { consumeSession, removeSession, savedConversationIdFor, saveSession } from '../../lib/sessionResume'
 import { waitForSessionHint } from '../../lib/sessionWatch'
-import { acquireMountSlot } from '../../lib/mountQueue'
 import { acquireSpawnSlot, releaseSpawnSlot } from '../../lib/spawnQueue'
 import { readScopedStorage, writeScopedStorage } from '../../lib/storageNamespace'
 import { acquireWebglContext } from '../../lib/webglPool'
 import {
-  agentHooksEndpoint,
   attachPty,
   findCliLauncher,
+  graphifyCodexConfigWrite,
+  graphifyEnsureGraph,
+  graphifyMcpConfigPath,
+  graphifyOpenCodeConfigWrite,
   killPty,
   listenPtyData,
   listenPtyExit,
@@ -36,20 +35,14 @@ import {
   readClipboardText,
   resizePty,
   spawnPty,
-  graphifyEnsureGraph,
-  graphifyMcpConfigPath,
-  graphifyOpenCodeConfigWrite,
-  graphifyCodexConfigWrite,
+  snapshotAntigravitySessions,
   snapshotClaudeSessions,
   snapshotCodexSessions,
-  snapshotOpenCodeSessions,
   writeClipboardText,
   writePty,
-  setPtyReadState,
-  setPtyPriority,
 } from '../../lib/tauri'
 import { getLocale, translate, useT } from '../../lib/i18n'
-import type { AgentRuntimeProfile, AgentType, Theme } from '../../lib/types'
+import { agentCliCommand, type AgentRuntimeProfile, type AgentType, type Theme } from '../../lib/types'
 import { useProjectsStore } from '../../stores/projectsStore'
 import { useTerminalsStore } from '../../stores/terminalsStore'
 import { useUiStore } from '../../stores/uiStore'
@@ -262,26 +255,39 @@ export type XTermViewProps = {
   command?: AgentType | null
   cwd?: string | null
   extraArgs?: string[]
+  /** Prompt opcional enviado uma única vez após o boot do processo. */
+  initialInput?: string
   /** Identidade persistida da conversa deste pane. */
   sessionId?: string
+  /** Identidade estável da sub-tab, independente das trocas de PTY. */
+  sessionKey?: string
   /** Env extra só deste PTY. */
   env?: Record<string, string>
-  runtimeProfile?: AgentRuntimeProfile
-  /**
-   * RFC-004 — raiz do repo quando o projeto tem Graphify habilitado. Presente:
-   * o spawn injeta `--mcp-config` (Claude) e garante o bootstrap do grafo.
-   */
+  /** RFC-004 — raiz do repo quando o projeto tem Graphify habilitado. Presente:
+   * o spawn injeta o MCP do grafo (Claude via `--mcp-config`, Codex/OpenCode via
+   * merge no config do projeto) e garante o bootstrap do grafo. */
   graphifyRepo?: string | null
+  runtimeProfile?: AgentRuntimeProfile
   terminalTheme?: Theme
   onSpawned?: (id: string) => void
-  onSessionId?: (id: string) => void
+  onSessionId?: (id: string | undefined) => void
+  onInitialInputSent?: () => void
   onExit?: (code: number | null) => void
   onAgentComplete?: () => void
 }
 
 const PROMPT_HISTORY_KEY = (id: string) => `prompt-history:${id}`
+// Abaixo deste tempo (ms) consideramos que o agent "morreu no nascimento" — típico
+// de sessão de resume inválida ou binário quebrado. Serve de gatilho pro fallback
+// que reabre sessão nova em vez de deixar o pane cinza.
+const EARLY_EXIT_MS = 4000
 const PASTE_CHUNK_SIZE = 1024
 const PASTE_CHUNK_DELAY_MS = 8
+// Nunca entregue um burst inteiro de saída ao xterm em um único frame. TUIs
+// como o OpenCode ecoam colagens grandes e podem gerar centenas de KB de saída;
+// um terminal.write() gigante bloqueia o WebView e faz a aplicação parecer
+// travada. A fila continua preservando todos os bytes, só distribui o trabalho.
+const TERMINAL_WRITE_FRAME_BUDGET = 64 * 1024
 const LINK_MENU_WIDTH = 272
 const LINK_MENU_MAX_HEIGHT = 276
 const LINK_MENU_MARGIN = 10
@@ -320,65 +326,26 @@ async function writePtyChunked(
   if (close) await writePty(id, close)
 }
 
-function getPoolLimit(memoryAvailableMb?: number): number {
-  // Reactive: subscribe caller passes memoryStats, so this re-evaluates on change.
-  const memMb = memoryAvailableMb ?? useUiStore.getState().memoryStats?.system_available_mb ?? 16384
-  if (memMb <= 8 * 1024) return 2
-  if (memMb <= 16 * 1024) return 4
-  return 8
-}
-
-function canHibernate(ptyId: string): boolean {
-  const runtime = useTerminalsStore.getState().byPtyId[ptyId]
-  if (!runtime) return true
-
-  // Agente está produzindo output ativamente → não hibernar
-  if (runtime.status === 'working') return false
-
-  // Terminal está focado → não hibernar
-  if (useUiStore.getState().focusedTerminalId === ptyId) return false
-
-  // Grace period de 30s desde o último foco
-  if (runtime.lastFocusedAt && Date.now() - runtime.lastFocusedAt < 30_000) return false
-
-  return true
-}
-
 export function XTermView({
   ptyId,
   projectId,
   command,
   cwd,
   extraArgs,
+  initialInput,
   sessionId,
+  sessionKey,
   env,
-  runtimeProfile = 'full',
   graphifyRepo,
+  runtimeProfile = 'full',
   terminalTheme = 'dark',
   onSpawned,
   onSessionId,
+  onInitialInputSent,
   onExit,
   onAgentComplete,
 }: XTermViewProps) {
   const t = useT()
-
-  const memoryStats = useUiStore((s) => s.memoryStats)
-  const isActiveInPool = useTerminalsStore((s) => {
-    const alivePtys = Object.values(s.byPtyId)
-      .filter((p) => p.alive)
-      .sort((a, b) => (b.lastFocusedAt ?? 0) - (a.lastFocusedAt ?? 0))
-    const index = alivePtys.findIndex((p) => p.ptyId === ptyId)
-    if (index === -1) return true
-    return index < getPoolLimit(memoryStats?.system_available_mb)
-  })
-
-  const poolState = useTerminalsStore((s) => s.byPtyId[ptyId]?.poolState ?? 'ACTIVE')
-  // Só HIBERNATED/FAILED devem desmontar/remontar o terminal. Usar `poolState`
-  // cru nas deps do efeito principal recriava o xterm a CADA transição
-  // (HIBERNATING, RESTORING, ACTIVE…), causando dispose/recreate em cascata,
-  // re-spawn de PTY vivo e terminal zumbi sem teclado.
-  const isDormant = poolState === 'HIBERNATED' || poolState === 'FAILED'
-
   const containerRef = useRef<HTMLDivElement | null>(null)
   const terminalRef = useRef<Terminal | null>(null)
   const ptyIdRef = useRef<string | null>(null)
@@ -393,62 +360,26 @@ export function XTermView({
 
   const onSpawnedRef = useRef(onSpawned)
   const onSessionIdRef = useRef(onSessionId)
+  const onInitialInputSentRef = useRef(onInitialInputSent)
   const onExitRef = useRef(onExit)
   const onAgentCompleteRef = useRef(onAgentComplete)
   useEffect(() => {
     onSpawnedRef.current = onSpawned
     onSessionIdRef.current = onSessionId
+    onInitialInputSentRef.current = onInitialInputSent
     onExitRef.current = onExit
     onAgentCompleteRef.current = onAgentComplete
   })
 
-  // Pool State & Hibernation Coordinator
-  useEffect(() => {
-    // Terminal com foco DOM real NUNCA hiberna (ADR: terminal em uso é
-    // intocável). O check por id (`canHibernate`) compara focusedTerminalId
-    // (id do PANE) com ptyId e nunca bate — este é o guard confiável, feito
-    // aqui porque o coordinator roda dentro do componente e tem o container.
-    const hasDomFocus = containerRef.current?.contains(document.activeElement) ?? false
-    if (!isActiveInPool && !hasDomFocus && canHibernate(ptyId)) {
-      if (poolState === 'ACTIVE') {
-        useTerminalsStore.getState().setPoolState(ptyId, 'HIBERNATING')
-        const term = terminalRef.current
-        if (term) {
-          try {
-            const serializeAddon = new SerializeAddon()
-            term.loadAddon(serializeAddon)
-            const ansiBuffer = serializeAddon.serialize()
-            const snapshot = {
-              ansiBuffer,
-              scrollTop: term.buffer.active.viewportY,
-              options: {
-                cursorBlink: term.options.cursorBlink,
-                fontSize: term.options.fontSize,
-                fontFamily: term.options.fontFamily,
-              },
-              cursor: { col: term.buffer.active.cursorX, row: term.buffer.active.cursorY },
-              selection: term.hasSelection() ? term.getSelection() : undefined,
-            }
-            useTerminalsStore.getState().setSnapshot(ptyId, snapshot)
-          } catch (e) {
-            console.error('[XTermView] Erro ao criar snapshot do terminal:', e)
-          }
-        }
-        void setPtyPriority(ptyId, false).catch((err) =>
-          console.error('[XTermView] Falha ao rebaixar prioridade:', err)
-        )
-        useTerminalsStore.getState().setPoolState(ptyId, 'HIBERNATED')
-      }
-    } else {
-      if (poolState === 'HIBERNATED' || poolState === 'FAILED') {
-        useTerminalsStore.getState().setPoolState(ptyId, 'RESTORING')
-      }
-    }
-  }, [isActiveInPool, poolState, ptyId])
-
   const promptHistoryRef = useRef<string[]>([])
   const historyCursorRef = useRef(-1)
   const currentLineRef = useRef('')
+
+  // Estado do fallback de early-exit (sessão de resume órfã → reabrir sessão nova).
+  const spawnedAtRef = useRef(0)
+  const usedResumeRef = useRef(false)
+  const earlyExitRetriedRef = useRef(false)
+  const forceFreshRef = useRef(false)
 
   const [commandNotFound, setCommandNotFound] = useState<string | null>(null)
   const [retryKey, setRetryKey] = useState(0)
@@ -457,41 +388,7 @@ export function XTermView({
   >('preparing')
   const [linkActions, setLinkActions] = useState<LinkActionState | null>(null)
   const [dropActive, setDropActive] = useState(false)
-  const [canMount, setCanMount] = useState(false)
-
-  // Enfileira o setup pesado do xterm.js (new Terminal + terminal.open +
-  // addon WebGL/Canvas) quando vários terminais montam juntos (abrir um
-  // container inteiro) — sem isso, todo mundo faz esse trabalho síncrono no
-  // mesmo commit do React e trava o frontend até todos terminarem.
-  useEffect(() => {
-    if (isDormant) {
-      setCanMount(false)
-      return
-    }
-    let cancelled = false
-    let release: (() => void) | null = null
-    void acquireMountSlot().then((rel) => {
-      if (cancelled) {
-        rel()
-        return
-      }
-      release = rel
-      setCanMount(true)
-      // Libera a vaga só depois que o efeito síncrono de montagem (abaixo)
-      // já rodou nesta task — deixa o próximo terminal da fila começar
-      // numa task separada, cedendo o thread pro navegador entre um e outro.
-      window.setTimeout(() => {
-        release?.()
-        release = null
-      }, 0)
-    })
-    return () => {
-      cancelled = true
-      release?.()
-      release = null
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [isDormant, ptyId, retryKey])
+  const sessionPersistenceKey = sessionKey ?? ptyId
 
   const hideLinkActions = useCallback(() => {
     setLinkActions(null)
@@ -660,7 +557,7 @@ export function XTermView({
 
   useEffect(() => {
     const container = containerRef.current
-    if (!container || isDormant || !canMount) return
+    if (!container) return
 
     let disposed = false
     const spawnQueueAbort = new AbortController()
@@ -669,22 +566,15 @@ export function XTermView({
     let unlistenDragDrop: (() => void) | null = null
     let resizeTimer: number | null = null
     let writeFrame: number | null = null
-    let pendingWrite = ''
-
-    let pendingWriteBytes = 0
-    let backpressurePaused = false
-    const HIGH_WATERMARK = 128 * 1024
-    const LOW_WATERMARK = 16 * 1024
-    let flushTimer: number | null = null
-    let isFlushing = false
-    let lastFrameRenderTimeMs = 16
+    let pendingWrites: string[] = []
+    let pendingWriteLength = 0
     let lastCols = 0
     let lastRows = 0
     let forceNextResize = false
     let completionMonitor: AgentCompletionMonitor | null = null
     let linkProviderDisposable: { dispose: () => void } | null = null
     let linkScrollDisposable: { dispose: () => void } | null = null
-    let releaseWebglContext: (() => void) | null = null
+    let writeRecoveryPending = false
 
     const resourcePolicy = useProjectsStore.getState().preferences.resourcePolicy
     const terminal = new Terminal({
@@ -704,20 +594,8 @@ export function XTermView({
     const searchAddon = new SearchAddon()
     terminal.loadAddon(fitAddon)
     terminal.loadAddon(searchAddon)
-    terminal.loadAddon(new Unicode11Addon())
-    try {
-      terminal.unicode.activeVersion = '11'
-    } catch (e) {
-      console.warn('[XTermView] Não foi possível ativar Unicode 11:', e)
-    }
-    for (const ident of [4, 10, 11, 12]) {
-      terminal.parser.registerOscHandler(ident, (data) => data.includes('?'))
-    }
     terminal.open(container)
     terminalRef.current = terminal
-    if (command === 'opencode') {
-      terminal.write('\x1b[?7l')
-    }
     const clampHorizontalScroll = () => {
       container.scrollLeft = 0
       const xterm = container.querySelector<HTMLElement>('.xterm')
@@ -751,27 +629,9 @@ export function XTermView({
 
     // Renderer WebGL (GPU) — o renderer DOM padrão trava a digitação,
     // principalmente com zoom da WebView ≠ 100%. Fallback: DOM renderer.
-    // Skip para OpenCode — WebGL corrompe o atlas ao scrollar por muitas linhas.
-    if (command === 'opencode') {
-      try {
-        terminal.loadAddon(new CanvasAddon())
-      } catch (canvasErr) {
-        console.error('[XTermView] Canvas addon falhou para opencode:', canvasErr)
-      }
-    } else {
-      let webglAddon: WebglAddon | null = null
-      releaseWebglContext = acquireWebglContext()
-      if (!releaseWebglContext) {
-        // Pool de contextos WebGL esgotado (orçamento de 4) — sem isso o
-        // terminal ficava preso no renderer DOM padrão (o pior: trava
-        // digitação e "recarrega" visualmente a cada resize). Canvas é bem
-        // mais leve que WebGL mas ainda longe do DOM renderer.
-        try {
-          terminal.loadAddon(new CanvasAddon())
-        } catch (canvasErr) {
-          console.error('[XTermView] Canvas fallback (pool WebGL esgotado) falhou:', canvasErr)
-        }
-      } else {
+    let webglAddon: WebglAddon | null = null
+    let releaseWebglContext: (() => void) | null = acquireWebglContext()
+    if (releaseWebglContext) {
       try {
         webglAddon = new WebglAddon()
         webglAddon.onContextLoss(() => {
@@ -782,12 +642,6 @@ export function XTermView({
           webglAddon = null
           releaseWebglContext?.()
           releaseWebglContext = null
-          // Canvas como fallback — o renderer DOM trava a digitação (ver acima).
-          try {
-            terminal.loadAddon(new CanvasAddon())
-          } catch (canvasErr) {
-            console.error('[XTermView] Canvas fallback falhou:', canvasErr)
-          }
           // Um syncScrollArea assíncrono já agendado pode ler `dimensions` de um
           // renderer morto e lançar ("Cannot read properties of undefined
           // (reading 'dimensions')"), o que cascateia e derruba a render. Força um
@@ -799,105 +653,54 @@ export function XTermView({
               if (rect.width < 50 || rect.height < 30) return
               fitAddon.fit()
               terminal.refresh(0, Math.max(0, terminal.rows - 1))
+              terminal.focus()
             } catch {
               /* container invisível / em teardown — ignora */
             }
           })
         })
         terminal.loadAddon(webglAddon)
-      } catch (e) {
-        console.warn('[XTermView] WebGL não suportado:', e)
+      } catch {
         webglAddon?.dispose()
         webglAddon = null
         releaseWebglContext()
         releaseWebglContext = null
-        // Canvas como fallback — o renderer DOM trava a digitação (ver acima).
-        try {
-          terminal.loadAddon(new CanvasAddon())
-        } catch (canvasErr) {
-          console.error('[XTermView] Canvas fallback falhou:', canvasErr)
-        }
-      }
       }
     }
 
-    useTerminalsStore.getState().focusPty(ptyId)
-    const onContainerFocusIn = () => {
-      useTerminalsStore.getState().focusPty(ptyId)
-    }
-    container.addEventListener('focusin', onContainerFocusIn)
     terminal.focus()
 
-    const scheduleFlush = () => {
-      if (isFlushing || writeFrame !== null || flushTimer !== null || disposed) return
+    const flushPendingWrite = () => {
+      writeFrame = null
+      if (pendingWriteLength === 0) return
 
-      let delayMs = 16
-      if (lastFrameRenderTimeMs >= 25) {
-        delayMs = 32
-      } else if (lastFrameRenderTimeMs < 4) {
-        delayMs = 8
+      let budget = TERMINAL_WRITE_FRAME_BUDGET
+      let output = ''
+      while (budget > 0 && pendingWrites.length > 0) {
+        const head = pendingWrites[0]
+        const take = Math.min(budget, head.length)
+        output += head.slice(0, take)
+        budget -= take
+        pendingWriteLength -= take
+        if (take === head.length) pendingWrites.shift()
+        else pendingWrites[0] = head.slice(take)
       }
 
-      flushTimer = window.setTimeout(flushPendingWrite, delayMs)
-    }
-
-    const flushPendingWrite = () => {
-      flushTimer = null
-      if (!pendingWrite || isFlushing || disposed) return
-
-      isFlushing = true
-      const chunk = pendingWrite
-      const chunkSize = chunk.length
-      pendingWrite = ''
-
-      const startTime = performance.now()
-      terminal.write(chunk, () => {
-        isFlushing = false
-        // Dispose no meio do write: não agenda mais nada nem mexe em PTY.
-        if (disposed) return
-        lastFrameRenderTimeMs = performance.now() - startTime
+      if (output) {
+        terminal.write(output)
         clampHorizontalScroll()
-
-        pendingWriteBytes = Math.max(0, pendingWriteBytes - chunkSize)
-
-        if (backpressurePaused && pendingWriteBytes <= LOW_WATERMARK) {
-          backpressurePaused = false
-          const currentId = ptyIdRef.current
-          if (currentId) {
-            void setPtyReadState(currentId, true).catch((e) =>
-              console.error('[XTermView] Erro ao reatar leitura PTY:', e)
-            )
-          }
-        }
-
-        if (pendingWrite) {
-          scheduleFlush()
-        }
-      })
+      }
+      if (pendingWriteLength > 0) {
+        writeFrame = window.requestAnimationFrame(flushPendingWrite)
+      }
     }
-
-    const QUERY_RESPONSE_REGEX = /\x1b\[(?:\d+;\d+R|\?\d+;\d+\$y|\?\d+;\d+c)/g
 
     const queueTerminalWrite = (chunk: string) => {
-      if (!chunk || disposed) return
-      // Filtra vazamentos de respostas a queries de terminal (ex.: CPR, DECRQM, DA1)
-      // que foram ecoadas de volta pelo PTY antes de entrar em modo raw.
-      const cleaned = chunk.replace(QUERY_RESPONSE_REGEX, '')
-      if (!cleaned) return
-      pendingWrite += cleaned
-      pendingWriteBytes += cleaned.length
-
-      if (!backpressurePaused && pendingWriteBytes >= HIGH_WATERMARK) {
-        backpressurePaused = true
-        const currentId = ptyIdRef.current
-        if (currentId) {
-          void setPtyReadState(currentId, false).catch((e) =>
-            console.error('[XTermView] Erro ao pausar leitura PTY:', e)
-          )
-        }
-      }
-
-      scheduleFlush()
+      if (!chunk) return
+      pendingWrites.push(chunk)
+      pendingWriteLength += chunk.length
+      if (writeFrame !== null) return
+      writeFrame = window.requestAnimationFrame(flushPendingWrite)
     }
 
     const getTerminalLineHeight = () => {
@@ -921,13 +724,21 @@ export function XTermView({
     container.addEventListener('wheel', onWheel, { passive: false, capture: true })
 
     const pasteText = (raw: string) => {
-      if (!raw) return
-      const id = ptyIdRef.current
-      if (!id) return
-      const text = normalizePastedText(raw)
-      useTerminalsStore.getState().recordIo(id)
-      recordPromptInput(text)
-      void writePtyChunked(id, text, terminal.modes.bracketedPasteMode)
+      // Colar NUNCA pode quebrar o pane: qualquer erro (normalização, PTY morto,
+      // invoke falhando) é engolido e só logado. Sem terminal vivo, ignora.
+      try {
+        if (!raw) return
+        const id = ptyIdRef.current
+        if (!id) return
+        const text = normalizePastedText(raw)
+        useTerminalsStore.getState().recordIo(id)
+        recordPromptInput(text)
+        void writePtyChunked(id, text, terminal.modes.bracketedPasteMode).catch((err) => {
+          console.warn('[pty-paste] falha ao escrever colagem no PTY (ignorado):', err)
+        })
+      } catch (err) {
+        console.warn('[pty-paste] colagem ignorada (erro):', err)
+      }
     }
 
     // Arrastar arquivo do SO pro terminal: o onDragDropEvent do Tauri é global,
@@ -962,21 +773,8 @@ export function XTermView({
         /* onDragDropEvent exige runtime Tauri; em browser puro/testes falha. */
       })
 
-    // Digitar/enviar input mantém `lastFocusedAt` fresco (throttle 5s) — sem
-    // isso o grace period de 30s do pool expira COM o usuário usando o terminal
-    // (focusin só dispara ao re-focar, não a cada tecla) e ele hibernava em uso.
-    let lastFocusPing = 0
-    const pingFocus = () => {
-      const now = Date.now()
-      if (now - lastFocusPing < 5000) return
-      lastFocusPing = now
-      useTerminalsStore.getState().focusPty(ptyId)
-    }
-    terminal.onData(pingFocus)
-
     terminal.attachCustomKeyEventHandler((event) => {
       if (event.type !== 'keydown') return true
-      pingFocus()
       const ctrl = event.ctrlKey || event.metaKey
       if (!ctrl || event.altKey) return true
 
@@ -1017,11 +815,6 @@ export function XTermView({
       }
 
       if (key === 'v') {
-        // OpenCode: não bloquear — deixa o xterm.js repassar pro PTY
-        // (OpenCode tem suporte nativo a colar imagens).
-        if (command === 'opencode') {
-          return true
-        }
         event.preventDefault()
         void readClipboardText()
           .catch(() => navigator.clipboard?.readText() ?? '')
@@ -1040,19 +833,10 @@ export function XTermView({
     })
 
     const focusTerminal = () => terminal.focus()
+    container.addEventListener('pointerdown', focusTerminal, true)
     container.addEventListener('click', focusTerminal)
 
     const onPaste = (event: ClipboardEvent) => {
-      // OpenCode: se há imagem no clipboard, não bloquear — o xterm.js repassa
-      // pro PTY e o OpenCode processa a imagem colada nativamente.
-      if (command === 'opencode') {
-        const items = event.clipboardData?.items
-        if (items) {
-          for (const item of items) {
-            if (item.type.startsWith('image/')) return
-          }
-        }
-      }
       const raw = event.clipboardData?.getData('text/plain') ?? ''
       event.preventDefault()
       event.stopPropagation()
@@ -1084,11 +868,6 @@ export function XTermView({
         /* refresh pode falhar durante teardown/layout invisível */
       }
       clampHorizontalScroll()
-      try {
-        terminal.scrollToBottom()
-      } catch {
-        /* ignore se unmounted */
-      }
       const force = forceNextResize
       forceNextResize = false
       if (!force && terminal.cols === lastCols && terminal.rows === lastRows) return
@@ -1102,8 +881,7 @@ export function XTermView({
       if (disposed) return
       forceNextResize ||= force
       if (resizeTimer !== null) window.clearTimeout(resizeTimer)
-      const debounceMs = 80
-      resizeTimer = window.setTimeout(runResize, debounceMs)
+      resizeTimer = window.setTimeout(runResize, 80)
     }
     const scheduleObservedResize = () => scheduleResize()
     const onResizeRequest = (event: Event) => {
@@ -1117,13 +895,10 @@ export function XTermView({
     ro.observe(container)
     window.addEventListener('alethe:zoom-changed', scheduleObservedResize)
     window.addEventListener('alethe:terminal-resize-request', onResizeRequest)
-    document.fonts?.ready?.then(() => {
-      if (!disposed) scheduleResize(true)
-    })
 
     // Fit adicional com delay pra garantir que o layout estabilizou
     const initialFitTimer = window.setTimeout(() => {
-      scheduleResize(true)
+      scheduleResize()
     }, 150)
 
     const attachExistingPty = async (existingId: string) => {
@@ -1160,6 +935,9 @@ export function XTermView({
       unlistenData = dataUnlisten
 
       const exitUnlisten = await listenPtyExit(existingId, (payload) => {
+        console.info(
+          `[pty-launch] ${command ?? 'shell'} EXIT (attach) id=${existingId} code=${payload.code ?? '—'} reason=${payload.reason ?? '—'}`,
+        )
         if (payload.reason === 'restarted') {
           useTerminalsStore.getState().markExited(existingId)
           return
@@ -1173,7 +951,7 @@ export function XTermView({
         useTerminalsStore.getState().markExited(existingId)
         completionMonitor?.dispose()
         completionMonitor = null
-        removeSession(ptyId)
+        removeSession(sessionPersistenceKey)
         onExitRef.current?.(payload.code)
       })
       if (disposed) {
@@ -1189,10 +967,6 @@ export function XTermView({
     terminal.onData((data) => {
       const id = ptyIdRef.current
       if (!id) return
-      // Não repassa pro PTY se o data gerado pelo xterm for apenas resposta automática a queries
-      if (/^\x1b\[(?:\d+;\d+R|\?\d+;\d+\$y|\?\d+;\d+c)$/.test(data)) {
-        return
-      }
       useTerminalsStore.getState().recordIo(id)
       recordPromptInput(data)
       completionMonitor?.handleInput(data)
@@ -1200,14 +974,28 @@ export function XTermView({
       if (trackedPtyId) recordAgentActivityInput(trackedPtyId, data)
       if (container.scrollWidth > container.clientWidth + 2) scheduleResize(true)
       clampHorizontalScroll()
-      void writePty(id, data)
+      void writePty(id, data).catch((error) => {
+        console.warn(`[pty-input] falha ao escrever em ${id}; solicitando recuperação`, error)
+        if (disposed || writeRecoveryPending) return
+        writeRecoveryPending = true
+        window.dispatchEvent(
+          new CustomEvent('alethe:terminal-restart-request', { detail: { ptyId: id } }),
+        )
+        window.setTimeout(() => {
+          writeRecoveryPending = false
+        }, 5_000)
+      })
     })
 
-    const RESUMABLE_AGENTS = ['claude', 'codex', 'opencode']
+    const RESUMABLE_AGENTS = ['claude', 'codex', 'opencode', 'antigravity']
 
     async function start() {
       try {
-        // Fit inicial só com dimensões válidas.
+        // Fit inicial só com dimensões válidas. Um fit em container 0×0 (pane
+        // recém-montado/colapsado) deixa o renderer sem dimensões e o
+        // syncScrollArea assíncrono do xterm estoura depois com "Cannot read
+        // properties of undefined (reading 'dimensions')". Se ainda não tem
+        // layout, o ResizeObserver + initialFitTimer refazem o fit quando estabiliza.
         try {
           const rect = container?.getBoundingClientRect()
           if (rect && rect.width >= 50 && rect.height >= 30) fitAddon.fit()
@@ -1228,66 +1016,6 @@ export function XTermView({
           return
         }
 
-        // Fast-path: RESTORING com PTY VIVO — o processo já existe no Rust (só
-        // hibernado pelo pool). Re-registra listeners sem spawn de novo. Com
-        // snapshot, reidrata dele; SEM snapshot, reanexa via attachPty (replay
-        // do scrollback) — nunca spawnPty com id de PTY vivo (mataria/duplicaria
-        // a sessão do CLI).
-        const restoringRuntime = useTerminalsStore.getState().byPtyId[ptyId]
-        const currentSnapshot = restoringRuntime?.snapshot
-        if (restoringRuntime?.poolState === 'RESTORING' && restoringRuntime.alive) {
-          ptyIdRef.current = ptyId
-          useTerminalsStore.getState().registerPty(ptyId)
-          setBootPhase('attaching')
-          void setPtyPriority(ptyId, true).catch(() => {})
-          void setPtyReadState(ptyId, true).catch(() => {})
-          if (currentSnapshot) {
-            // Escreve snapshot ANSI e restaura scroll
-            terminal.write(currentSnapshot.ansiBuffer, () => {
-              try { terminal.scrollToLine(currentSnapshot.scrollTop) } catch { /* ignore */ }
-              if (!disposed) {
-                useTerminalsStore.getState().setSnapshot(ptyId, null)
-                useTerminalsStore.getState().setPoolState(ptyId, 'ACTIVE')
-              }
-            })
-          } else {
-            const replayBuffer = await attachPty(ptyId)
-            if (disposed) return
-            if (replayBuffer) queueTerminalWrite(replayBuffer)
-            useTerminalsStore.getState().setPoolState(ptyId, 'ACTIVE')
-          }
-          // Re-registra listener de dados
-          const dataUnlisten = await listenPtyData(ptyId, (chunk) => {
-            queueTerminalWrite(chunk)
-            completionMonitor?.handleOutput(chunk)
-          })
-          if (disposed) { dataUnlisten(); return }
-          unlistenData = dataUnlisten
-          // Re-registra listener de exit
-          const exitUnlisten = await listenPtyExit(ptyId, (payload) => {
-            if (payload.reason === 'restarted') {
-              useTerminalsStore.getState().markExited(ptyId)
-              return
-            }
-            if (payload.reason === 'suspended') {
-              useTerminalsStore.getState().markSuspended(ptyId)
-              completionMonitor?.dispose()
-              completionMonitor = null
-              return
-            }
-            useTerminalsStore.getState().markExited(ptyId)
-            completionMonitor?.dispose()
-            completionMonitor = null
-            removeSession(ptyId)
-            onExitRef.current?.(payload.code)
-          })
-          if (disposed) { exitUnlisten(); return }
-          unlistenExit = exitUnlisten
-          scheduleResize()
-          if (!disposed) setBootPhase('ready')
-          return
-        }
-
         // Pré-resolve CLI: se for agent, precisa achar override OU launcher
         // auto-detectado antes de spawnar. Sem isso, o pwsh executa `& 'claude'`
         // e mostra erro CommandNotFound dentro do terminal — UX feia.
@@ -1295,9 +1023,12 @@ export function XTermView({
         if (command && command !== 'shell') {
           if (cliPathOverride) {
             launcherOverride = cliPathOverride
+            console.info(`[pty-launch] ${command} usando override: ${cliPathOverride}`)
           } else {
             const auto = await findCliLauncher(command)
+            console.info(`[pty-launch] ${command} findCliLauncher → ${auto ?? 'null (NÃO ENCONTRADO)'}`)
             if (!auto) {
+              console.warn(`[pty-launch] ${command} não resolvido — mostrando overlay "not found" e ficando offline`)
               setCommandNotFound(command)
               useTerminalsStore.getState().setStatus(ptyId, 'offline')
               return
@@ -1307,50 +1038,36 @@ export function XTermView({
 
         // projects.json é a fonte principal. O marcador de crash no localStorage
         // serve apenas de fallback para arquivos antigos que ainda não tinham ID.
-        const savedSession = command && RESUMABLE_AGENTS.includes(command) ? consumeSession(ptyId) : null
-        const savedConversationId = command === 'claude'
-          ? savedSession?.claudeSessionId
-          : command === 'codex'
-            ? savedSession?.codexSessionId
-            : command === 'opencode'
-              ? savedSession?.opencodeSessionId
-              : undefined
+        const savedSession = command && RESUMABLE_AGENTS.includes(command)
+          ? consumeSession(sessionPersistenceKey)
+          : null
+        const savedConversationId = savedConversationIdFor(savedSession, command, cwd)
         let resumeId = sessionId ?? savedConversationId
-        // OpenCode: NÃO cai pra --continue quando falta o ID específico —
-        // --continue não é por terminal, é "a última sessão do OpenCode" pra
-        // aquele cwd, então com 2+ terminais no mesmo projeto todos caem na
-        // MESMA sessão (conteúdo duplicado entre panes). Em vez disso,
-        // consulta as sessões existentes daquele cwd e reivindica (via
-        // claimMostRecentSession) a mais recente que NENHUM outro pane já
-        // pegou — --session <id> explícito é sempre mais confiável que
-        // --continue. Sem nenhuma disponível, começa sessão nova (honesto);
-        // a detecção pós-spawn abaixo captura o ID novo certinho.
-        if (command === 'opencode' && !resumeId && cwd) {
-          try {
-            const existing = await snapshotOpenCodeSessions(cwd)
-            const claimed = claimMostRecentSession('opencode', cwd, existing, ptyId)
-            if (claimed) resumeId = claimed.id
-          } catch {
-            /* sem sessões existentes ou consulta falhou — segue sem resume */
-          }
-          if (disposed) return
+        // Fallback: se a tentativa anterior morreu no nascimento usando resume,
+        // reabre ignorando o id órfão para nascer uma sessão limpa.
+        if (forceFreshRef.current) {
+          console.warn(`[pty-launch] ${command} reabrindo SEM resume (fallback de early-exit)`)
+          resumeId = undefined
         }
-        // Claude: valida que a conversa ainda existe no cwd antes de passar
-        // --resume. Se o id ficou órfão (conversa apagada, cwd diferente de onde
-        // nasceu, ou o --session-id forçado nunca virou transcript), o CLI aborta
-        // com "No conversation found" — mesmo havendo conversas reais ali (que o
-        // /resume interativo mostraria). Em vez de quebrar ou começar em branco,
-        // RECUPERAMOS a sessão mais recente daquele cwd (snapshot vem ordenado
-        // recent-first). O id recuperado é persistido logo abaixo, então se
-        // auto-cura pras próximas aberturas. Só agimos quando o snapshot SUCEDE;
-        // erro/timeout mantém o resume original (evita falso negativo).
-        // Ressalva: com 2+ panes Claude no MESMO cwd, ambos podem cair na mesma
-        // conversa mais recente — aceitável pro caso comum (1 Claude por pasta).
-        if (command === 'claude' && resumeId && cwd) {
+        // Valida a conversa antes de passar o argumento de resume. IDs persistidos
+        // podem ficar órfãos após limpeza de histórico ou sincronização entre PCs;
+        // nesse caso removemos o vínculo e iniciamos uma conversa limpa.
+        if (
+          (command === 'claude' || command === 'codex' || command === 'antigravity')
+          && resumeId
+          && cwd
+        ) {
           try {
-            const existing = await snapshotClaudeSessions(cwd)
-            if (!existing.some((s) => s.id === resumeId)) {
-              resumeId = existing[0]?.id
+            const existing = command === 'claude'
+              ? await snapshotClaudeSessions(cwd)
+              : command === 'codex'
+                ? await snapshotCodexSessions(cwd)
+                : await snapshotAntigravitySessions(cwd)
+            if (!existing.some((session) => session.id === resumeId)) {
+              console.warn(`[pty-launch] ${command} ignorando sessão órfã ${resumeId}`)
+              resumeId = undefined
+              removeSession(sessionPersistenceKey)
+              onSessionIdRef.current?.(undefined)
             }
           } catch {
             /* mantém o resume — não arrisca falso negativo */
@@ -1360,27 +1077,13 @@ export function XTermView({
         const preparedRuntime = command
           ? preparePtyRuntimeLaunch(command, runtimeProfile, extraArgs ?? [], env)
           : { args: extraArgs ?? [], env }
-
-        // RFC-004 — Graphify por projeto: garante o bootstrap do grafo (só o
-        // primeiro agente gera; demais usam) e injeta o MCP no launch. Tudo
-        // best-effort: falha do Graphify NUNCA bloqueia o spawn. Universal
-        // pros 3 providers — cada um tem seu próprio mecanismo de MCP (ver
-        // comentário em graphify.rs `graphify_opencode_config_write`/
-        // `graphify_codex_config_write`): Claude recebe `--mcp-config` no
-        // spawn; Codex/OpenCode leem de um arquivo de config no próprio
-        // projeto, escrito/mesclado ANTES do spawn (sem flag extra).
+        // RFC-004 — Graphify por projeto: garante o bootstrap do grafo e injeta o
+        // MCP nos 3 CLIs. Best-effort — falha do Graphify NUNCA bloqueia o spawn.
+        // Claude recebe `--mcp-config`; Codex/OpenCode recebem por merge no config
+        // do projeto (não têm flag), escrito antes do spawn.
         let graphifyMcpPath: string | undefined
         if (graphifyRepo && (command === 'claude' || command === 'codex' || command === 'opencode')) {
-          void graphifyEnsureGraph(graphifyRepo)
-            .then((status) => {
-              if (status === 'started') {
-                useUiStore.getState().pushToast({
-                  title: translate(getLocale(), 'graphify.title'),
-                  body: translate(getLocale(), 'graphify.bootstrapStarted'),
-                })
-              }
-            })
-            .catch(() => {})
+          void graphifyEnsureGraph(graphifyRepo).catch(() => undefined)
           if (command === 'claude') {
             graphifyMcpPath = await graphifyMcpConfigPath(graphifyRepo).catch(() => undefined)
           } else if (command === 'opencode') {
@@ -1394,21 +1097,24 @@ export function XTermView({
           ? buildAgentLaunch(command, preparedRuntime.args, resumeId, undefined, graphifyMcpPath)
           : { args: preparedRuntime.args, sessionId: undefined, createdSession: false }
         const spawnArgs = launch.args.length > 0 ? launch.args : undefined
+        if (command && command !== 'shell') {
+          console.info(
+            `[pty-launch] ${command} args=${JSON.stringify(spawnArgs ?? [])} resumeId=${resumeId ?? '—'} launcherOverride=${launcherOverride ?? '(auto/PATH)'}`,
+          )
+        }
         if (launch.sessionId && launch.sessionId !== sessionId) {
           onSessionIdRef.current?.(launch.sessionId)
         }
-        if (command && cwd) registerSessionClaim(command, cwd, launch.sessionId, ptyId)
+        if (command && cwd) registerSessionClaim(command, cwd, launch.sessionId)
 
-        // Snapshot leve das sessões Codex existentes antes do spawn para
-        // identificar e persistir o ID novo sem usar `resume --last`.
-        const codexSessionsBeforePromise = (command === 'codex' && cwd && !launch.sessionId)
-          ? snapshotCodexSessions(cwd).catch(() => [])
-          : null
-
-        // Snapshot leve das sessões OpenCode existentes antes do spawn para
-        // identificar e persistir o ID novo.
-        const opencodeSessionsBeforePromise = (command === 'opencode' && cwd && !launch.sessionId)
-          ? snapshotOpenCodeSessions(cwd).catch(() => [])
+        // Snapshot leve antes do spawn para identificar e persistir o ID novo
+        // de agentes que não permitem escolher o ID no nascimento.
+        const discoveredSessionsBeforePromise = cwd && !launch.sessionId
+          ? command === 'codex'
+            ? snapshotCodexSessions(cwd).catch(() => [])
+            : command === 'antigravity'
+              ? snapshotAntigravitySessions(cwd).catch(() => [])
+              : null
           : null
 
         // Serializa spawns globalmente — sem isso, abrir grupo com N×M terminais
@@ -1421,54 +1127,32 @@ export function XTermView({
           return
         }
         setBootPhase('spawning')
-
-        // Node Heap Profile: injeta NODE_OPTIONS (--max-old-space-size) e
-        // UV_THREADPOOL_SIZE no ambiente de agentes Node (claude/codex/opencode).
-        const heapProfile = useProjectsStore.getState().preferences.nodeHeapProfile
-        const nodeHeap: Record<string, string> = {}
-        if (command && ['claude', 'codex', 'opencode'].includes(command) && heapProfile) {
-          const heapMb = heapProfile === 'conservative' ? 96 : heapProfile === 'balanced' ? 128 : 256
-          const existing = env?.['NODE_OPTIONS'] ?? ''
-          nodeHeap.NODE_OPTIONS = existing
-            ? `${existing} --max-old-space-size=${heapMb}`
-            : `--max-old-space-size=${heapMb}`
-          nodeHeap.UV_THREADPOOL_SIZE = '4'
-        }
-
-        // Sinal real de working/idle do OpenCode (ver opencode_bridge.rs) — o
-        // plugin global lê essa env var pra saber onde fazer POST. Best-effort:
-        // se o endpoint não resolver a tempo, o terminal ainda spawna normal e
-        // cai de volta na heurística de PTY (agentCompletionMonitor.ts).
-        const bridgeEnv: Record<string, string> = {}
-        if (command === 'opencode') {
-          try {
-            bridgeEnv.ALETHE_BRIDGE_ENDPOINT = await agentHooksEndpoint()
-          } catch {
-            /* segue sem o bridge — heurística de PTY continua valendo */
-          }
-        }
-        const spawnEnv = { ...preparedRuntime.env, ...nodeHeap, ...bridgeEnv }
-
         let response: { id: string }
         try {
           response = await spawnPty({
             cols: terminal.cols,
             rows: terminal.rows,
             id: ptyId,
-            command: command ?? undefined,
+            command: command ? agentCliCommand(command) : undefined,
             cwd: cwd ?? undefined,
             extraArgs: spawnArgs,
             launcherOverride,
-            env: Object.keys(spawnEnv).length > 0 ? spawnEnv : undefined,
+            env: preparedRuntime.env,
           })
         } finally {
           releaseSpawnSlot()
         }
+        console.info(`[pty-launch] ${command ?? 'shell'} spawn OK id=${response.id}`)
+        spawnedAtRef.current = Date.now()
+        usedResumeRef.current = Boolean(resumeId)
         if (disposed) return
         setBootPhase('attaching')
         ptyIdRef.current = response.id
         useTerminalsStore.getState().registerPty(response.id)
         onSpawnedRef.current?.(response.id)
+        if (command && cwd && launch.sessionId) {
+          registerSessionClaim(command, cwd, launch.sessionId, response.id)
+        }
 
         if (command === 'claude' || command === 'codex' || command === 'opencode') {
           completionMonitor = new AgentCompletionMonitor({
@@ -1485,37 +1169,43 @@ export function XTermView({
         // Marca sessão como ativa — se o app fechar abruptamente, o próximo
         // spawn vai consumir essa entrada e injetar o resume adequado da CLI.
         if (command && RESUMABLE_AGENTS.includes(command)) {
-          saveSession(ptyId, {
+          saveSession(sessionPersistenceKey, {
             sessionId: response.id,
             claudeSessionId: command === 'claude' ? launch.sessionId : undefined,
             codexSessionId: command === 'codex' ? launch.sessionId : undefined,
-            opencodeSessionId: command === 'opencode' ? launch.sessionId : undefined,
+            antigravitySessionId: command === 'antigravity' ? launch.sessionId : undefined,
             cwd: cwd ?? '',
             agent: command,
             timestamp: Date.now(),
           })
 
-          // Codex precisa do ID especifico; `resume --last` junta terminais
-          // diferentes na mesma conversa quando existem 2+ Codex abertos.
-          if (command === 'codex' && cwd && codexSessionsBeforePromise) {
-            const detectCodexSession = async () => {
-              const before = new Set((await codexSessionsBeforePromise).map((s) => s.id))
+          // Codex e Antigravity precisam do ID específico para não misturar
+          // conversas de panes diferentes no próximo boot.
+          if ((command === 'codex' || command === 'antigravity') && cwd && discoveredSessionsBeforePromise) {
+            const detectCreatedSession = async () => {
+              const before = new Set((await discoveredSessionsBeforePromise).map((s) => s.id))
               // Janela ~30s (10×3s): o Codex às vezes leva a escrever o arquivo de
               // sessão (init do app-server, cwd frio), e sem detectar o id o boot
               // seguinte começa do zero. Para assim que acha; sem custo se detectar rápido.
               for (let attempt = 0; attempt < 10; attempt++) {
-                // Acorda no hint do watcher (session://new) ou no teto de 3s.
-                await Promise.race([
-                  new Promise((r) => setTimeout(r, 3000)),
-                  waitForSessionHint('codex'),
-                ])
+                if (command === 'codex') {
+                  await Promise.race([
+                    new Promise((resolve) => setTimeout(resolve, 3000)),
+                    waitForSessionHint('codex'),
+                  ])
+                } else {
+                  await new Promise((resolve) => setTimeout(resolve, 3000))
+                }
                 if (disposed) return
-                const sessions = await snapshotCodexSessions(cwd).catch(() => [])
-                const newSession = claimDiscoveredSession('codex', cwd, before, sessions, ptyId)
+                const sessions = command === 'codex'
+                  ? await snapshotCodexSessions(cwd).catch(() => [])
+                  : await snapshotAntigravitySessions(cwd).catch(() => [])
+                const newSession = claimDiscoveredSession(command, cwd, before, sessions, response.id)
                 if (newSession) {
-                  saveSession(ptyId, {
+                  saveSession(sessionPersistenceKey, {
                     sessionId: response.id,
-                    codexSessionId: newSession.id,
+                    codexSessionId: command === 'codex' ? newSession.id : undefined,
+                    antigravitySessionId: command === 'antigravity' ? newSession.id : undefined,
                     cwd: cwd ?? '',
                     agent: command,
                     timestamp: Date.now(),
@@ -1525,59 +1215,13 @@ export function XTermView({
                 }
               }
             }
-            void detectCodexSession()
-          }
-
-          // OpenCode: detecta o ID da sessão nova pós-spawn (similar ao Codex).
-          // Quando usamos --continue, a sessão já existe — pegamos a mais recente.
-          if (command === 'opencode' && cwd && opencodeSessionsBeforePromise) {
-            const detectOpenCodeSession = async () => {
-              const before = new Set((await opencodeSessionsBeforePromise).map((s) => s.id))
-              for (let attempt = 0; attempt < 4; attempt++) {
-                await Promise.race([
-                  new Promise((r) => setTimeout(r, 3000)),
-                  waitForSessionHint('opencode'),
-                ])
-                if (disposed) return
-                const sessions = await snapshotOpenCodeSessions(cwd).catch(() => [])
-                // Primeiro tenta achar sessão NOVA (não estava no before).
-                const newSession = claimDiscoveredSession('opencode', cwd, before, sessions)
-                if (newSession) {
-                  saveSession(ptyId, {
-                    sessionId: response.id,
-                    opencodeSessionId: newSession.id,
-                    cwd: cwd ?? '',
-                    agent: command,
-                    timestamp: Date.now(),
-                  })
-                  onSessionIdRef.current?.(newSession.id)
-                  return
-                }
-              }
-            }
-            void detectOpenCodeSession()
+            void detectCreatedSession()
           }
         }
 
-        let replay: string | null = null
-        const snapshot = useTerminalsStore.getState().byPtyId[ptyId]?.snapshot
-
-        if (snapshot) {
-          terminal.write(snapshot.ansiBuffer, () => {
-            try {
-              terminal.scrollToLine(snapshot.scrollTop)
-            } catch { /* ignore */ }
-            if (!disposed) {
-              useTerminalsStore.getState().setPoolState(ptyId, 'ACTIVE')
-            }
-          })
-          void setPtyPriority(response.id, true).catch(() => {})
-          void setPtyReadState(response.id, true).catch(() => {})
-        } else {
-          replay = await attachPty(response.id)
-          if (disposed) return
-          if (replay) queueTerminalWrite(replay)
-        }
+        const replay = await attachPty(response.id)
+        if (disposed) return
+        if (replay) queueTerminalWrite(replay)
 
         // Race fix: se o componente desmontar entre o await e a atribuição,
         // a cleanup function já rodou com unlistenData/unlistenExit ainda
@@ -1594,6 +1238,9 @@ export function XTermView({
         unlistenData = dataUnlisten
 
         const exitUnlisten = await listenPtyExit(response.id, (payload) => {
+          console.info(
+            `[pty-launch] ${command ?? 'shell'} EXIT id=${response.id} code=${payload.code ?? '—'} reason=${payload.reason ?? '—'}`,
+          )
           if (payload.reason === 'restarted') {
             useTerminalsStore.getState().markExited(response.id)
             return
@@ -1604,11 +1251,48 @@ export function XTermView({
             completionMonitor = null
             return
           }
+          const isAgent =
+            command === 'claude' || command === 'codex' || command === 'opencode' || command === 'antigravity'
+          const elapsed = Date.now() - spawnedAtRef.current
+          // Fallback 1: agent morreu no nascimento COM resume → sessão órfã.
+          // Limpa e reabre uma vez com sessão nova, em vez de deixar o pane cinza.
+          if (
+            isAgent &&
+            elapsed < EARLY_EXIT_MS &&
+            usedResumeRef.current &&
+            !earlyExitRetriedRef.current
+          ) {
+            earlyExitRetriedRef.current = true
+            forceFreshRef.current = true
+            console.warn(
+              `[pty-launch] ${command} saiu em ${elapsed}ms com resume — reabrindo sessão nova (fallback)`,
+            )
+            useTerminalsStore.getState().markExited(response.id)
+            completionMonitor?.dispose()
+            completionMonitor = null
+            removeSession(sessionPersistenceKey)
+            terminal.write(
+              '\r\n\x1b[33m[alethe] sessão anterior indisponível — reabrindo sessão nova…\x1b[0m\r\n',
+            )
+            setRetryKey((v) => v + 1)
+            return
+          }
+          // Fallback 2: agent morreu no nascimento SEM resume (binário/instalação
+          // quebrada). Não relança em loop; deixa um aviso visível em vez de cinza.
+          if (isAgent && elapsed < EARLY_EXIT_MS) {
+            console.warn(
+              `[pty-launch] ${command} saiu em ${elapsed}ms (code ${payload.code ?? '—'}) — sem retry`,
+            )
+            terminal.write(
+              `\r\n\x1b[31m[alethe] ${command} encerrou imediatamente (code ${payload.code ?? '—'}).\x1b[0m\r\n` +
+                '\x1b[90mVerifique a instalação do CLI ou configure o caminho nas preferências.\x1b[0m\r\n',
+            )
+          }
           useTerminalsStore.getState().markExited(response.id)
           completionMonitor?.dispose()
           completionMonitor = null
           // Clean exit → não resume na próxima vez
-          removeSession(ptyId)
+          removeSession(sessionPersistenceKey)
           onExitRef.current?.(payload.code)
         })
         if (disposed) {
@@ -1617,9 +1301,33 @@ export function XTermView({
         }
         unlistenExit = exitUnlisten
 
+        const prompt = initialInput?.trim()
+        if (prompt) {
+          const sendInitialInput = async () => {
+            const earliestSendAt = Date.now() + 1_500
+            const deadline = Date.now() + 15_000
+            while (!disposed && Date.now() < deadline) {
+              await new Promise((resolve) => window.setTimeout(resolve, 250))
+              const runtime = useTerminalsStore.getState().byPtyId[response.id]
+              const quietFor = runtime ? Date.now() - runtime.lastIoAt : 0
+              if (Date.now() >= earliestSendAt && runtime?.alive && quietFor >= 700) break
+            }
+            if (disposed) return
+            try {
+              await writePtyChunked(response.id, prompt, true)
+              await writePty(response.id, '\r')
+              onInitialInputSentRef.current?.()
+            } catch (error) {
+              console.warn('[pty-launch] não foi possível enviar o prompt inicial:', error)
+            }
+          }
+          void sendInitialInput()
+        }
+
         scheduleResize()
         if (!disposed) setBootPhase('ready')
       } catch (err) {
+        console.error(`[pty-launch] ${command ?? 'shell'} FALHOU ao iniciar PTY:`, err)
         terminal.writeln(`Failed to start PTY: ${String(err)}`)
         if (!disposed) setBootPhase('ready')
       }
@@ -1630,22 +1338,16 @@ export function XTermView({
       disposed = true
       spawnQueueAbort.abort()
       container.removeEventListener('wheel', onWheel, true)
+      container.removeEventListener('pointerdown', focusTerminal, true)
       container.removeEventListener('click', focusTerminal)
       container.removeEventListener('paste', onPaste)
-      container.removeEventListener('focusin', onContainerFocusIn)
       window.removeEventListener('alethe:zoom-changed', scheduleObservedResize)
       window.removeEventListener('alethe:terminal-resize-request', onResizeRequest)
       ro.disconnect()
       if (resizeTimer !== null) window.clearTimeout(resizeTimer)
       if (writeFrame !== null) window.cancelAnimationFrame(writeFrame)
-      if (flushTimer !== null) window.clearTimeout(flushTimer)
-      pendingWrite = ''
-      // Se desmontou com o PTY pausado, retoma a leitura — sem isso o PTY fica bloqueado.
-      if (backpressurePaused) {
-        const pausedId = ptyIdRef.current
-        if (pausedId) void setPtyReadState(pausedId, true).catch(() => {})
-        backpressurePaused = false
-      }
+      pendingWrites = []
+      pendingWriteLength = 0
       window.clearTimeout(initialFitTimer)
       unlistenData?.()
       unlistenExit?.()
@@ -1661,13 +1363,11 @@ export function XTermView({
       releaseWebglContext?.()
       releaseWebglContext = null
     }
-    // ptyId/retryKey/isDormant são as chaves de identidade. `isDormant` (e NÃO
-    // `poolState` cru): hibernar desmonta 1×, acordar remonta 1×, e transições
-    // intermediárias (HIBERNATING/RESTORING→ACTIVE) não recriam nada.
-    // `canMount` vem da fila de montagem (mountQueue) — vira true quando este
-    // terminal ganha a vaga pra fazer o setup síncrono pesado do xterm.js.
+    // A identidade estável da sub-tab evita remontar assim que o spawn troca o
+    // ptyId temporário pelo ID real; isso também deixa a descoberta assíncrona
+    // da conversa terminar e persistir o ID antes de um reload.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [ptyId, retryKey, isDormant, canMount])
+  }, [sessionPersistenceKey, retryKey])
 
   useEffect(() => {
     const terminal = terminalRef.current
@@ -1705,39 +1405,11 @@ export function XTermView({
 
   return (
     <>
-      {poolState === 'FAILED' ? (
-        <div className={styles.overlay}>
-          <div className={styles.overlayText} style={{ color: 'var(--status-stopped)' }}>
-            <strong>Falha ao reidratar o terminal.</strong>
-          </div>
-          <button
-            type="button"
-            className={styles.overlayBtn}
-            onClick={() => useTerminalsStore.getState().setPoolState(ptyId, 'ACTIVE')}
-          >
-            Tentar Novamente
-          </button>
-        </div>
-      ) : poolState === 'HIBERNATED' ? (
-        <div className={styles.overlay}>
-          <div className={styles.overlayText} style={{ color: 'var(--fg-muted)', fontFamily: 'monospace' }}>
-            [Terminal Suspenso — RAM Liberada]
-          </div>
-          <button
-            type="button"
-            className={styles.overlayBtn}
-            onClick={() => useTerminalsStore.getState().setPoolState(ptyId, 'ACTIVE')}
-          >
-            Reativar
-          </button>
-        </div>
-      ) : (
-        <div
-          ref={containerRef}
-          className={`${styles.host} ${dropActive ? styles.dropActive : ''}`}
-          style={{ background: getXtermTheme(terminalTheme).background }}
-        />
-      )}
+      <div
+        ref={containerRef}
+        className={`${styles.host} ${dropActive ? styles.dropActive : ''}`}
+        style={{ background: getXtermTheme(terminalTheme).background }}
+      />
       {bootLabel && !commandNotFound ? (
         <div className={styles.bootOverlay}>
           <div className={styles.bootSpinner} aria-hidden />

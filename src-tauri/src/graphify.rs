@@ -350,9 +350,15 @@ pub fn graphify_codex_config_write(repo: String, command: Option<String>) -> Res
     if !body.is_empty() && !body.ends_with('\n') {
         body.push('\n');
     }
-    let args_toml = format!("\"{}\", \"--mcp\"", root.to_string_lossy().replace('\\', "\\\\"));
+    // Escapa para string básica TOML: contrabarra e aspas (nessa ordem). Sem
+    // isso, um `command`/path do Windows (ex.: C:\Users\..\graphify.exe) vira
+    // escape TOML inválido (\U, \g) e corrompe TODO o config.toml do usuário —
+    // não só o bloco do graphify.
+    let toml_escape = |s: &str| s.replace('\\', "\\\\").replace('"', "\\\"");
+    let cmd_toml = toml_escape(&cmd);
+    let args_toml = format!("\"{}\", \"--mcp\"", toml_escape(&root.to_string_lossy()));
     body.push_str(&format!(
-        "\n[mcp_servers.graphify]\ncommand = \"{cmd}\"\nargs = [{args_toml}]\n",
+        "\n[mcp_servers.graphify]\ncommand = \"{cmd_toml}\"\nargs = [{args_toml}]\n",
     ));
 
     std::fs::write(&path, body).map_err(|e| format!("write_failed:{e}"))

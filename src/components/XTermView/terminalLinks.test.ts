@@ -3,10 +3,16 @@ import { describe, expect, it } from 'vitest'
 import { detectTerminalLinks, getLogicalTerminalLine, terminalLinkRange } from './terminalLinks'
 
 describe('terminal links', () => {
-  it('preserves spaces inside URLs and paths', () => {
-    expect(detectTerminalLinks('https://example.com/a folder/read me.md')).toEqual([
-      expect.objectContaining({ text: 'https://example.com/a folder/read me.md', displayLength: 39 }),
+  it('ends URLs at whitespace while preserving spaces inside local paths', () => {
+    expect(detectTerminalLinks('https://github.com/login/device in your browser...')).toEqual([
+      expect.objectContaining({
+        text: 'https://github.com/login/device',
+        displayLength: 'https://github.com/login/device'.length,
+      }),
     ])
+    expect(detectTerminalLinks('(https://github.com/login/device in your browser)')[0].text).toBe(
+      'https://github.com/login/device',
+    )
     expect(detectTerminalLinks('D:\\public launch\\src\\file.ts')).toEqual([
       expect.objectContaining({ text: 'D:\\public launch\\src\\file.ts', kind: 'path' }),
     ])
@@ -49,5 +55,11 @@ describe('terminal links', () => {
     expect(detectTerminalLinks('/tmp/main.ts:42:10')[0].fileKind).toBe('text')
     expect(detectTerminalLinks('/tmp/notes.md')[0].fileKind).toBe('markdown')
     expect(detectTerminalLinks('https://example.com/x')[0].fileKind).toBeUndefined()
+  })
+
+  it('does not turn prose slashes into links', () => {
+    expect(detectTerminalLinks('/ Zambia / India')).toEqual([])
+    expect(detectTerminalLinks('IP residencial/mobile + UA')).toEqual([])
+    expect(detectTerminalLinks('foo/bar')).toEqual([])
   })
 })

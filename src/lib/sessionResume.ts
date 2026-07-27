@@ -15,12 +15,34 @@ export type SavedSession = {
   codexSessionId?: string
   /** OpenCode session ID (ses_... do opencode session list). */
   opencodeSessionId?: string
+  /** Antigravity conversation ID (conversation_metadata.json). */
+  antigravitySessionId?: string
   cwd: string
   agent: string
   timestamp: number
 }
 
 export type ActiveSessions = Record<string, SavedSession>
+
+function normalizeCwd(cwd: string): string {
+  const trimmed = cwd.trim().replace(/[\\/]+$/, '')
+  if (/^[a-z]:/i.test(trimmed)) return trimmed.replace(/\//g, '\\').toLowerCase()
+  return trimmed
+}
+
+export function savedConversationIdFor(
+  session: SavedSession | null,
+  agent: string | null | undefined,
+  cwd: string | null | undefined,
+): string | undefined {
+  if (!session || !agent || !cwd) return undefined
+  if (session.agent !== agent) return undefined
+  if (normalizeCwd(session.cwd) !== normalizeCwd(cwd)) return undefined
+  if (agent === 'claude') return session.claudeSessionId
+  if (agent === 'codex') return session.codexSessionId
+  if (agent === 'antigravity') return session.antigravitySessionId
+  return undefined
+}
 
 export function getActiveSessions(): ActiveSessions {
   try {

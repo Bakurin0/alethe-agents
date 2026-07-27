@@ -4,7 +4,7 @@
   height: 100%;
   background: var(--bg-sunken);
   border: 1px solid var(--border);
-  border-radius: 10px;
+  border-radius: 0;
   overflow: hidden;
   position: relative;
   transition:

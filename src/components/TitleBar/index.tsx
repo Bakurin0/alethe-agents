@@ -3,10 +3,11 @@ import { ArrowLeft, ArrowRight, Maximize2, Menu, Minus, PanelLeftClose, PanelLef
 import { useEffect, useRef, useState } from 'react'
 
 import { ContextMenu, type MenuItem } from '../ProjectSidebar/ContextMenu'
-import { ClaudeIcon, CodexIcon } from '../icons/AgentIcons'
+import { AntigravityIcon, ClaudeIcon, CodexIcon } from '../icons/AgentIcons'
 
 import { getCachedClaudeUsage } from '../../lib/claudeUsageCache'
 import { getCachedCodexUsage } from '../../lib/codexUsageCache'
+import { getCachedAntigravityUsage } from '../../lib/antigravityUsageCache'
 import { requestAppClose } from '../../hooks/useCloseConfirmation'
 import { observeClaudeReset, observeCodexReset } from '../../lib/limitResetWatch'
 import { useT } from '../../lib/i18n'
@@ -79,8 +80,10 @@ export function TitleBar() {
   const ramMb = useUiStore((s) => s.ramMb)
   const claudeUsage = useUiStore((s) => s.claudeUsage)
   const codexUsage = useUiStore((s) => s.codexUsage)
+  const antigravityUsage = useUiStore((s) => s.antigravityUsage)
   const setClaudeUsage = useUiStore((s) => s.setClaudeUsage)
   const setCodexUsage = useUiStore((s) => s.setCodexUsage)
+  const setAntigravityUsage = useUiStore((s) => s.setAntigravityUsage)
   const openModal = useUiStore((s) => s.openModal_)
   const workspaceTabs = useProjectsStore((s) => s.workspace.tabs)
   const activeWorkspaceTabId = useProjectsStore((s) => s.workspace.activeTabId)
@@ -90,13 +93,14 @@ export function TitleBar() {
   const activeProfileId = useProjectsStore((s) => s.activeProfileId)
   const preferences = useProjectsStore((s) => s.preferences)
   const setPreferences = useProjectsStore((s) => s.setPreferences)
-  const activateWorkspaceTab = useProjectsStore((s) => s.activateWorkspaceTab)
   const toggleWorkspaceTabPinned = useProjectsStore((s) => s.toggleWorkspaceTabPinned)
   const closeSavedWorkspaceTab = useProjectsStore((s) => s.closeSavedWorkspaceTab)
   const addWorkspaceTabToCurrent = useProjectsStore((s) => s.addWorkspaceTabToCurrent)
-  const [tabMenu, setTabMenu] = useState<{ x: number; y: number; items: MenuItem[] } | null>(null)
+  const activateWorkspaceTab = useProjectsStore((s) => s.activateWorkspaceTab)
   const navigateWorkspaceHistory = useProjectsStore((s) => s.navigateWorkspaceHistory)
+  const [tabMenu, setTabMenu] = useState<{ x: number; y: number; items: MenuItem[] } | null>(null)
   const activeProfile = profiles.find((profile) => profile.id === activeProfileId) ?? null
+  const antigravityReady = antigravityUsage?.status === 'ready' && antigravityUsage.buckets.length > 0
 
   const closeAgentPlanning = () => {
     if (!agentCanvasSession) return
@@ -180,6 +184,34 @@ export function TitleBar() {
       if (interval !== null) window.clearInterval(interval)
     }
   }, [setCodexUsage])
+
+  // Antigravity usage polling — checa localmente se agy.exe está instalado e lê as conversas ativas.
+  useEffect(() => {
+    let cancelled = false
+    let interval: number | null = null
+    const tick = async () => {
+      if (!activeRef.current) return
+      try {
+        const usage = await getCachedAntigravityUsage()
+        if (!cancelled) {
+          setAntigravityUsage(usage)
+        }
+      } catch {
+        if (!cancelled) {
+          setAntigravityUsage(null)
+        }
+      }
+    }
+    const startupDelay = window.setTimeout(() => {
+      void tick()
+      interval = window.setInterval(tick, CLAUDE_POLL_INTERVAL_MS)
+    }, 3000)
+    return () => {
+      cancelled = true
+      window.clearTimeout(startupDelay)
+      if (interval !== null) window.clearInterval(interval)
+    }
+  }, [setAntigravityUsage])
 
   const win = getCurrentWindow()
 
@@ -443,6 +475,54 @@ export function TitleBar() {
               <div className={styles.usagePopoverFooter}>
                 {t('widget.creditsLabel')} · {codexUsage.reset_credits}
               </div>
+            </div>
+          </div>
+        ) : null}
+        {preferences.topbarShowAntigravityUsage && antigravityUsage !== null ? (
+          <div className={styles.usageWidget}>
+            <button
+              type="button"
+              className={`${styles.usagePill} ${styles.antigravityUsage}`}
+              style={{ '--pill-color': antigravityReady ? usagePillColor(antigravityUsage.used_percent) : 'var(--fg-faint)' } as React.CSSProperties}
+              onClick={() => openModal('aiUsage')}
+              title={t('ui.titlebar.openUsageDetails')}
+              aria-label={t('ui.titlebar.openUsageDetails')}
+            >
+              <AntigravityIcon size={13} />
+              <span>{antigravityReady ? formatPct(antigravityUsage.used_percent) : '—'}</span>
+            </button>
+            <div className={styles.usagePopover} role="tooltip" aria-label={t('ui.titlebar.itemAntigravity')}>
+              <div className={styles.usagePopoverTitle}>{t('ui.titlebar.itemAntigravity')}</div>
+              {antigravityReady ? (
+                <>
+                  <div className={styles.usagePopoverMain}>
+                    <span>{t('widget.mostUsed')}</span>
+                    <strong>{formatPct(antigravityUsage.used_percent)}</strong>
+                  </div>
+                  {antigravityUsage.buckets.map((bucket) => (
+                    <div className={styles.usagePopoverLine} key={`${bucket.label}:${bucket.resets_at}`}>
+                      <span title={bucket.models.join(', ')}>{bucket.label}</span>
+                      <strong>{formatPct(bucket.used_percent)} · {formatResetTime(bucket.resets_at)}</strong>
+                    </div>
+                  ))}
+                </>
+              ) : (
+                <div className={styles.usagePopoverMain}>
+                  <span>{t('widget.statusLabel')}</span>
+                  <strong>
+                    {antigravityUsage.status === 'no_cli'
+                      ? t('widget.antigravityNotInstalled')
+                      : antigravityUsage.status === 'no_auth'
+                        ? t('widget.antigravityNotSignedIn')
+                        : t('widget.usageUnavailable')}
+                  </strong>
+                </div>
+              )}
+              {antigravityUsage.cli_path ? (
+                <div className={styles.usagePopoverFooter} title={antigravityUsage.cli_path}>
+                  {antigravityUsage.cli_path.split(/[\\/]/).pop()}
+                </div>
+              ) : null}
             </div>
           </div>
         ) : null}

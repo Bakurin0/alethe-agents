@@ -12,11 +12,15 @@ describe('buildGhosttyCommand', () => {
     expect(buildGhosttyCommand('claude')).toBe('claude')
     expect(buildGhosttyCommand('codex')).toBe('codex')
     expect(buildGhosttyCommand('opencode')).toBe('opencode')
+    expect(buildGhosttyCommand('antigravity')).toBe('agy')
   })
 
   it('inclui extraArgs simples sem aspas', () => {
     expect(buildGhosttyCommand('claude', ['--dangerously-skip-permissions'])).toBe(
       'claude --dangerously-skip-permissions',
+    )
+    expect(buildGhosttyCommand('antigravity', ['--dangerously-skip-permissions'])).toBe(
+      'agy --dangerously-skip-permissions',
     )
   })
 

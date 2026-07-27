@@ -269,7 +269,12 @@ export function WorkspaceView() {
     const project = projectsById.get(c.projectId)
     if (!project) return null
     return shell(
-      <ProjectContainer container={c} project={project} group={resolveGroup(project, groupsById)} />,
+      <ProjectContainer
+        container={c}
+        project={project}
+        group={resolveGroup(project, groupsById)}
+        showHeader={false}
+      />,
     )
   }
 

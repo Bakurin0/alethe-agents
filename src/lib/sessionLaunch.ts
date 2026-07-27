@@ -35,6 +35,11 @@ function stripOpenCodeSessionArgs(args: string[]): string[] {
     .filter((arg) => arg !== '--continue' && arg !== '-c' && arg !== '--resume')
 }
 
+function stripAntigravitySessionArgs(args: string[]): string[] {
+  return stripFlagWithValue(args, new Set(['--conversation']))
+    .filter((arg) => arg !== '--continue' && arg !== '-c')
+}
+
 /**
  * Produz os argumentos de sessão sem depender de "a conversa mais recente".
  * Claude permite escolher o UUID no nascimento; Codex/OpenCode só recebem um
@@ -93,6 +98,15 @@ export function buildAgentLaunch(
     // reivindicado antes do spawn.
     return {
       args: sessionId ? ['--session', sessionId, ...clean] : clean,
+      sessionId,
+      createdSession: false,
+    }
+  }
+
+  if (agent === 'antigravity') {
+    const clean = stripAntigravitySessionArgs([...baseArgs])
+    return {
+      args: sessionId ? ['--conversation', sessionId, ...clean] : clean,
       sessionId,
       createdSession: false,
     }

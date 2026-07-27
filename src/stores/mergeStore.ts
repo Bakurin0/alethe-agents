@@ -375,11 +375,16 @@ export const useMergeStore = create<MergeState>((set, get) => ({
 
       // target_not_checked_out, integration (não-divergência) e qualquer
       // outro stage não mapeado: erro duro recuperável via Retry Manual.
+      // Estanca o watch de fallback: sem isso, no caminho silentRetry o poll de
+      // 7s segue re-disparando finalize indefinidamente sobre o estado failed.
+      stopResolvingWatch()
       set({ phase: 'failed', outcome, isFinalizing: false })
       if (!silentRetry) toast(t('merge.blockedTitle', { stage: outcome.stage }), outcome.output.slice(0, 300))
     } catch (err) {
       const message = String(err)
       const adminLockReason = adminLockReasonFrom(message)
+      // Idem: estanca o poll de fallback ao cair em failed no caminho silencioso.
+      stopResolvingWatch()
       set({
         phase: 'failed',
         error: message,

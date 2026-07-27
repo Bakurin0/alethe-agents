@@ -1,13 +1,14 @@
 import * as Dialog from '@radix-ui/react-dialog'
-import { Check, GitBranch, Globe, ListTodo, Palette, Users } from 'lucide-react'
-import { useEffect, useMemo, useRef, useState } from 'react'
+import { Check, GitBranch, Globe, ListTodo } from 'lucide-react'
+import { useEffect, useRef, useState } from 'react'
 
 import aletheLogo from '../../assets/alethe-logo.png'
 import { FEATURES } from '../../lib/features'
 import { LOCALES, useT } from '../../lib/i18n'
 import { getProfileInitial } from '../../lib/profile'
+import { findCliLauncher } from '../../lib/tauri'
 import { THEME_OPTIONS, themeDescription, themeLabel } from '../../lib/themes'
-import type { AgentType } from '../../lib/types'
+import { agentCliCommand, type AgentType } from '../../lib/types'
 import { useProjectsStore } from '../../stores/projectsStore'
 import { useUiStore } from '../../stores/uiStore'
 import { AgentIcon } from '../icons/AgentIcons'
@@ -16,10 +17,12 @@ import styles from './OnboardingModal.module.css'
 
 const STEP_COUNT = 4
 
-const AGENTS: { id: AgentType; label: string }[] = [
-  { id: 'shell', label: 'Shell' },
+type CodingAgent = Exclude<AgentType, 'shell'>
+
+const AGENTS: { id: CodingAgent; label: string }[] = [
   { id: 'claude', label: 'Claude' },
   { id: 'codex', label: 'Codex' },
+  { id: 'antigravity', label: 'Antigravity' },
   { id: 'opencode', label: 'OpenCode' },
   { id: 'freebuff', label: 'Freebuff' },
   { id: 'mimo', label: 'Mimo' },
@@ -44,40 +47,16 @@ export function OnboardingModal() {
   const [photoUrl, setPhotoUrl] = useState(preferences.profileImageUrl)
   const [showPhoto, setShowPhoto] = useState(Boolean(preferences.profileImageUrl.trim()))
   const [imgFailed, setImgFailed] = useState(false)
+  const [agentAvailability, setAgentAvailability] = useState<Partial<Record<CodingAgent, boolean>>>({})
+  const [detectingAgents, setDetectingAgents] = useState(true)
   const contentRef = useRef<HTMLDivElement | null>(null)
+  const agentDetectionStartedRef = useRef(false)
 
-  const enabledCount = Object.values(preferences.enabledAgents).filter(Boolean).length
+  const enabledCount = AGENTS.filter((agent) => preferences.enabledAgents[agent.id]).length
   const trimmedName = name.trim()
   const trimmedPhotoUrl = photoUrl.trim()
   const initial = getProfileInitial(trimmedName)
-  const progress = ((step + 1) / STEP_COUNT) * 100
   const isLast = step === STEP_COUNT - 1
-
-  const stepMeta = useMemo(
-    () => [
-      {
-        label: t('onboarding.profileStep'),
-        hint: t('onboarding.profileStepHint'),
-        icon: Globe,
-      },
-      {
-        label: t('onboarding.themeStep'),
-        hint: t('onboarding.themeStepHint'),
-        icon: Palette,
-      },
-      {
-        label: t('onboarding.agentsStep'),
-        hint: t('onboarding.agentsStepHint'),
-        icon: Users,
-      },
-      {
-        label: t('onboarding.gitStep'),
-        hint: t('onboarding.gitStepHint'),
-        icon: GitBranch,
-      },
-    ],
-    [t],
-  )
 
   useEffect(() => {
     if (preferences.onboardingDone) return
@@ -89,16 +68,53 @@ export function OnboardingModal() {
   }, [preferences.displayName, preferences.onboardingDone, preferences.profileImageUrl])
 
   useEffect(() => {
+    if (preferences.onboardingDone || agentDetectionStartedRef.current) return
+    agentDetectionStartedRef.current = true
+    let cancelled = false
+
+    const detectAgents = async () => {
+      const detected = await Promise.all(
+        AGENTS.map(async (agent) => {
+          const command = agentCliCommand(agent.id)
+          if (!command) return [agent.id, false] as const
+          try {
+            return [agent.id, Boolean(await findCliLauncher(command))] as const
+          } catch {
+            return [agent.id, false] as const
+          }
+        }),
+      )
+      if (cancelled) return
+
+      const availability = Object.fromEntries(detected) as Record<CodingAgent, boolean>
+      setAgentAvailability(availability)
+      setPreferences({
+        enabledAgents: {
+          ...preferences.enabledAgents,
+          shell: true,
+          ...availability,
+        },
+      })
+      setDetectingAgents(false)
+    }
+
+    void detectAgents()
+    return () => {
+      cancelled = true
+    }
+  }, [preferences.enabledAgents, preferences.onboardingDone, setPreferences])
+
+  useEffect(() => {
     const node = contentRef.current?.querySelector<HTMLElement>('[data-autofocus]')
     node?.focus()
   }, [step])
 
   if (preferences.onboardingDone) return null
 
-  const canProceed = step === 0 ? trimmedName.length > 0 : step === 2 ? enabledCount > 0 : true
+  const canProceed = step === 0 ? trimmedName.length > 0 : true
 
   const finish = () => {
-    if (!canProceed || enabledCount === 0 || trimmedName.length === 0) return
+    if (!canProceed || trimmedName.length === 0) return
     setPreferences({
       accountCreated: true,
       onboardingDone: true,
@@ -138,57 +154,22 @@ export function OnboardingModal() {
           onInteractOutside={(event) => event.preventDefault()}
         >
           <div className={styles.shell}>
-            <aside className={styles.side}>
-              <div>
-                <div className={styles.brand}>
-                  <img className={styles.brandLogo} src={aletheLogo} alt="Alethe" draggable={false} />
-                </div>
-                <div className={styles.eyebrow}>{t('onboarding.kicker')}</div>
-                <h1 className={styles.headline}>{t('onboarding.title')}</h1>
-                <p className={styles.subcopy}>{t('onboarding.subtitle')}</p>
-              </div>
-
-              <div className={styles.stepList}>
-                {stepMeta.map((item, index) => {
-                  const Icon = item.icon
-                  const active = index === step
-                  const done = index < step
-                  return (
-                    <div
-                      key={item.label}
-                      className={[
-                        styles.stepItem,
-                        active ? styles.stepItemActive : '',
-                        done ? styles.stepItemDone : '',
-                      ]
-                        .filter(Boolean)
-                        .join(' ')}
-                    >
-                      <div className={styles.stepBadge}>
-                        {done ? <Check size={12} /> : <Icon size={12} />}
-                      </div>
-                      <div className={styles.stepMeta}>
-                        <div className={styles.stepName}>{item.label}</div>
-                        <div className={styles.stepHint}>{item.hint}</div>
-                      </div>
-                    </div>
-                  )
-                })}
-              </div>
-
-              <p className={styles.localNote}>{t('onboarding.localNote')}</p>
-            </aside>
-
             <section className={styles.main}>
               <header className={styles.mainHeader}>
-                <div className={styles.progressMeta}>
-                  <div className={styles.progressLabel}>{t('onboarding.progressLabel')}</div>
-                  <div className={styles.progressStep}>
-                    {t('onboarding.step', { current: step + 1, total: STEP_COUNT })}
+                <div className={styles.compactBrand}>
+                  <img className={styles.brandLogo} src={aletheLogo} alt="Alethe" draggable={false} />
+                  <div>
+                    <div className={styles.eyebrow}>{t('onboarding.kicker')}</div>
+                    <h1 className={styles.headline}>{t('onboarding.title')}</h1>
                   </div>
                 </div>
-                <div className={styles.progressBar} aria-hidden>
-                  <div className={styles.progressFill} style={{ width: `${progress}%` }} />
+                <div className={styles.progressMeta}>
+                  <div className={styles.progressStep}>{t('onboarding.step', { current: step + 1, total: STEP_COUNT })}</div>
+                  <div className={styles.progressDots} aria-hidden>
+                    {Array.from({ length: STEP_COUNT }, (_, index) => (
+                      <span key={index} data-active={index <= step} />
+                    ))}
+                  </div>
                 </div>
               </header>
 
@@ -359,21 +340,22 @@ export function OnboardingModal() {
 
                       <div className={styles.agentSummary}>
                         <span>{t('onboarding.agentsCount', { count: enabledCount })}</span>
-                        <span>{t('onboarding.agentsCountHint')}</span>
+                        <span>{detectingAgents ? t('onboarding.agentsDetecting') : t('onboarding.agentsDetected')}</span>
                       </div>
 
                       <div className={styles.agentGrid}>
                         {AGENTS.map((agent) => {
                           const active = preferences.enabledAgents[agent.id]
-                          const lockSingle = active && enabledCount === 1
+                          const installed = agentAvailability[agent.id] ?? false
                           return (
                             <button
                               key={agent.id}
                               type="button"
-                              disabled={lockSingle}
+                              disabled={detectingAgents || !installed}
                               className={[
                                 styles.agentOption,
                                 active ? styles.agentOptionActive : '',
+                                !detectingAgents && !installed ? styles.agentOptionUnavailable : '',
                               ]
                                 .filter(Boolean)
                                 .join(' ')}
@@ -386,7 +368,13 @@ export function OnboardingModal() {
                               <div className={styles.agentOptionBody}>
                                 <div className={styles.agentNameRow}>
                                   <span className={styles.agentName}>{agent.label}</span>
-                                  {active ? <Check size={15} className={styles.checkMark} /> : null}
+                                  {detectingAgents ? (
+                                    <span className={styles.agentStatus}>{t('onboarding.agentChecking')}</span>
+                                  ) : installed ? (
+                                    active ? <Check size={15} className={styles.checkMark} /> : null
+                                  ) : (
+                                    <span className={styles.agentStatus}>{t('onboarding.agentNotInstalled')}</span>
+                                  )}
                                 </div>
                                 <div className={styles.agentDesc}>{t(`agent.${agent.id}.desc`)}</div>
                               </div>

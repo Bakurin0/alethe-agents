@@ -70,6 +70,7 @@ const AGENTS: { id: AgentType; label: string }[] = [
   { id: 'shell', label: 'Shell' },
   { id: 'claude', label: 'Claude Code' },
   { id: 'codex', label: 'Codex' },
+  { id: 'antigravity', label: 'Antigravity' },
   { id: 'opencode', label: 'OpenCode' },
   { id: 'freebuff', label: 'Freebuff' },
   { id: 'mimo', label: 'Mimo Code' },
@@ -112,6 +113,7 @@ export function PreferencesModal() {
       { category: 'account', target: 'local-accounts', label: t('prefs.localAccounts'), description: t('prefs.localAccountsDesc'), keywords: 'account profile conta perfil local switch trocar' },
       { category: 'appearance', target: 'ui-theme', label: t('prefs.uiTheme'), description: t('prefs.uiThemeDesc'), keywords: 'theme tema colors cores light dark claro escuro' },
       { category: 'appearance', target: 'ui-zoom', label: t('prefs.uiZoom'), description: t('prefs.uiZoomDesc'), keywords: 'zoom scale escala tamanho interface' },
+      { category: 'appearance', target: 'window-opacity', label: t('prefs.windowOpacity'), description: t('prefs.windowOpacityDesc'), keywords: 'opacity opacidade transparency transparência desktop window janela' },
       { category: 'features', target: 'optional-features', label: t('prefs.features'), description: t('prefs.featuresDesc'), keywords: 'features recursos modules módulos todo task tarefa git source control sidebar' },
       { category: 'terminal', target: 'terminal-theme', label: t('prefs.terminalTheme'), description: t('prefs.terminalThemeDesc'), keywords: 'terminal theme tema colors cores' },
       { category: 'terminal', target: 'resource-policy', label: t('prefs.resourcePolicy'), description: t('prefs.resourcePolicyDesc'), keywords: 'memory ram performance budget limit lru suspend memória desempenho limite' },
@@ -381,6 +383,7 @@ function AppearancePage() {
   const preferences = useProjectsStore((state) => state.preferences)
   const setUiTheme = useProjectsStore((state) => state.setUiTheme)
   const setUiZoom = useProjectsStore((state) => state.setUiZoom)
+  const setPreferences = useProjectsStore((state) => state.setPreferences)
   return (
     <>
       <SettingsSection id="ui-theme" title={t('prefs.uiTheme')} description={t('prefs.uiThemeDesc')}>
@@ -430,6 +433,28 @@ function AppearancePage() {
             aria-label={t('prefs.zoomReset')}
           ><RotateCcw size={15} /></button>
         </div>
+      </SettingsSection>
+
+      <SettingsSection id="window-opacity" title={t('prefs.windowOpacity')} description={t('prefs.windowOpacityDesc')}>
+        <div className={styles.opacityControl}>
+          <input
+            type="range"
+            min="60"
+            max="100"
+            step="5"
+            value={Math.round(preferences.windowOpacity * 100)}
+            onChange={(event) => setPreferences({ windowOpacity: Number(event.target.value) / 100 })}
+            aria-label={t('prefs.windowOpacity')}
+          />
+          <strong>{Math.round(preferences.windowOpacity * 100)}%</strong>
+          <button
+            type="button"
+            onClick={() => setPreferences({ windowOpacity: 1 })}
+            disabled={preferences.windowOpacity === 1}
+            aria-label={t('prefs.opacityReset')}
+          ><RotateCcw size={15} /></button>
+        </div>
+        <p className={styles.experimentalHint}>{t('prefs.windowOpacityHint')}</p>
       </SettingsSection>
 
     </>
@@ -498,6 +523,10 @@ function TerminalPage({ enabledCount }: { enabledCount: number }) {
   const [resetting, setResetting] = useState(false)
   const concurrency = preferences.spawnConcurrency
   const resourcePolicy = preferences.resourcePolicy
+  const effectiveResourceMode =
+    resourcePolicy.automaticParkingOptIn === true && resourcePolicy.mode === 'smart-lru'
+      ? 'smart-lru'
+      : 'manual'
   const setResourcePolicy = (
     patch: Partial<typeof resourcePolicy>,
   ) => {
@@ -551,8 +580,8 @@ function TerminalPage({ enabledCount }: { enabledCount: number }) {
       <SettingsSection id="resource-policy" title={t('prefs.resourcePolicy')} description={t('prefs.resourcePolicyDesc')}>
         <div className={styles.resourceControls}>
           <div className={styles.segmented}>
-            <button type="button" className={resourcePolicy.mode === 'smart-lru' ? styles.segmentActive : undefined} onClick={() => setResourcePolicy({ mode: 'smart-lru' })}>{t('prefs.resourcePolicySmart')}</button>
-            <button type="button" className={resourcePolicy.mode === 'manual' ? styles.segmentActive : undefined} onClick={() => setResourcePolicy({ mode: 'manual' })}>{t('prefs.resourcePolicyManual')}</button>
+            <button type="button" className={effectiveResourceMode === 'smart-lru' ? styles.segmentActive : undefined} onClick={() => setResourcePolicy({ mode: 'smart-lru', automaticParkingOptIn: true })}>{t('prefs.resourcePolicySmart')}</button>
+            <button type="button" className={effectiveResourceMode === 'manual' ? styles.segmentActive : undefined} onClick={() => setResourcePolicy({ mode: 'manual', automaticParkingOptIn: false })}>{t('prefs.resourcePolicyManual')}</button>
           </div>
           <div className={styles.resourceGrid}>
             <label>
@@ -576,7 +605,7 @@ function TerminalPage({ enabledCount }: { enabledCount: number }) {
               <input type="number" min={5} max={480} step={5} value={resourcePolicy.hiddenShellIdleMinutes} onChange={(event) => setResourcePolicy({ hiddenShellIdleMinutes: Number(event.target.value) })} />
             </label>
           </div>
-          <p className={styles.resourceHint}>{resourcePolicy.mode === 'smart-lru' ? t('prefs.resourcePolicySmartHint') : t('prefs.resourcePolicyManualHint')}</p>
+          <p className={styles.resourceHint}>{effectiveResourceMode === 'smart-lru' ? t('prefs.resourcePolicySmartHint') : t('prefs.resourcePolicyManualHint')}</p>
         </div>
       </SettingsSection>
 

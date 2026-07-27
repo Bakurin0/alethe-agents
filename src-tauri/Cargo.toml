@@ -73,6 +73,7 @@ windows-sys = { version = "0.61", features = [
   "Win32_System_Ole",
   "Win32_System_ProcessStatus",
   "Win32_System_Threading",
+  "Win32_UI_WindowsAndMessaging",
 ] }
 
 # Em dev, unwind permite que um panic de comando vire Err em vez de derrubar o

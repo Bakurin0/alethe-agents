@@ -15,6 +15,7 @@ const AGENTS: { type: AgentType; label: string }[] = [
   { type: 'shell', label: 'Shell' },
   { type: 'claude', label: 'Claude' },
   { type: 'codex', label: 'Codex' },
+  { type: 'antigravity', label: 'Antigravity' },
   { type: 'opencode', label: 'OpenCode' },
   { type: 'freebuff', label: 'Freebuff' },
   { type: 'mimo', label: 'Mimo' },
@@ -45,6 +46,7 @@ export function NewSubTabModal() {
     shell: false,
     claude: false,
     codex: false,
+    antigravity: false,
     opencode: false,
     freebuff: false,
     mimo: false,
@@ -65,7 +67,7 @@ export function NewSubTabModal() {
     setType('shell')
     setRuntimeProfile('full')
     setCwd('')
-    setUnrestricted({ shell: false, claude: false, codex: false, opencode: false, freebuff: false, mimo: false })
+    setUnrestricted({ shell: false, claude: false, codex: false, antigravity: false, opencode: false, freebuff: false, mimo: false })
   }
 
   const submit = () => {

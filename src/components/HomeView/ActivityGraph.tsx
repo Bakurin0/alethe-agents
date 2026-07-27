@@ -51,7 +51,7 @@ function totalAndDelta(days: ActivityDay[]): { total: number; deltaPct: number |
 }
 
 /** Dias consecutivos com atividade, ignorando zeros à direita (hoje ainda sem msg). */
-function computeStreak(days: ActivityDay[]): number {
+export function computeStreak(days: ActivityDay[]): number {
   let i = days.length - 1
   while (i >= 0 && days[i].count === 0) i--
   let streak = 0

@@ -13,7 +13,7 @@ let maxConcurrentSpawns = 3
 let active = 0
 let pressureBlocked = false
 let pressureReason: string | null = null
-const PRESSURE_MAX_QUEUE_WAIT_MS = 5_000
+const PRESSURE_MAX_QUEUE_WAIT_MS = 1_500
 
 type SpawnWaiter = {
   enqueuedAt: number
@@ -24,6 +24,10 @@ type SpawnWaiter = {
 }
 
 const waiters: SpawnWaiter[] = []
+
+function pressureConcurrentLimit(): number {
+  return Math.min(2, maxConcurrentSpawns)
+}
 
 function resumeWaiter(waiter: SpawnWaiter): void {
   if (waiter.progressTimer) clearTimeout(waiter.progressTimer)
@@ -46,9 +50,8 @@ function schedulePressureProgress(waiter: SpawnWaiter): void {
   )
 }
 
-function drain(): void {
-  if (pressureBlocked) return
-  while (active < maxConcurrentSpawns && waiters.length > 0) {
+function drain(limit = maxConcurrentSpawns): void {
+  while (active < limit && waiters.length > 0) {
     const waiter = waiters.shift()
     if (waiter) resumeWaiter(waiter)
   }
@@ -106,6 +109,7 @@ export function setSpawnPressureBlocked(blocked: boolean, reason: string | null 
   pressureBlocked = blocked
   pressureReason = blocked ? reason : null
   if (blocked) {
+    drain(pressureConcurrentLimit())
     for (const waiter of waiters) schedulePressureProgress(waiter)
   } else {
     drain()
@@ -122,7 +126,7 @@ export function ensureSpawnQueueProgress(
   maxQueueWaitMs = PRESSURE_MAX_QUEUE_WAIT_MS,
 ): boolean {
   // Sob pressão, admite só um spawn por vez mesmo se o limite normal for maior.
-  if (!pressureBlocked || active >= Math.min(1, maxConcurrentSpawns)) return false
+  if (!pressureBlocked || active >= pressureConcurrentLimit()) return false
   const waiter = waiters[0]
   if (!waiter || now - waiter.enqueuedAt < maxQueueWaitMs) return false
   waiters.shift()
@@ -137,7 +141,8 @@ export function ensureSpawnQueueProgress(
  */
 export function acquireSpawnSlot(signal?: AbortSignal): Promise<boolean> {
   if (signal?.aborted) return Promise.resolve(false)
-  if (!pressureBlocked && active < maxConcurrentSpawns) {
+  const limit = pressureBlocked ? pressureConcurrentLimit() : maxConcurrentSpawns
+  if (active < limit) {
     active++
     notify()
     return Promise.resolve(true)
@@ -173,7 +178,7 @@ export function acquireSpawnSlot(signal?: AbortSignal): Promise<boolean> {
 export function releaseSpawnSlot(): void {
   active = Math.max(0, active - 1)
   // Só admite o próximo se ainda houver folga (o cap pode ter sido reduzido).
-  if (pressureBlocked) ensureSpawnQueueProgress()
+  if (pressureBlocked) drain(pressureConcurrentLimit())
   else drain()
   notify()
 }

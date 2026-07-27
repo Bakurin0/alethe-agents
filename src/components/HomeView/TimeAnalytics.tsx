@@ -81,11 +81,19 @@ export function TimeAnalytics() {
         </div>
         <div className={styles.timeRange}>
           {(['today', '7d', '30d', 'all'] as Range[]).map((value) => (
-            <button key={value} type="button" className={range === value ? styles.timeRangeActive : undefined} onClick={() => setRange(value)}>
+            <button
+              key={value}
+              type="button"
+              className={`${styles.timeRangeOption} ${range === value ? styles.timeRangeActive : ''}`}
+              aria-pressed={range === value}
+              onClick={() => setRange(value)}
+            >
               {t(RANGE_KEYS[value])}
             </button>
           ))}
-          <button type="button" onClick={() => void load()} title={t('time.refresh')}><RefreshCw size={12} /></button>
+          <button className={styles.timeRefresh} type="button" onClick={() => void load()} title={t('time.refresh')} aria-label={t('time.refresh')}>
+            <RefreshCw size={12} className={loading ? styles.iconBtnSpin : undefined} />
+          </button>
         </div>
       </div>
 

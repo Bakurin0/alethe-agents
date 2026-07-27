@@ -1,4 +1,4 @@
-import { Folder, FolderCheck, Zap } from 'lucide-react'
+import { CircleCheck, Folder, Info, Zap } from 'lucide-react'
 import { useEffect, useMemo, useState } from 'react'
 
 import { useUiStore } from '../../stores/uiStore'
@@ -9,15 +9,16 @@ import { AgentIcon } from '../icons/AgentIcons'
 import { useT } from '../../lib/i18n'
 import { Modal } from './Modal'
 import controls from './controls.module.css'
-import picker from './agentPicker.module.css'
+import styles from './NewTerminalModal.module.css'
 
 const AGENTS: { type: AgentType; label: string }[] = [
-  { type: 'shell', label: 'Shell' },
   { type: 'claude', label: 'Claude' },
   { type: 'codex', label: 'Codex' },
+  { type: 'antigravity', label: 'Antigravity' },
   { type: 'opencode', label: 'OpenCode' },
-  { type: 'freebuff', label: 'Freebuff' },
+  { type: 'shell', label: 'Shell' },
   { type: 'mimo', label: 'Mimo' },
+  { type: 'freebuff', label: 'Freebuff' },
 ]
 
 export function NewTerminalModal() {
@@ -25,6 +26,7 @@ export function NewTerminalModal() {
   const open = useUiStore((s) => s.openModal === 'newTerminal')
   const context = useUiStore((s) => s.modalContext) as { projectId?: string } | null
   const closeModal = useUiStore((s) => s.closeModal)
+  const createTerminal = useProjectsStore((s) => s.createTerminal)
   const project = useProjectsStore((s) =>
     context?.projectId ? s.projects.find((p) => p.id === context.projectId) ?? null : null,
   )
@@ -34,44 +36,67 @@ export function NewTerminalModal() {
     (s) => s.preferences.terminalTheme ?? s.preferences.uiTheme,
   )
 
-  const [name, setName] = useState('')
-  const [type, setType] = useState<AgentType>('shell')
+  const [type, setType] = useState<AgentType>('claude')
   const [runtimeProfile, setRuntimeProfile] = useState<AgentRuntimeProfile>('full')
   const [cwd, setCwd] = useState('')
   const [unrestricted, setUnrestricted] = useState<Record<AgentType, boolean>>({
     shell: false,
     claude: false,
     codex: false,
+    antigravity: false,
     opencode: false,
     freebuff: false,
     mimo: false,
   })
 
   const visibleAgents = AGENTS.filter((a) => enabled[a.type])
+  const defaultType = visibleAgents.find((agent) => agent.type === 'claude')?.type
+    ?? visibleAgents[0]?.type
+    ?? 'shell'
+  const selectedAgent = AGENTS.find((agent) => agent.type === type) ?? AGENTS[0]
   const inheritedCwd = useMemo(() => getProjectDefaultCwd(project, projects), [project, projects])
+  const recentFolders = useMemo(() => {
+    const folders = new Map<string, { path: string; lastUsedAt: number }>()
+    for (const candidate of projects) {
+      for (const terminal of candidate.terminals) {
+        const paths = [terminal.cwd, ...terminal.tabs.map((tab) => tab.cwd)]
+        for (const path of paths) {
+          const trimmed = path?.trim()
+          if (!trimmed) continue
+          const key = trimmed.replace(/[\\/]+$/, '').toLowerCase()
+          const lastUsedAt = terminal.lastUsedAt ?? 0
+          const previous = folders.get(key)
+          if (!previous || lastUsedAt > previous.lastUsedAt) {
+            folders.set(key, { path: trimmed, lastUsedAt })
+          }
+        }
+      }
+    }
+    return [...folders.values()]
+      .sort((a, b) => b.lastUsedAt - a.lastUsedAt)
+      .slice(0, 4)
+  }, [projects])
 
   useEffect(() => {
     if (!open) return
     setCwd(inheritedCwd)
-  }, [open, context?.projectId, inheritedCwd])
+    setType(defaultType)
+  }, [open, context?.projectId, inheritedCwd, defaultType])
 
   const reset = () => {
-    setName('')
-    setType('shell')
+    setType(defaultType)
     setRuntimeProfile('full')
     setCwd('')
-    setUnrestricted({ shell: false, claude: false, codex: false, opencode: false, freebuff: false, mimo: false })
+    setUnrestricted({ shell: false, claude: false, codex: false, antigravity: false, opencode: false, freebuff: false, mimo: false })
   }
 
   const submit = () => {
     if (!context?.projectId) return
-    const finalName = name.trim() || type
+    const finalName = selectedAgent.label
     const finalCwd = cwd.trim() || inheritedCwd
     const flag = UNRESTRICTED_FLAG[type]
     const extraArgs = unrestricted[type] && flag ? [flag] : undefined
-    // RFC-003 — com autoWorktree ligado no projeto, agentes nascem numa
-    // worktree isolada (async; falha cai no terminal normal).
-    void useProjectsStore.getState().createAgentTerminal(context.projectId, {
+    createTerminal(context.projectId, {
       name: finalName,
       cwd: finalCwd,
       firstTab: { type, cwd: finalCwd, extraArgs, runtimeProfile },
@@ -93,6 +118,7 @@ export function NewTerminalModal() {
         closeModal()
       }}
       title={t('term.newTerminalTitle')}
+      width={560}
       footer={
         <>
           <button type="button" className={controls.btn} onClick={closeModal}>
@@ -104,122 +130,127 @@ export function NewTerminalModal() {
             onClick={submit}
             disabled={!context?.projectId}
           >
-            {t('term.create')}
+            {t('term.openAgent', { agent: selectedAgent.label })}
           </button>
         </>
       }
     >
-      <div className={controls.field}>
-        <label className={controls.label}>{t('term.type')}</label>
-        <div className={picker.list}>
+      <p className={styles.description}>{t('term.newTerminalDescription')}</p>
+
+      <section className={styles.section}>
+        <h3 className={styles.stepTitle}>{t('term.stepTerminal')}</h3>
+        <div className={styles.agentGrid}>
           {visibleAgents.map((a) => {
             const active = type === a.type
             return (
               <button
                 key={a.type}
                 type="button"
-                className={`${picker.row} ${active ? picker.rowActive : ''}`}
+                className={`${styles.agentCard} ${active ? styles.agentCardActive : ''}`}
                 onClick={() => setType(a.type)}
+                aria-pressed={active}
               >
-                <span className={picker.rowIcon}>
-                  <AgentIcon type={a.type} size={18} theme={terminalTheme} />
+                <span className={styles.agentIcon}>
+                  <AgentIcon type={a.type} size={22} theme={terminalTheme} />
                 </span>
-                <span className={picker.rowLabel}>{a.label}</span>
-                <span className={picker.rowEnd}>
-                  {UNRESTRICTED_FLAG[a.type] ? (
-                    <button
-                      type="button"
-                      className={`${picker.cwdBtn} ${unrestricted[a.type] ? picker.boltActive : ''}`}
-                      onClick={(e) => {
-                        e.stopPropagation()
-                        setType(a.type)
-                        setUnrestricted((u) => ({ ...u, [a.type]: !u[a.type] }))
-                      }}
-                      title={
-                        unrestricted[a.type]
-                          ? t('term.unrestrictedActive', { flag: UNRESTRICTED_FLAG[a.type] ?? '' })
-                          : t('term.unrestrictedEnableSkip')
-                      }
-                      aria-label={t('term.unrestricted')}
-                    >
-                      <Zap
-                        size={14}
-                        className={unrestricted[a.type] ? picker.bolt : ''}
-                      />
-                    </button>
-                  ) : null}
-                  <button
-                    type="button"
-                    className={`${picker.cwdBtn} ${active && (cwd || inheritedCwd) ? picker.set : ''}`}
-                    onClick={(e) => {
-                      e.stopPropagation()
-                      setType(a.type)
-                      void browse()
-                    }}
-                    title={active && (cwd || inheritedCwd) ? cwd || inheritedCwd : t('term.chooseFolder')}
-                    aria-label={t('term.chooseFolder')}
-                  >
-                    {active && (cwd || inheritedCwd) ? <FolderCheck size={14} /> : <Folder size={14} />}
-                  </button>
-                </span>
+                <span className={styles.agentLabel}>{a.label}</span>
+                {active ? <CircleCheck size={17} className={styles.selectedIcon} /> : null}
               </button>
             )
           })}
         </div>
-      </div>
+        {UNRESTRICTED_FLAG[type] ? (
+          <button
+            type="button"
+            className={`${styles.permissionToggle} ${unrestricted[type] ? styles.permissionToggleActive : ''}`}
+            onClick={() => setUnrestricted((value) => ({ ...value, [type]: !value[type] }))}
+            aria-pressed={unrestricted[type]}
+          >
+            <span className={styles.permissionToggleIcon}>
+              <Zap size={17} />
+            </span>
+            <span className={styles.permissionToggleCopy}>
+              <span className={styles.permissionToggleTitle}>{t('term.unrestrictedShort')}</span>
+              <span className={styles.permissionToggleDescription}>{t('term.unrestrictedDescription')}</span>
+            </span>
+            <span className={styles.permissionToggleState}>
+              {unrestricted[type] ? t('term.unrestrictedOn') : t('term.unrestrictedOff')}
+            </span>
+          </button>
+        ) : null}
+      </section>
 
-      {type !== 'shell' ? (
-        <div className={controls.field}>
-          <label className={controls.label}>{t('term.runtimeProfile')}</label>
-          <div className={controls.pillRow}>
-            {(['full', 'lean', 'diagnostic'] as const).map((profile) => (
-              <button
-                key={profile}
-                type="button"
-                className={`${controls.pill} ${runtimeProfile === profile ? controls.pillActive : ''}`}
-                onClick={() => setRuntimeProfile(profile)}
-                title={t(`term.runtimeProfile.${profile}.desc`)}
-              >
-                {t(`term.runtimeProfile.${profile}`)}
-              </button>
-            ))}
-          </div>
-          <span className={controls.hint}>
-            {type === 'opencode' ? t('term.runtimeProfile.opencodeNote') : t(`term.runtimeProfile.${runtimeProfile}.desc`)}
-          </span>
-        </div>
-      ) : null}
-
-      <div className={controls.field}>
-        <label className={controls.label}>{t('term.nameOptional')}</label>
-        <input
-          className={controls.input}
-          value={name}
-          onChange={(e) => setName(e.target.value)}
-          placeholder={type}
-        />
-      </div>
-
-      <div className={controls.field}>
-        <label className={controls.label}>{t('term.folderCwd')}</label>
-        <div className={controls.cwdRow}>
+      <section className={styles.section}>
+        <h3 className={styles.stepTitle}>{t('term.stepFolder')}</h3>
+        <div className={styles.folderRow}>
+          <Folder size={16} className={styles.folderIcon} />
           <input
-            className={controls.input}
+            className={styles.folderInput}
             value={cwd}
             onChange={(e) => setCwd(e.target.value)}
             placeholder={inheritedCwd || t('term.shellDefaultPlaceholder')}
           />
           <button
             type="button"
-            className={controls.btn}
+            className={styles.browseButton}
             onClick={browse}
-            aria-label={t('term.chooseFolder')}
-            title={t('term.chooseFolder')}
           >
-            <Folder size={14} />
+            {t('term.browse')}
           </button>
         </div>
+
+        {recentFolders.length > 0 ? (
+          <div className={styles.recentBlock}>
+            <span className={styles.recentLabel}>{t('term.recentFolders')}</span>
+            <div className={styles.recentFolders}>
+              {recentFolders.map((folder) => {
+                const label = folder.path.replace(/[\\/]+$/, '').split(/[\\/]/).pop() || folder.path
+                return (
+                  <button
+                    key={folder.path}
+                    type="button"
+                    className={styles.folderChip}
+                    title={folder.path}
+                    onClick={() => setCwd(folder.path)}
+                  >
+                    {label}
+                  </button>
+                )
+              })}
+            </div>
+          </div>
+        ) : null}
+      </section>
+
+      <div className={styles.autoNameHint}>
+        <Info size={13} />
+        <span>{t('term.autoNameHint')}</span>
       </div>
+
+      {type !== 'shell' ? (
+        <details className={styles.advanced}>
+          <summary>{t('term.advancedOptions')}</summary>
+          <div className={styles.advancedBody}>
+            <div className={controls.field}>
+              <label className={controls.label}>{t('term.runtimeProfile')}</label>
+              <div className={controls.pillRow}>
+                {(['full', 'lean', 'diagnostic'] as const).map((profile) => (
+                  <button
+                    key={profile}
+                    type="button"
+                    className={`${controls.pill} ${runtimeProfile === profile ? controls.pillActive : ''}`}
+                    onClick={() => setRuntimeProfile(profile)}
+                    title={t(`term.runtimeProfile.${profile}.desc`)}
+                  >
+                    {t(`term.runtimeProfile.${profile}`)}
+                  </button>
+                ))}
+              </div>
+              <span className={controls.hint}>{t(`term.runtimeProfile.${runtimeProfile}.desc`)}</span>
+            </div>
+          </div>
+        </details>
+      ) : null}
     </Modal>
   )
 }

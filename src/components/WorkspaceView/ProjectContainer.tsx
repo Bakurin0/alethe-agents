@@ -22,6 +22,8 @@ export type ProjectContainerProps = {
   group: Group | null
   /** True quando o container é o único visível (fullscreen). */
   isFullscreen?: boolean
+  /** Cabeçalho é redundante quando a workspace tem apenas um container. */
+  showHeader?: boolean
 }
 
 export const ProjectContainer = memo(function ProjectContainer({
@@ -29,6 +31,7 @@ export const ProjectContainer = memo(function ProjectContainer({
   project,
   group,
   isFullscreen = false,
+  showHeader = true,
 }: ProjectContainerProps) {
   const t = useT()
   const setCollapsed = useProjectsStore((s) => s.setContainerCollapsed)
@@ -191,7 +194,7 @@ export const ProjectContainer = memo(function ProjectContainer({
       }`}
       style={{ ['--container-accent' as string]: accent }}
     >
-      <div className={styles.tag}>
+      {showHeader ? <div className={styles.tag}>
         {!isFullscreen ? (
           <button
             type="button"
@@ -256,7 +259,7 @@ export const ProjectContainer = memo(function ProjectContainer({
             <Minus size={11} />
           </button>
         </div>
-      </div>
+      </div> : null}
       <div className={styles.body}>
         {terminals.length === 0 ? (
           <div className={styles.emptyShell}>

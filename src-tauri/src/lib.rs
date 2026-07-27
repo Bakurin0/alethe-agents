@@ -1,14 +1,16 @@
+mod activity_stats;
 mod agent_cost;
 mod agent_events;
-mod activity_stats;
 mod agent_library;
+mod antigravity_sessions;
+mod antigravity_usage;
 mod backup;
 mod claude_sessions;
 mod claude_usage;
 mod cli_resolver;
 mod codex_sessions;
-mod crash_watch;
 mod codex_usage;
+mod crash_watch;
 mod diagnostics;
 mod discord_presence;
 mod economy_agents;
@@ -20,8 +22,8 @@ mod git_control;
 mod github_sync;
 mod logging;
 mod paths;
-mod projects;
 mod profiles;
+mod projects;
 mod pty;
 mod resources;
 mod process_tree;
@@ -45,10 +47,38 @@ mod plugins;
 mod opencode_sessions;
 mod opencode_bridge;
 
+use crate::pty::{PtySession, PtySessions};
 use std::collections::HashMap;
 use std::sync::{Arc, Mutex};
 
-use crate::pty::{PtySession, PtySessions};
+#[cfg(windows)]
+#[tauri::command]
+fn set_window_opacity(window: tauri::WebviewWindow, opacity: f64) -> Result<(), String> {
+    use windows_sys::Win32::UI::WindowsAndMessaging::{
+        GetWindowLongW, SetLayeredWindowAttributes, SetWindowLongW, GWL_EXSTYLE, LWA_ALPHA,
+        WS_EX_LAYERED,
+    };
+
+    let opacity = opacity.clamp(0.6, 1.0);
+    let alpha = (opacity * 255.0).round() as u8;
+    let hwnd = window.hwnd().map_err(|error| error.to_string())?.0;
+
+    unsafe {
+        let style = GetWindowLongW(hwnd, GWL_EXSTYLE);
+        SetWindowLongW(hwnd, GWL_EXSTYLE, style | WS_EX_LAYERED as i32);
+        if SetLayeredWindowAttributes(hwnd, 0, alpha, LWA_ALPHA) == 0 {
+            return Err(std::io::Error::last_os_error().to_string());
+        }
+    }
+    Ok(())
+}
+
+#[cfg(not(windows))]
+#[tauri::command]
+fn set_window_opacity(_window: tauri::WebviewWindow, _opacity: f64) -> Result<(), String> {
+    Err("Window opacity is currently supported on Windows only".into())
+}
+
 #[cfg(any(debug_assertions, desktop))]
 use tauri::Manager;
 
@@ -214,13 +244,16 @@ pub fn run() {
             claude_sessions::get_claude_activity,
             claude_sessions::get_multi_agent_activity,
             codex_sessions::snapshot_codex_sessions,
+            antigravity_sessions::snapshot_antigravity_sessions,
             claude_usage::get_claude_usage,
             codex_usage::get_codex_usage,
+            antigravity_usage::get_antigravity_usage,
             agent_cost::get_session_cost,
             agent_cost::get_transcript_cost,
             agent_cost::get_model_pricing,
             agent_cost::get_opencode_usage_summary,
             crash_watch::get_last_crash_report,
+            set_window_opacity,
             quit_app,
             worktrees::worktree_provision,
             worktrees::worktree_list,

@@ -39,3 +39,14 @@ test('Codex and OpenCode use their pane-specific resume syntax', () => {
     ['--session', 'open-pane', '--model', 'x'],
   )
 })
+
+test('Antigravity keeps agy flags and uses its pane-specific conversation', () => {
+  assert.deepEqual(
+    buildAgentLaunch(
+      'antigravity',
+      ['--continue', '--conversation', 'old', '--dangerously-skip-permissions'],
+      'agy-pane',
+    ).args,
+    ['--conversation', 'agy-pane', '--dangerously-skip-permissions'],
+  )
+})

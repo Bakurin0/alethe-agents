@@ -1,6 +1,7 @@
 import claudeLogo from '../../assets/claude-code.png'
 import codexLogo from '../../assets/codex.png'
 import freebuffLogo from '../../assets/freebuff.png'
+import antigravityLogo from '../../assets/antigravity.png'
 import { iconMap } from '../../assets/icons'
 import type { AgentType, Theme } from '../../lib/types'
 
@@ -66,6 +67,10 @@ export function VSCodeIcon({ size = 14 }: { size?: number }) {
   return <img src={iconMap.vscode} alt="" width={size} height={size} draggable={false} />
 }
 
+export function AntigravityIcon({ size = 16 }: { size?: number }) {
+  return <img src={antigravityLogo} alt="" width={size} height={size} draggable={false} />
+}
+
 export function AgentIcon({
   type,
   size = 16,
@@ -80,5 +85,6 @@ export function AgentIcon({
   if (type === 'codex') return <CodexIcon size={size} />
   if (type === 'freebuff') return <FreebuffIcon size={size} />
   if (type === 'mimo') return <MimoIcon size={size} />
+  if (type === 'antigravity') return <AntigravityIcon size={size} />
   return <OpenCodeIcon size={size} theme={theme} />
 }

@@ -58,14 +58,15 @@
   transition: background 0.12s ease;
 }
 .sepH {
-  width: 1px;
+  /* Hitbox amplo; a linha continua fina no centro via ::before. */
+  width: 10px;
   cursor: col-resize;
-  background: var(--border);
+  background: transparent;
 }
 .sepV {
-  height: 1px;
+  height: 10px;
   cursor: row-resize;
-  background: var(--border);
+  background: transparent;
 }
 
 /* Linha sutil sempre visível no meio do separator. */
@@ -75,18 +76,18 @@
   position: absolute;
   background: var(--border-strong);
   border-radius: 2px;
-  opacity: 0.45;
+  opacity: 0.7;
   transition: opacity 0.12s ease, background 0.12s ease;
   top: 50%;
   left: 50%;
   transform: translate(-50%, -50%);
 }
 .sepH::before {
-  width: 0;
+  width: 1px;
   height: 100%;
 }
 .sepV::before {
-  height: 0;
+  height: 1px;
   width: 100%;
 }
 
@@ -116,11 +117,15 @@
   width: 36px;
 }
 .sepH:hover::after,
-.sepV:hover::after {
+.sepV:hover::after,
+.sepH[data-resize-handle-active]::after,
+.sepV[data-resize-handle-active]::after {
   opacity: 1;
 }
 .sepH:hover::before,
-.sepV:hover::before {
+.sepV:hover::before,
+.sepH[data-resize-handle-active]::before,
+.sepV[data-resize-handle-active]::before {
   opacity: 0;
 }
 

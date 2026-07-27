@@ -13,6 +13,7 @@ import { getActiveSessions, saveSession } from './sessionResume'
 import {
   getPtyCwd,
   restartPty,
+  snapshotAntigravitySessions,
   snapshotClaudeSessions,
   snapshotCodexSessions,
   snapshotOpenCodeSessions,
@@ -21,7 +22,7 @@ import type { AgentType } from './types'
 import { useProjectsStore } from '../stores/projectsStore'
 import { useTerminalsStore } from '../stores/terminalsStore'
 
-const RESUMABLE: AgentType[] = ['claude', 'codex', 'opencode']
+const RESUMABLE: AgentType[] = ['claude', 'codex', 'opencode', 'antigravity']
 
 export type ResetLastSessionResult = { resumed: number; total: number }
 
@@ -87,6 +88,7 @@ async function latestSessionId(
       }
       return null
     }
+    if (agent === 'antigravity') return pickSessionId(await snapshotAntigravitySessions(cwd), exclude)
   } catch {
     return null
   }
@@ -109,6 +111,10 @@ function buildResumeArgs(agent: AgentType, baseArgs: string[], sessionId: string
       clean = rest
     }
     return sessionId ? ['resume', sessionId, ...clean] : ['resume', '--last', ...clean]
+  }
+  if (agent === 'antigravity') {
+    const clean = stripFlagWithValue(baseArgs, '--conversation').filter((a) => a !== '--continue' && a !== '-c')
+    return sessionId ? ['--conversation', sessionId, ...clean] : ['--continue', ...clean]
   }
   // opencode: `--session <id>` quando conhecemos o ID, senão `--continue`
   // retoma a última sessão.

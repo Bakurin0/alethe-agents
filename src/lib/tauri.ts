@@ -11,6 +11,10 @@ export async function saveProjectsFile(content: string, sequence: number): Promi
   await invoke('save_projects', { content, sequence })
 }
 
+export async function setWindowOpacity(opacity: number): Promise<void> {
+  await invoke('set_window_opacity', { opacity })
+}
+
 export type ProfileMeta = {
   id: string
   name: string
@@ -604,6 +608,36 @@ export async function getCodexUsage(): Promise<CodexUsage> {
   return invoke<CodexUsage>('get_codex_usage')
 }
 
+export type AntigravityQuotaBucket = {
+  label: string
+  models: string[]
+  used_percent: number
+  remaining_percent: number
+  resets_at: string
+}
+
+export type AntigravityUsage = {
+  status: 'ready' | 'no_cli' | 'no_auth' | 'unavailable'
+  cli_path: string
+  used_percent: number
+  rate_limited: boolean
+  buckets: AntigravityQuotaBucket[]
+}
+
+export async function getAntigravityUsage(): Promise<AntigravityUsage> {
+  return invoke<AntigravityUsage>('get_antigravity_usage')
+}
+
+export type AntigravitySessionSnapshot = {
+  id: string
+  preview: string
+  modified_at_ms: number
+}
+
+export async function snapshotAntigravitySessions(cwd: string): Promise<AntigravitySessionSnapshot[]> {
+  return invoke<AntigravitySessionSnapshot[]>('snapshot_antigravity_sessions', { cwd })
+}
+
 /** Custo por modelo dentro de uma sessão (tokens + USD). */
 export type ModelCost = {
   model: string
@@ -715,8 +749,8 @@ export type ActivityDay = {
   count: number
 }
 
-export async function getClaudeActivity(days: number): Promise<ActivityDay[]> {
-  return invoke<ActivityDay[]>('get_claude_activity', { days })
+export async function getClaudeActivity(days = 91): Promise<ActivityDay[]> {
+  return invoke<ActivityDay[]>('get_claude_activity', { days }).catch(() => [])
 }
 
 /** Mesma janela, mas somando Claude + Codex + OpenCode — ver

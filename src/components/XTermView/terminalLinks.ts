@@ -25,7 +25,7 @@ export type LogicalTerminalLine = {
   startLine: number
 }
 
-const LINK_START_PATTERN = /https?:\/\/|(?:[A-Za-z]:\\|\\\\)|(?:~|\/)(?=[^/])/g
+const LINK_START_PATTERN = /https?:\/\/|(?:[A-Za-z]:\\|\\\\)|(?<![\w])(?:~\/|\/)(?=[A-Za-z0-9_.~])/g
 /** Sufixo `:linha` ou `:linha:coluna` que agents anexam a paths (ex.: `foo.ts:42:10`). */
 const LINE_COL_SUFFIX = /:\d+(?::\d+)?$/
 const MARKDOWN_EXT_PATTERN = /\.(md|markdown|mdx)$/i
@@ -48,10 +48,17 @@ export function classifyFileLink(text: string): FileLinkKind | undefined {
 }
 const HARD_LINK_DELIMITERS = new Set(['\t', '\r', '\n', '<', '>', '"', "'", '`', '|'])
 
-function findLinkEnd(line: string, start: number): number {
+function isLikelyAbsolutePath(text: string): boolean {
+  if (!/^(?:~\/|\/)/.test(text)) return true
+  const clean = stripLineColumn(text)
+  const withoutRoot = clean.startsWith('~/') ? clean.slice(2) : clean.slice(1)
+  return withoutRoot.includes('/') || FILE_EXT_PATTERN.test(clean)
+}
+
+function findLinkEnd(line: string, start: number, isUrl: boolean): number {
   const opener = line[start - 1]
   const closer = opener === '(' ? ')' : opener === '[' ? ']' : undefined
-  if (closer) {
+  if (closer && !isUrl) {
     const boundedEnd = line.indexOf(closer, start)
     if (boundedEnd !== -1) return boundedEnd
   }
@@ -60,6 +67,7 @@ function findLinkEnd(line: string, start: number): number {
   while (end < line.length) {
     const char = line[end]
     if (HARD_LINK_DELIMITERS.has(char)) break
+    if (isUrl && /\s/.test(char)) break
     if (char === ' ' && line[end + 1] === ' ') break
 
     // A second link after whitespace belongs to a separate match.
@@ -81,12 +89,14 @@ export function detectTerminalLinks(line: string): DetectedTerminalLink[] {
     const index = match.index ?? 0
     if (links.some((link) => index < link.index + link.displayLength)) continue
 
-    const raw = line.slice(index, findLinkEnd(line, index))
+    const isUrl = match[0].startsWith('http://') || match[0].startsWith('https://')
+    const raw = line.slice(index, findLinkEnd(line, index, isUrl))
     const displayText = raw.replace(LINK_TRAILING_PUNCTUATION, '')
     if (!displayText) continue
 
-    const kind = displayText.startsWith('http://') || displayText.startsWith('https://') ? 'url' : 'path'
+    const kind = isUrl ? 'url' : 'path'
     const text = kind === 'url' ? displayText : displayText.replace(/\\ /g, ' ')
+    if (kind === 'path' && !isLikelyAbsolutePath(text)) continue
     links.push({
       text,
       index,
