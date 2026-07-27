@@ -1,4 +1,11 @@
-export type AgentType = 'shell' | 'claude' | 'codex' | 'opencode' | 'freebuff' | 'mimo'
+export type AgentType = 'shell' | 'claude' | 'codex' | 'opencode' | 'freebuff' | 'mimo' | 'antigravity'
+
+/** Executável real de cada agente. O Antigravity desktop usa `antigravity`,
+ * enquanto o agente de terminal oficial usa `agy`. */
+export function agentCliCommand(agent: AgentType): string | undefined {
+  if (agent === 'shell') return undefined
+  return agent === 'antigravity' ? 'agy' : agent
+}
 
 /** Idiomas suportados pela UI. `en` é o default. */
 export type Locale = 'en' | 'pt-BR'
@@ -37,6 +44,18 @@ export type Theme =
   | 'min-dark'
   | 'min-light'
   | 'dark-lemon'
+  | 'orca'
+
+/** Módulos opcionais que podem ser ativados no onboarding ou nas Preferências. */
+export type FeatureId = 'todos' | 'git'
+
+/** Item da lista pessoal global. A ordem do array é a ordem escolhida pelo usuário. */
+export type TodoItem = {
+  id: string
+  title: string
+  completed: boolean
+  tags: string[]
+}
 
 export type SubTab = {
   id: string
@@ -53,7 +72,15 @@ export type SubTab = {
   sessionId?: string
   /** Args extras passados pro launcher (ex: --dangerously-skip-permissions). */
   extraArgs?: string[]
+  /** Prompt enviado uma única vez assim que o processo novo fica pronto. */
+  initialInput?: string
+  /** Perfil de custo do runtime. Ausente preserva o comportamento completo legado. */
+  runtimeProfile?: AgentRuntimeProfile
 }
+
+export type AgentRuntimeProfile = 'full' | 'lean' | 'diagnostic'
+
+/** Flag de "modo irrestrito" por agente (skip permissions / approvals). */
 
 /** Flag de "modo irrestrito" por agente (skip permissions / approvals). */
 export const UNRESTRICTED_FLAG: Record<AgentType, string | null> = {
@@ -64,13 +91,14 @@ export const UNRESTRICTED_FLAG: Record<AgentType, string | null> = {
   // freebuff/mimo não documentam flag de skip-permissions própria.
   freebuff: null,
   mimo: null,
+  antigravity: '--dangerously-skip-permissions',
 }
 
 /**
  * Tipo de pane. Ausente = 'terminal' (back-compat, sem migração).
- * 'markdown' | 'file' | 'image' são viewers de arquivo (usam `tabs: []` + `filePath`).
+ * Viewers usam `tabs: []`; arquivos usam `filePath` e páginas web usam `url`.
  */
-export type PaneKind = 'terminal' | 'markdown' | 'file' | 'image'
+export type PaneKind = 'terminal' | 'markdown' | 'file' | 'image' | 'web' | 'graphify'
 
 export type Terminal = {
   id: string
@@ -86,6 +114,29 @@ export type Terminal = {
   kind?: PaneKind
   /** Caminho absoluto do arquivo quando o pane é um viewer (markdown/file/image). */
   filePath?: string
+  /** URL http(s) normalizada quando kind === 'web'. */
+  url?: string
+  /** RFC-003 — id da worktree onde este pane vive (habilita o botão "Integrar"). */
+  worktreeAgentId?: string
+}
+
+/**
+ * Registro de worktree "órfã" — uma pasta/registro que sobrou de uma limpeza
+ * que não terminou (deleção física falhou, ou `git worktree prune` falhou
+ * depois da deleção física ter dado certo). Rastreado em `Project.orphanWorktrees`
+ * pra sobreviver a reloads e ser retentado/exibido pela UI.
+ */
+export type OrphanWorktree = {
+  path: string
+  mode: 'gitWorktree' | 'localCopy'
+  /** Deleção física da pasta falhou/ficou parcial — tenta de novo antes de prune. */
+  requiresRawDeletion?: boolean
+  /** Pasta já foi apagada fisicamente; só falta `git worktree prune` no repo pai. */
+  pruneOnly?: boolean
+  /** Tentativas de limpeza sem avanço real. >=3 mostra alerta de remoção manual. */
+  cleanAttempts?: number
+  /** Motivo do lock administrativo (`git worktree lock`), se for esse o bloqueio atual. */
+  adminLockReason?: string
 }
 
 export type Project = {
@@ -102,6 +153,18 @@ export type Project = {
   gridLayout?: GridLayout
   collapsed: boolean
   createdAt: number
+  // --- RFC-009 / RFC-003 — Multi-Agent settings ---
+  worktreeMode?: 'gitWorktree' | 'localCopy'
+  validationCommands?: string[]
+  gsdWatcherEnabled?: boolean
+  /** RFC-007 — CLI que resolve conflitos de merge (provider-agnóstico). Default 'claude'. */
+  conflictAgentProvider?: AgentType
+  /** RFC-004 — injeta o MCP do Graphify (--mcp-config) nos agentes deste projeto. */
+  graphifyEnabled?: boolean
+  /** RFC-003 — todo terminal de agente novo nasce numa worktree própria. */
+  autoWorktree?: boolean
+  /** Worktrees com limpeza inacabada (deleção física ou `prune` falhados). */
+  orphanWorktrees?: OrphanWorktree[]
 }
 
 export type Group = {
@@ -184,6 +247,8 @@ export type Preferences = {
   uiTheme: Theme
   /** Zoom global da WebView. 1 = 100%. */
   uiZoom: number
+  /** Opacidade da janela nativa. 1 = totalmente opaca. */
+  windowOpacity: number
   terminalTheme: Theme | null
   enabledAgents: Record<AgentType, boolean>
   onboardingDone: boolean
@@ -201,6 +266,7 @@ export type Preferences = {
   accountCreated: boolean
   /** Se true, abre na Home mesmo se havia projeto ativo na última sessão. */
   alwaysStartOnHome: boolean
+
   /** Credenciais locais do Spotify Developer Dashboard para Now Playing. */
   spotifyClientId: string
   spotifyClientSecret: string
@@ -209,15 +275,27 @@ export type Preferences = {
   /** Itens opcionais exibidos no canto direito da topbar. */
   topbarShowClaudeUsage: boolean
   topbarShowCodexUsage: boolean
+  topbarShowAntigravityUsage: boolean
   topbarShowSync: boolean
   topbarShowProfile: boolean
   topbarShowMemory: boolean
-  /** Exibe a aba Source Control na sidebar. */
-  showGitControl: boolean
+  /** Módulos opcionais habilitados para este perfil. */
+  enabledFeatures: Record<FeatureId, boolean>
+  /** Folder configured as the base location for the global Todo list. */
+  todoStoragePath: string
+  /** Estado persistente do shell principal. */
+  leftSidebarVisible: boolean
+  rightSidebarVisible: boolean
+  leftSidebarWidth: number
+  rightSidebarWidth: number
   /** Notifica quando uma janela de uso do Claude/Codex reseta, indicando qual. Default true. */
   notifyOnLimitReset: boolean
+  /** Ditado por voz (speech-to-text) escreve no terminal ativo. Default false. */
+  dictationEnabled: boolean
   /** Quantos PTYs podem ser spawnados em paralelo (fila global). Default 3. */
   spawnConcurrency: number
+  /** Limites de RAM e política de estacionamento automático dos runtimes. */
+  resourcePolicy: ResourcePolicyPreferences
   /** v2.2 — grid layout custom da workspace inteira (cross-grupo). */
   workspaceGridLayout?: GridLayout
   /**
@@ -226,14 +304,35 @@ export type Preferences = {
    * Default false até a feature sair do estágio experimental.
    */
   nativeTerminalMacos?: boolean
+  /**
+   * v3 — perfil de heap do Node.js para agentes (Claude, Codex, OpenCode).
+   * Injeta --max-old-space-size e UV_THREADPOOL_SIZE no ambiente do PTY.
+   */
+  nodeHeapProfile?: 'conservative' | 'balanced' | 'performance'
+}
+
+export type ResourcePolicyMode = 'smart-lru' | 'manual'
+
+export type ResourcePolicyPreferences = {
+  mode: ResourcePolicyMode
+  /** True only after the user explicitly enables automatic runtime parking. */
+  automaticParkingOptIn: boolean
+  memoryBudgetMb: number
+  warningThresholdMb: number
+  recoveryTargetMb: number
+  hiddenAgentIdleMinutes: number
+  hiddenShellIdleMinutes: number
+  spawnGraceSeconds: number
 }
 
 export type ProjectsFile = {
-  version: 4
+  version: 6
   groups: Group[]
   /** Ordem manual dos projetos sem grupo (Solto). */
   ungroupedOrder: string[]
   projects: Project[]
+  /** Lista pessoal global, independente do projeto ativo. */
+  todos: TodoItem[]
   activeProjectId: string | null
   /** Estado da workspace — quais containers estão abertos e em que ordem. */
   workspace: {
@@ -258,8 +357,9 @@ export const DEFAULT_PREFERENCES: Preferences = {
   language: 'en',
   uiTheme: 'dark',
   uiZoom: 1,
+  windowOpacity: 1,
   terminalTheme: null,
-  enabledAgents: { shell: true, claude: true, codex: true, opencode: true, freebuff: true, mimo: true },
+  enabledAgents: { shell: true, claude: true, codex: true, antigravity: true, opencode: true, freebuff: true, mimo: true },
   onboardingDone: false,
   workspaceFlat: false,
   fullscreenContainerId: null,
@@ -273,19 +373,38 @@ export const DEFAULT_PREFERENCES: Preferences = {
   discordRichPresenceEnabled: true,
   topbarShowClaudeUsage: true,
   topbarShowCodexUsage: true,
+  topbarShowAntigravityUsage: true,
   topbarShowSync: true,
   topbarShowProfile: true,
   topbarShowMemory: true,
-  showGitControl: true,
+  enabledFeatures: { todos: true, git: true },
+  todoStoragePath: '',
+  leftSidebarVisible: true,
+  rightSidebarVisible: true,
+  leftSidebarWidth: 286,
+  rightSidebarWidth: 300,
   notifyOnLimitReset: true,
+  dictationEnabled: false,
   spawnConcurrency: 3,
+  resourcePolicy: {
+    mode: 'manual',
+    automaticParkingOptIn: false,
+    memoryBudgetMb: 1536,
+    warningThresholdMb: 1229,
+    recoveryTargetMb: 1152,
+    hiddenAgentIdleMinutes: 15,
+    hiddenShellIdleMinutes: 30,
+    spawnGraceSeconds: 120,
+  },
+  nodeHeapProfile: 'balanced',
 }
 
 export const EMPTY_PROJECTS_FILE: ProjectsFile = {
-  version: 4,
+  version: 6,
   groups: [],
   ungroupedOrder: [],
   projects: [],
+  todos: [],
   activeProjectId: null,
   workspace: {
     containers: [],

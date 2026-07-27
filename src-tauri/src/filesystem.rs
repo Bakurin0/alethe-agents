@@ -6,6 +6,31 @@ use std::path::{Path, PathBuf};
 use std::sync::{Arc, Mutex};
 use tauri::{AppHandle, Emitter};
 
+const TODO_TEMPLATE_FILE: &str = "alethe-todo.template.jsonc";
+const TODO_TEMPLATE: &str = r#"// Alethe Todo template
+// Copy this file to `todos.jsonc` when you want to iterate on an external Todo file.
+// For now, the app stores Todo items in its local profile; this template documents
+// the structure expected by the importer/sync layer.
+{
+  // Schema version for future migrations.
+  "version": 1,
+
+  // Global personal task list. Order in this array is the visible order.
+  "todos": [
+    {
+      // Stable id. Any unique string is accepted.
+      "id": "task-example-1",
+
+      // Text shown in the Todo sidebar.
+      "title": "Example task",
+
+      // false = Active, true = Completed.
+      "completed": false
+    }
+  ]
+}
+"#;
+
 #[derive(Serialize)]
 pub struct DirectoryEntry {
     name: String,
@@ -51,10 +76,27 @@ pub fn read_text_file(path: String) -> Result<String, String> {
     fs::read_to_string(&file).map_err(|error| error.to_string())
 }
 
+#[tauri::command]
+pub fn ensure_todo_template(directory: String) -> Result<String, String> {
+    let dir = PathBuf::from(directory.trim());
+    if dir.as_os_str().is_empty() {
+        return Err("empty directory".to_string());
+    }
+    fs::create_dir_all(&dir).map_err(|error| error.to_string())?;
+    if !dir.is_dir() {
+        return Err("directory not found".to_string());
+    }
+    let template_path = dir.join(TODO_TEMPLATE_FILE);
+    if !template_path.exists() {
+        fs::write(&template_path, TODO_TEMPLATE).map_err(|error| error.to_string())?;
+    }
+    Ok(template_path.to_string_lossy().into_owned())
+}
+
 /// Registro global de watchers de arquivo, chaveado pelo caminho absoluto.
 /// Cada `RecommendedWatcher` precisa ficar vivo enquanto o pane estiver aberto.
 #[derive(Default)]
-pub struct FileWatchers(pub Arc<Mutex<HashMap<String, RecommendedWatcher>>>);
+pub struct FileWatchers(pub Arc<Mutex<HashMap<String, (RecommendedWatcher, usize)>>>);
 
 /// Normaliza o caminho pra usar como chave/comparação (mesma forma que vem do front).
 fn normalize(path: &str) -> String {
@@ -78,8 +120,10 @@ pub fn watch_file(
         .ok_or_else(|| "invalid path".to_string())?;
 
     let mut map = state.0.lock().map_err(|e| e.to_string())?;
-    if map.contains_key(&key) {
-        return Ok(()); // já observando
+    // Refcount: se outro pane já observa este caminho, só incrementa a contagem.
+    if let Some(entry) = map.get_mut(&key) {
+        entry.1 += 1;
+        return Ok(());
     }
 
     let emit_path = key.clone();
@@ -101,7 +145,7 @@ pub fn watch_file(
     watcher
         .watch(&parent, RecursiveMode::NonRecursive)
         .map_err(|e| e.to_string())?;
-    map.insert(key, watcher);
+    map.insert(key, (watcher, 1));
     Ok(())
 }
 
@@ -110,6 +154,14 @@ pub fn watch_file(
 pub fn unwatch_file(state: tauri::State<'_, FileWatchers>, path: String) -> Result<(), String> {
     let key = normalize(&path);
     let mut map = state.0.lock().map_err(|e| e.to_string())?;
-    map.remove(&key); // drop do watcher para o watch
+    // Refcount: só solta o watcher quando o ÚLTIMO pane deste caminho fecha —
+    // senão um pane sobrevivente pararia de receber md://changed em silêncio.
+    if let Some(entry) = map.get_mut(&key) {
+        if entry.1 <= 1 {
+            map.remove(&key); // drop do watcher para o watch
+        } else {
+            entry.1 -= 1;
+        }
+    }
     Ok(())
 }

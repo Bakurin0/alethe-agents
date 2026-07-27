@@ -76,7 +76,7 @@ import {
 import { useNodeCostStore, selectNodeCostTotals } from '../../stores/nodeCostStore'
 import { useProjectsStore } from '../../stores/projectsStore'
 import { useUiStore } from '../../stores/uiStore'
-import type { AgentType } from '../../lib/types'
+import { agentCliCommand, type AgentType } from '../../lib/types'
 import { AgentIcon, CodexIcon } from '../icons/AgentIcons'
 import { XTermView } from '../XTermView'
 import { AgentModal } from './AgentModal'
@@ -579,12 +579,15 @@ function AgentCanvasInner() {
         ...prev,
         { ptyId, agent, title, cwd: folder, startedAt: Date.now(), exitedCode: null, args },
       ])
-      void spawnPty({ cols: 120, rows: 30, id: ptyId, command: agent, cwd: folder, extraArgs: args })
+      void spawnPty({ cols: 120, rows: 30, id: ptyId, command: agentCliCommand(agent), cwd: folder, extraArgs: args })
         .then(() => {
           // Captura o término mesmo com o terminal fechado — senão o card de um
           // one-shot ficaria "running" pra sempre.
           let unlistenExit: (() => void) | null = null
-          void listenPtyExit(ptyId, (code) => {
+          let exited = false
+          void listenPtyExit(ptyId, (payload) => {
+            const code = payload.code
+            exited = true
             unlistenExit?.()
             workerExitUnlistenersRef.current.delete(ptyId)
             console.log('[AgentCanvasPOC] worker', ptyId, 'saiu, code', code)
@@ -604,7 +607,10 @@ function AgentCanvasInner() {
               .catch(() => {})
           }).then((unlisten) => {
             unlistenExit = unlisten
-            workerExitUnlistenersRef.current.set(ptyId, unlisten)
+            // Se o exit já disparou antes do promise resolver, desfaz agora e NÃO
+            // guarda (senão ficaria um listener órfão já-disparado no ref).
+            if (exited) unlisten()
+            else workerExitUnlistenersRef.current.set(ptyId, unlisten)
           }).catch(() => {})
         })
         .catch((err) => console.error('[AgentCanvasPOC] falha spawnando PTY do worker:', err))

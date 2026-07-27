@@ -2,7 +2,7 @@ import { RefreshCw } from 'lucide-react'
 import { useEffect, useMemo, useState } from 'react'
 
 import { intlLocale, useT } from '../../lib/i18n'
-import { getCachedClaudeActivity } from '../../lib/claudeActivityCache'
+import { getCachedActivity } from '../../lib/activityCache'
 import { useProjectsStore } from '../../stores/projectsStore'
 import type { ActivityDay } from '../../lib/tauri'
 import styles from './HomeView.module.css'
@@ -51,7 +51,7 @@ function totalAndDelta(days: ActivityDay[]): { total: number; deltaPct: number |
 }
 
 /** Dias consecutivos com atividade, ignorando zeros à direita (hoje ainda sem msg). */
-function computeStreak(days: ActivityDay[]): number {
+export function computeStreak(days: ActivityDay[]): number {
   let i = days.length - 1
   while (i >= 0 && days[i].count === 0) i--
   let streak = 0
@@ -72,7 +72,7 @@ export function ActivityGraph() {
 
   const load = async (force = false) => {
     try {
-      const data = await getCachedClaudeActivity(DAYS_TOTAL, force)
+      const data = await getCachedActivity(DAYS_TOTAL, force)
       setDays(data)
     } catch {
       setDays([])
@@ -85,7 +85,7 @@ export function ActivityGraph() {
     let cancelled = false
     const run = async () => {
       try {
-        const data = await getCachedClaudeActivity(DAYS_TOTAL)
+        const data = await getCachedActivity(DAYS_TOTAL)
         if (!cancelled) setDays(data)
       } catch {
         if (!cancelled) setDays([])

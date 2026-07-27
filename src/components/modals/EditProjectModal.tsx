@@ -1,9 +1,18 @@
 import { useEffect, useState } from 'react'
 
-import { GROUP_COLORS } from '../../lib/types'
+import { GROUP_COLORS, type AgentType } from '../../lib/types'
 import { useT } from '../../lib/i18n'
 import { useProjectsStore } from '../../stores/projectsStore'
 import { useUiStore } from '../../stores/uiStore'
+import { useMergeStore } from '../../stores/mergeStore'
+import {
+  worktreeList,
+  worktreeProvision,
+  worktreeRemove,
+  startGsdWatcher,
+  stopGsdWatcher,
+  gitListBranches,
+} from '../../lib/tauri'
 import { ImageInput } from './ImageInput'
 import { Modal } from './Modal'
 import controls from './controls.module.css'
@@ -13,9 +22,21 @@ export function EditProjectModal() {
   const open = useUiStore((s) => s.openModal === 'editProject')
   const context = useUiStore((s) => s.modalContext) as { projectId?: string } | null
   const closeModal = useUiStore((s) => s.closeModal)
+  const pushToast = useUiStore((s) => s.pushToast)
+
   const renameProject = useProjectsStore((s) => s.renameProject)
   const setProjectColor = useProjectsStore((s) => s.setProjectColor)
   const setProjectIconUrl = useProjectsStore((s) => s.setProjectIconUrl)
+  const setWorktreeMode = useProjectsStore((s) => s.setWorktreeMode)
+  const setValidationCommands = useProjectsStore((s) => s.setValidationCommands)
+  const setGsdWatcherEnabled = useProjectsStore((s) => s.setGsdWatcherEnabled)
+  const setConflictAgentProvider = useProjectsStore((s) => s.setConflictAgentProvider)
+  const setGraphifyEnabled = useProjectsStore((s) => s.setGraphifyEnabled)
+  const setAutoWorktree = useProjectsStore((s) => s.setAutoWorktree)
+  const cleanupOrphanWorktrees = useProjectsStore((s) => s.cleanupOrphanWorktrees)
+  const isCleaningOrphans = useProjectsStore((s) => s.isCleaningOrphans)
+  const merge = useMergeStore()
+
   const project = useProjectsStore((s) =>
     context?.projectId ? s.projects.find((p) => p.id === context.projectId) ?? null : null,
   )
@@ -23,16 +44,118 @@ export function EditProjectModal() {
   const [name, setName] = useState('')
   const [color, setColor] = useState<string>(GROUP_COLORS[0])
   const [iconUrl, setIconUrl] = useState('')
+  const [worktreeMode, setWorktreeModeState] = useState<'gitWorktree' | 'localCopy'>('gitWorktree')
+  const [validationCommandsStr, setValidationCommandsStr] = useState('')
+  const [gsdWatcherEnabled, setGsdWatcherEnabledState] = useState(false)
+  const [worktrees, setWorktrees] = useState<any[]>([])
+  const [loadingWorktrees, setLoadingWorktrees] = useState(false)
+  const [conflictProvider, setConflictProviderState] = useState<AgentType>('claude')
+  const [graphifyEnabled, setGraphifyEnabledState] = useState(false)
+  const [autoWorktree, setAutoWorktreeState] = useState(false)
+  const [branches, setBranches] = useState<string[]>([])
+  const [newAgentName, setNewAgentName] = useState('')
+  const [creatingAgent, setCreatingAgent] = useState(false)
+  const [mergeSource, setMergeSource] = useState('')
+  const [mergeTarget, setMergeTarget] = useState('')
+
+  const loadWorktrees = async (repoPath: string) => {
+    setLoadingWorktrees(true)
+    try {
+      const list = await worktreeList(repoPath)
+      setWorktrees(list)
+    } catch (err) {
+      console.error('Falha ao listar worktrees:', err)
+    } finally {
+      setLoadingWorktrees(false)
+    }
+  }
 
   useEffect(() => {
     if (open && project) {
       setName(project.name)
       setColor(project.color || GROUP_COLORS[0])
       setIconUrl(project.iconUrl ?? '')
+      setWorktreeModeState(project.worktreeMode ?? 'gitWorktree')
+      setValidationCommandsStr((project.validationCommands ?? []).join('\n'))
+      setGsdWatcherEnabledState(project.gsdWatcherEnabled ?? false)
+
+      setConflictProviderState(project.conflictAgentProvider ?? 'claude')
+      setGraphifyEnabledState(project.graphifyEnabled ?? false)
+      setAutoWorktreeState(project.autoWorktree ?? false)
+
+      const repoPath = project.terminals[0]?.cwd
+      if (repoPath) {
+        void loadWorktrees(repoPath)
+        gitListBranches(repoPath)
+          .then((list) => {
+            setBranches(list)
+            // Defaults sensatos: target = branch "principal" se existir.
+            const main = list.find((b) => b === 'main' || b === 'master') ?? list[0] ?? ''
+            setMergeTarget((prev) => prev || main)
+            setMergeSource((prev) => prev || (list.find((b) => b !== main) ?? ''))
+          })
+          .catch(() => setBranches([]))
+      } else {
+        setWorktrees([])
+        setBranches([])
+      }
     }
   }, [open, project])
 
   if (!project) return null
+
+  const handleRemoveWorktree = async (agentId: string) => {
+    const repoPath = project.terminals[0]?.cwd
+    if (!repoPath) return
+    if (confirm(`Tem certeza que deseja excluir o ambiente do agente "${agentId}"?`)) {
+      try {
+        await worktreeRemove(repoPath, agentId, true)
+        void loadWorktrees(repoPath)
+      } catch (err) {
+        console.error('Falha ao excluir worktree:', err)
+        alert('Erro ao excluir: ' + err)
+      }
+    }
+  }
+
+  // 2.7 — gatilho MANUAL: provisiona worktree no modo do projeto e abre um
+  // terminal de agente dentro dela na hora, sem depender do GSD.
+  const handleCreateAgentEnv = async () => {
+    const repoPath = project?.terminals[0]?.cwd
+    const name = newAgentName.trim().replace(/[^A-Za-z0-9_-]/g, '-')
+    if (!project || !repoPath || !name) return
+    setCreatingAgent(true)
+    try {
+      const info = await worktreeProvision(repoPath, name, project.worktreeMode ?? 'gitWorktree')
+      useProjectsStore.getState().createTerminal(project.id, {
+        name,
+        cwd: info.path,
+        firstTab: { type: project.conflictAgentProvider ?? 'claude', cwd: info.path },
+      })
+      setNewAgentName('')
+      void loadWorktrees(repoPath)
+    } catch (err) {
+      console.error('Falha ao criar ambiente de agente:', err)
+      alert(String(err))
+    } finally {
+      setCreatingAgent(false)
+    }
+  }
+
+  const handleCleanupOrphans = async () => {
+    const summary = await cleanupOrphanWorktrees(project.id)
+    pushToast({
+      title: t('multiAgent.orphanCleanupTitle'),
+      body: t('multiAgent.orphanCleanupSummary', {
+        cleaned: summary.cleaned,
+        partial: summary.partial,
+        waiting: summary.awaitingUnlock,
+        failed: summary.failed,
+      }),
+    })
+    const repoPath = project.terminals[0]?.cwd
+    if (repoPath) void loadWorktrees(repoPath)
+  }
 
   const submit = () => {
     const trimmed = name.trim()
@@ -41,6 +164,42 @@ export function EditProjectModal() {
     const trimmedUrl = iconUrl.trim()
     const newIconUrl = trimmedUrl || undefined
     if (newIconUrl !== project.iconUrl) setProjectIconUrl(project.id, newIconUrl)
+
+    // Salvar configurações multiagente
+    if (worktreeMode !== project.worktreeMode) {
+      setWorktreeMode(project.id, worktreeMode)
+    }
+
+    const cmds = validationCommandsStr.split('\n').map((c) => c.trim()).filter(Boolean)
+    const originalCmds = project.validationCommands ?? []
+    if (JSON.stringify(cmds) !== JSON.stringify(originalCmds)) {
+      setValidationCommands(project.id, cmds)
+    }
+
+    if (conflictProvider !== (project.conflictAgentProvider ?? 'claude')) {
+      setConflictAgentProvider(project.id, conflictProvider)
+    }
+
+    if (graphifyEnabled !== (project.graphifyEnabled ?? false)) {
+      setGraphifyEnabled(project.id, graphifyEnabled)
+    }
+
+    if (autoWorktree !== (project.autoWorktree ?? false)) {
+      setAutoWorktree(project.id, autoWorktree)
+    }
+
+    if (gsdWatcherEnabled !== project.gsdWatcherEnabled) {
+      setGsdWatcherEnabled(project.id, gsdWatcherEnabled)
+      const repoPath = project.terminals[0]?.cwd
+      if (repoPath) {
+        if (gsdWatcherEnabled) {
+          startGsdWatcher(project.id, repoPath).catch(console.error)
+        } else {
+          stopGsdWatcher(project.id, repoPath).catch(console.error)
+        }
+      }
+    }
+
     closeModal()
   }
 
@@ -146,6 +305,413 @@ export function EditProjectModal() {
         )}
         {t('crud.projectColorPreview')}
       </div>
+
+      {/* --- RFC-009 Multi-Agent Configuration --- */}
+      <hr style={{ margin: '20px 0 16px', border: 'none', borderTop: '1px solid var(--border)' }} />
+      <h3 style={{ fontSize: 13, fontWeight: 600, marginBottom: 12 }}>Configurações Multi-Agent</h3>
+
+      <div className={controls.field}>
+        <label className={controls.label}>Modo de Worktree Padrão</label>
+        <div style={{ display: 'flex', gap: 16, marginTop: 4 }}>
+          <label style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 12, cursor: 'pointer' }}>
+            <input
+              type="radio"
+              name="worktreeMode"
+              value="gitWorktree"
+              checked={worktreeMode === 'gitWorktree'}
+              onChange={() => setWorktreeModeState('gitWorktree')}
+            />
+            Git Worktree (Rápido)
+          </label>
+          <label style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 12, cursor: 'pointer' }}>
+            <input
+              type="radio"
+              name="worktreeMode"
+              value="localCopy"
+              checked={worktreeMode === 'localCopy'}
+              onChange={() => setWorktreeModeState('localCopy')}
+            />
+            Cópia Local (Pesado)
+          </label>
+        </div>
+      </div>
+
+      <div className={controls.field}>
+        <label className={controls.label}>Comandos de Validação (um por linha)</label>
+        <textarea
+          className={controls.input}
+          style={{ height: 60, fontFamily: 'monospace', fontSize: 11, padding: '6px 8px', resize: 'vertical' }}
+          placeholder="Ex: npm run build&#10;npm test"
+          value={validationCommandsStr}
+          onChange={(e) => setValidationCommandsStr(e.target.value)}
+        />
+      </div>
+
+      <div className={controls.field}>
+        <label className={controls.label}>{t('merge.providerLabel')}</label>
+        <select
+          className={controls.input}
+          value={conflictProvider}
+          onChange={(e) => setConflictProviderState(e.target.value as AgentType)}
+          style={{ cursor: 'pointer' }}
+        >
+          <option value="claude">Claude Code</option>
+          <option value="codex">Codex</option>
+          <option value="opencode">OpenCode</option>
+        </select>
+      </div>
+
+      <div className={controls.field} style={{ display: 'flex', alignItems: 'center', gap: 8, marginTop: 8 }}>
+        <input
+          type="checkbox"
+          id="autoWorktree"
+          checked={autoWorktree}
+          onChange={(e) => setAutoWorktreeState(e.target.checked)}
+          style={{ cursor: 'pointer' }}
+        />
+        <label htmlFor="autoWorktree" className={controls.label} style={{ margin: 0, cursor: 'pointer', fontWeight: 'normal' }}>
+          {t('multiAgent.autoWorktree')}
+        </label>
+      </div>
+
+      <div className={controls.field} style={{ display: 'flex', alignItems: 'center', gap: 8, marginTop: 8 }}>
+        <input
+          type="checkbox"
+          id="graphifyEnabled"
+          checked={graphifyEnabled}
+          onChange={(e) => setGraphifyEnabledState(e.target.checked)}
+          style={{ cursor: 'pointer' }}
+        />
+        <label htmlFor="graphifyEnabled" className={controls.label} style={{ margin: 0, cursor: 'pointer', fontWeight: 'normal' }}>
+          {t('project.graphifyEnabled')}
+        </label>
+      </div>
+
+      <div className={controls.field} style={{ display: 'flex', alignItems: 'center', gap: 8, marginTop: 8 }}>
+        <input
+          type="checkbox"
+          id="gsdWatcher"
+          checked={gsdWatcherEnabled}
+          onChange={(e) => setGsdWatcherEnabledState(e.target.checked)}
+          style={{ cursor: 'pointer' }}
+        />
+        <label htmlFor="gsdWatcher" className={controls.label} style={{ margin: 0, cursor: 'pointer', fontWeight: 'normal' }}>
+          Ativar Monitoramento do Planejamento GSD (Watch `.planning/`)
+        </label>
+      </div>
+
+      {/* --- RFC-003 Worktrees Ativos --- */}
+      <hr style={{ margin: '20px 0 16px', border: 'none', borderTop: '1px solid var(--border)' }} />
+      <h3 style={{ fontSize: 13, fontWeight: 600, marginBottom: 12 }}>Ambientes de Agentes Ativos (Worktrees)</h3>
+
+      {loadingWorktrees ? (
+        <div style={{ fontSize: 11, color: 'var(--fg-muted)' }}>Carregando worktrees...</div>
+      ) : worktrees.length === 0 ? (
+        <div style={{ fontSize: 11, color: 'var(--fg-muted)', fontStyle: 'italic' }}>
+          Nenhum worktree ou cópia ativa para este projeto.
+        </div>
+      ) : (
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 8, maxHeight: 150, overflowY: 'auto' }}>
+          {worktrees.map((wt) => (
+            <div
+              key={wt.agentId}
+              style={{
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'space-between',
+                padding: '6px 10px',
+                borderRadius: 'var(--radius-sm)',
+                background: 'var(--bg-active)',
+                border: '1px solid var(--border)',
+                fontSize: 11,
+              }}
+            >
+              <div style={{ overflow: 'hidden', marginRight: 12 }}>
+                <div style={{ fontWeight: 600 }}>Agente: {wt.agentId} ({wt.mode === 'gitWorktree' ? 'Worktree' : 'Cópia'})</div>
+                <div
+                  style={{
+                    fontSize: 10,
+                    color: 'var(--fg-muted)',
+                    whiteSpace: 'nowrap',
+                    overflow: 'hidden',
+                    textOverflow: 'ellipsis',
+                  }}
+                  title={wt.path}
+                >
+                  Ramo: <span style={{ fontFamily: 'monospace' }}>{wt.branch}</span> | Path: {wt.path}
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => handleRemoveWorktree(wt.agentId)}
+                style={{
+                  padding: '4px 8px',
+                  fontSize: 10,
+                  borderRadius: 'var(--radius-sm)',
+                  background: 'var(--status-failed-bg, #4c1d1d)',
+                  color: '#ff8888',
+                  border: 'none',
+                  cursor: 'pointer',
+                  flexShrink: 0,
+                }}
+              >
+                Excluir
+              </button>
+            </div>
+          ))}
+        </div>
+      )}
+      {(project.orphanWorktrees?.length ?? 0) > 0 && (
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 6, marginTop: 8 }}>
+          {(project.orphanWorktrees ?? []).map((orphan) => (
+            <div
+              key={orphan.path}
+              style={{
+                padding: '6px 10px',
+                borderRadius: 'var(--radius-sm)',
+                background: 'var(--bg-active)',
+                border: '1px solid var(--border)',
+                fontSize: 10,
+              }}
+            >
+              <div
+                style={{
+                  fontFamily: 'monospace',
+                  whiteSpace: 'nowrap',
+                  overflow: 'hidden',
+                  textOverflow: 'ellipsis',
+                  color: 'var(--fg-muted)',
+                }}
+                title={orphan.path}
+              >
+                {orphan.path}
+              </div>
+              {orphan.adminLockReason ? (
+                <div style={{ marginTop: 2, color: 'var(--status-stopped)' }}>
+                  {t('multiAgent.orphanAdminLocked', { reason: orphan.adminLockReason })}
+                </div>
+              ) : (orphan.cleanAttempts ?? 0) >= 3 ? (
+                <div style={{ marginTop: 2, color: 'var(--status-stopped)' }}>
+                  {t('multiAgent.orphanManualRemoval')}
+                </div>
+              ) : null}
+            </div>
+          ))}
+        </div>
+      )}
+      {(project.orphanWorktrees?.length ?? 0) > 0 && (
+        <button
+          type="button"
+          onClick={() => void handleCleanupOrphans()}
+          disabled={isCleaningOrphans}
+          style={{
+            marginTop: 8,
+            padding: '4px 10px',
+            fontSize: 11,
+            borderRadius: 'var(--radius-sm)',
+            background: 'var(--bg-active)',
+            border: '1px solid var(--border)',
+            cursor: isCleaningOrphans ? 'default' : 'pointer',
+            opacity: isCleaningOrphans ? 0.6 : 1,
+          }}
+        >
+          {isCleaningOrphans
+            ? t('multiAgent.cleaningOrphans')
+            : t('multiAgent.cleanOrphans', { count: project.orphanWorktrees?.length ?? 0 })}
+        </button>
+      )}
+
+      {/* 2.7 — gatilho manual de worktree */}
+      <div style={{ display: 'flex', gap: 8, marginTop: 10 }}>
+        <input
+          className={controls.input}
+          style={{ flex: 1 }}
+          placeholder={t('multiAgent.newEnvPlaceholder')}
+          value={newAgentName}
+          onChange={(e) => setNewAgentName(e.target.value)}
+          onKeyDown={(e) => e.key === 'Enter' && void handleCreateAgentEnv()}
+        />
+        <button
+          type="button"
+          className={`${controls.btn} ${controls.btnPrimary}`}
+          disabled={!newAgentName.trim() || creatingAgent || !project.terminals[0]?.cwd}
+          onClick={() => void handleCreateAgentEnv()}
+        >
+          {creatingAgent ? t('multiAgent.creatingEnv') : t('multiAgent.createEnv')}
+        </button>
+      </div>
+
+      {/* --- RFC-006/007/008 — Ciclo de merge seguro --- */}
+      <hr style={{ margin: '20px 0 16px', border: 'none', borderTop: '1px solid var(--border)' }} />
+      <h3 style={{ fontSize: 13, fontWeight: 600, marginBottom: 12 }}>{t('merge.sectionTitle')}</h3>
+
+      {branches.length < 2 ? (
+        <div style={{ fontSize: 11, color: 'var(--fg-muted)', fontStyle: 'italic' }}>
+          {t('merge.needBranches')}
+        </div>
+      ) : (
+        <>
+          <div style={{ display: 'flex', gap: 8, alignItems: 'flex-end' }}>
+            <div className={controls.field} style={{ flex: 1 }}>
+              <label className={controls.label}>{t('merge.sourceLabel')}</label>
+              <select
+                className={controls.input}
+                value={mergeSource}
+                onChange={(e) => setMergeSource(e.target.value)}
+                style={{ cursor: 'pointer' }}
+              >
+                {branches.map((b) => (
+                  <option key={b} value={b}>{b}</option>
+                ))}
+              </select>
+            </div>
+            <div className={controls.field} style={{ flex: 1 }}>
+              <label className={controls.label}>{t('merge.targetLabel')}</label>
+              <select
+                className={controls.input}
+                value={mergeTarget}
+                onChange={(e) => setMergeTarget(e.target.value)}
+                style={{ cursor: 'pointer' }}
+              >
+                {branches.map((b) => (
+                  <option key={b} value={b}>{b}</option>
+                ))}
+              </select>
+            </div>
+          </div>
+
+          <div style={{ display: 'flex', gap: 8, marginTop: 8 }}>
+            <button
+              type="button"
+              className={controls.btn}
+              disabled={!mergeSource || !mergeTarget || mergeSource === mergeTarget || merge.phase === 'analyzing'}
+              onClick={() => {
+                const repoPath = project.terminals[0]?.cwd
+                if (repoPath) void merge.analyze(project, repoPath, mergeSource, mergeTarget)
+              }}
+            >
+              {merge.phase === 'analyzing' ? t('merge.analyzing') : t('merge.analyze')}
+            </button>
+            <button
+              type="button"
+              className={`${controls.btn} ${controls.btnPrimary}`}
+              disabled={
+                !mergeSource || !mergeTarget || mergeSource === mergeTarget ||
+                merge.phase === 'preparing' || merge.phase === 'resolving' ||
+                merge.phase === 'finalizing_commit' || merge.phase === 'branch_diverged' ||
+                merge.phase === 'rebase_attempt'
+              }
+              onClick={() => {
+                const repoPath = project.terminals[0]?.cwd
+                if (repoPath) void merge.start(project, repoPath, mergeSource, mergeTarget)
+              }}
+            >
+              {t('merge.start')}
+            </button>
+            {merge.phase === 'resolving' && (
+              <>
+                <button
+                  type="button"
+                  className={controls.btn}
+                  disabled={merge.isFinalizing}
+                  onClick={() => void merge.finalize()}
+                >
+                  {merge.isFinalizing ? t('merge.finalizing') : t('merge.finalize')}
+                </button>
+                <button
+                  type="button"
+                  className={controls.btn}
+                  disabled={merge.isFinalizing}
+                  onClick={() => void merge.abort()}
+                >
+                  {t('merge.abort')}
+                </button>
+              </>
+            )}
+            {merge.phase === 'failed' && (
+              <>
+                <button
+                  type="button"
+                  className={controls.btn}
+                  disabled={merge.isFinalizing}
+                  onClick={() => void merge.retry()}
+                >
+                  {merge.isFinalizing
+                    ? t('merge.finalizing')
+                    : t('merge.retry', { count: merge.retryCount })}
+                </button>
+                <button
+                  type="button"
+                  className={controls.btn}
+                  disabled={merge.isFinalizing}
+                  onClick={() => void merge.abort()}
+                >
+                  {t('merge.abort')}
+                </button>
+              </>
+            )}
+            {(merge.phase === 'finalizing_commit' || merge.phase === 'branch_diverged' || merge.phase === 'rebase_attempt') && (
+              <div style={{ display: 'flex', alignItems: 'center', fontSize: 11, color: 'var(--fg-muted)' }}>
+                {t('merge.finalizing')}
+              </div>
+            )}
+            {merge.phase === 'terminal_error' && (
+              <button
+                type="button"
+                className={controls.btn}
+                disabled={merge.isFinalizing}
+                onClick={() => void merge.abort()}
+              >
+                {merge.isFinalizing ? t('merge.cleaningUp') : t('merge.forceCleanup')}
+              </button>
+            )}
+          </div>
+
+          {merge.analysis && (
+            <div style={{ marginTop: 8, fontSize: 11, color: 'var(--fg-muted)' }}>
+              {merge.analysis.clean
+                ? t('merge.analysisClean')
+                : t('merge.analysisConflicts', { count: merge.analysis.conflicts.length })}
+              {!merge.analysis.clean && (
+                <div style={{ marginTop: 4, fontFamily: 'monospace', fontSize: 10 }}>
+                  {merge.analysis.conflicts.slice(0, 8).map((c) => (
+                    <div key={c.path}>{c.path} · {c.class}</div>
+                  ))}
+                </div>
+              )}
+            </div>
+          )}
+
+          {merge.phase === 'resolving' && (
+            <div style={{ marginTop: 8, fontSize: 11, color: 'var(--status-working, var(--fg-muted))' }}>
+              {t('merge.resolvingHint')}
+            </div>
+          )}
+          {merge.outcome && !merge.outcome.merged && (
+            <div style={{ marginTop: 8, fontSize: 11, color: 'var(--status-stopped)' }}>
+              {t('merge.blockedTitle', { stage: merge.outcome.stage })}
+            </div>
+          )}
+          {merge.phase === 'merged' && (
+            <div style={{ marginTop: 8, fontSize: 11, color: 'var(--status-active, var(--fg))' }}>
+              {t('merge.mergedTitle')}
+            </div>
+          )}
+          {merge.phase === 'terminal_error' && (
+            <div style={{ marginTop: 8, fontSize: 11, color: 'var(--status-stopped)' }}>
+              {t('merge.terminalErrorHint')}
+            </div>
+          )}
+          {merge.phase === 'failed' && merge.adminLockReason && (
+            <div style={{ marginTop: 8, fontSize: 11, color: 'var(--status-stopped)' }}>
+              {t('merge.adminLockedReason', { reason: merge.adminLockReason })}
+            </div>
+          )}
+          {merge.error && (
+            <div style={{ marginTop: 8, fontSize: 11, color: 'var(--status-stopped)' }}>{merge.error}</div>
+          )}
+        </>
+      )}
     </Modal>
   )
 }

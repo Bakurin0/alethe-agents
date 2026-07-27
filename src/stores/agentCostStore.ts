@@ -41,9 +41,14 @@ function liveAgentSessions(): Array<{
   const out: Array<{ ptyId: string; agent: string; sessionId: string; cwd: string }> = []
   for (const [ptyId, s] of Object.entries(sessions)) {
     if (!alive[ptyId]?.alive) continue
-    const sessionId = s.agent === 'codex' ? s.codexSessionId : s.claudeSessionId
+    const sessionId =
+      s.agent === 'codex'
+        ? s.codexSessionId
+        : s.agent === 'opencode'
+          ? s.opencodeSessionId
+          : s.claudeSessionId
     if (!sessionId) continue
-    if (s.agent !== 'claude' && s.agent !== 'codex') continue
+    if (s.agent !== 'claude' && s.agent !== 'codex' && s.agent !== 'opencode') continue
     out.push({ ptyId, agent: s.agent, sessionId, cwd: s.cwd })
   }
   return out

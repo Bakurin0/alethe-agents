@@ -1,16 +1,19 @@
 import { getCurrentWebview } from '@tauri-apps/api/webview'
 import { Bell, X } from 'lucide-react'
-import { lazy, Suspense, type CSSProperties, useEffect } from 'react'
+import { lazy, Suspense, type CSSProperties, useEffect, useRef } from 'react'
+import { Group as PanelGroup, Panel, Separator, usePanelRef } from 'react-resizable-panels'
 
-import { ghosttyKillAll } from './lib/tauri'
+import { ghosttyKillAll, setWindowOpacity } from './lib/tauri'
 
 import { AgentIcon } from './components/icons/AgentIcons'
 import { ErrorBoundary } from './components/ErrorBoundary'
 import { FocusOverlay } from './components/FocusOverlay'
 import { LinkViewerOverlay } from './components/LinkViewerOverlay'
+import { DictationButton } from './components/DictationButton'
 import { MainMenu } from './components/MainMenu'
 import { ProjectSidebar } from './components/ProjectSidebar'
 import { TitleBar } from './components/TitleBar'
+import { RightSidebar } from './components/RightSidebar'
 import { TokenHud } from './components/TokenHud'
 import { WorkspaceView } from './components/WorkspaceView'
 import { FindJumpModal } from './components/modals/FindJumpModal'
@@ -20,27 +23,31 @@ import { NewGroupModal } from './components/modals/NewGroupModal'
 import { NewProjectModal } from './components/modals/NewProjectModal'
 import { NewSubTabModal } from './components/modals/NewSubTabModal'
 import { NewTerminalModal } from './components/modals/NewTerminalModal'
+import { AddContentModal } from './components/modals/AddContentModal'
+import { AiUsageModal } from './components/modals/AiUsageModal'
 import { OnboardingModal } from './components/modals/OnboardingModal'
 import { ProfilesModal } from './components/modals/ProfilesModal'
 import { PreferencesModal } from './components/modals/PreferencesModal'
 import { SyncModal } from './components/modals/SyncModal'
 import { SuspendGroupModal } from './components/modals/SuspendGroupModal'
 import { ThemePickerModal } from './components/modals/ThemePickerModal'
+import { TodoSettingsModal } from './components/modals/TodoSettingsModal'
 import { TopbarSettingsModal } from './components/modals/TopbarSettingsModal'
 import { UpdateModal } from './components/modals/UpdateModal'
 import { WelcomeModal } from './components/modals/WelcomeModal'
 import { useKeybindings } from './hooks/useKeybindings'
 import { useDiscordPresence } from './hooks/useDiscordPresence'
+import { useCloseConfirmation } from './hooks/useCloseConfirmation'
+import { useResourceSupervisor } from './hooks/useResourceSupervisor'
 import { startActivityTracker } from './lib/activityTracker'
 import { intlLocale, translate } from './lib/i18n'
-import { isMacOS } from './lib/platform'
 import { setMaxConcurrentSpawns } from './lib/spawnQueue'
 import { getLastCrashReport } from './lib/tauri'
 import { checkForUpdate } from './lib/updater'
 import { useProjectsStore } from './stores/projectsStore'
 import { type InAppToast, useUiStore } from './stores/uiStore'
 import styles from './App.module.css'
-import logoLoading from './assets/logo-loading.png'
+import { DotmCircular2 } from './components/ui/dotm-circular-2'
 
 const AgentCanvasPOC = lazy(() =>
   import('./components/AgentCanvasPOC').then((module) => ({ default: module.AgentCanvasPOC })),
@@ -62,7 +69,20 @@ const MemoryAnalyticsModal = lazy(() =>
 function LoadingScreen() {
   return (
     <div className={styles.loadingScreen}>
-      <img className={styles.loadingMark} src={logoLoading} alt="Alethe" />
+      <div className={styles.loadingInner}>
+        <span className={styles.loadingMark} role="img" aria-label="Alethe" />
+        <span className={styles.loadingWordmark}>Alethe</span>
+        <DotmCircular2
+          size={22}
+          dotSize={2}
+          cellPadding={1}
+          speed={1.2}
+          bloom
+          color="var(--fg-faint)"
+          ariaLabel="Alethe"
+          className={styles.loadingSpinner}
+        />
+      </div>
     </div>
   )
 }
@@ -124,14 +144,30 @@ export default function App() {
   const hydrated = useProjectsStore((s) => s.hydrated)
   const uiTheme = useProjectsStore((s) => s.preferences.uiTheme)
   const uiZoom = useProjectsStore((s) => s.preferences.uiZoom)
+  const windowOpacity = useProjectsStore((s) => s.preferences.windowOpacity)
   const language = useProjectsStore((s) => s.preferences.language)
   const spawnConcurrency = useProjectsStore((s) => s.preferences.spawnConcurrency)
   const activeView = useUiStore((s) => s.activeView)
   const openModal = useUiStore((s) => s.openModal)
-  const sidebarVisible = useUiStore((s) => s.sidebarVisible)
+  const leftSidebarVisible = useProjectsStore((s) => s.preferences.leftSidebarVisible)
+  const rightSidebarVisible = useProjectsStore((s) => s.preferences.rightSidebarVisible)
+  const leftSidebarWidth = useProjectsStore((s) => s.preferences.leftSidebarWidth)
+  const rightSidebarWidth = useProjectsStore((s) => s.preferences.rightSidebarWidth)
+  const todoEnabled = useProjectsStore((s) => s.preferences.enabledFeatures.todos)
+  const setPreferences = useProjectsStore((s) => s.setPreferences)
+  // Keep panel defaults stable while dragging. Updating defaultSize on every
+  // resize event can make react-resizable-panels rebuild the layout mid-drag.
+  const leftSidebarDefaultRef = useRef(leftSidebarWidth)
+  const rightSidebarDefaultRef = useRef(rightSidebarWidth)
+  const leftPanelRef = usePanelRef()
+  const rightPanelRef = usePanelRef()
+  const leftPanelElementRef = useRef<HTMLDivElement>(null)
+  const rightPanelElementRef = useRef<HTMLDivElement>(null)
 
   useKeybindings()
   useDiscordPresence()
+  useCloseConfirmation()
+  useResourceSupervisor(hydrated)
 
   useEffect(() => {
     void hydrate()
@@ -145,14 +181,6 @@ export default function App() {
     void ghosttyKillAll().catch(() => {
       /* não-macOS ou sem libghostty: no-op */
     })
-  }, [])
-
-  // Marca a plataforma no <html> uma vez. O CSS usa [data-platform="macos"]
-  // para arredondar os cantos da janela (a janela roda sem decorações nativas,
-  // e o backend AppKit recorta o contentView — o DOM precisa ser transparente
-  // nos cantos para o recorte aparecer). Ver window_style.rs.
-  useEffect(() => {
-    document.documentElement.dataset.platform = isMacOS() ? 'macos' : 'other'
   }, [])
 
   useEffect(() => {
@@ -179,6 +207,49 @@ export default function App() {
         window.dispatchEvent(new CustomEvent('alethe:zoom-changed', { detail: { zoom: uiZoom } }))
       })
   }, [hydrated, uiZoom])
+
+  useEffect(() => {
+    if (!hydrated) return
+    void setWindowOpacity(windowOpacity).catch(() => {
+      /* Browser/testes e plataformas sem suporte: mantém a janela opaca. */
+    })
+  }, [hydrated, windowOpacity])
+
+  useEffect(() => {
+    if (!hydrated) return
+    const element = leftPanelElementRef.current
+    if (element) element.style.transition = 'flex-grow 180ms ease, flex-basis 180ms ease'
+    const frame = window.requestAnimationFrame(() => {
+      if (leftSidebarVisible) leftPanelRef.current?.expand()
+      else leftPanelRef.current?.collapse()
+    })
+    const timer = window.setTimeout(() => {
+      if (element) element.style.transition = ''
+    }, 220)
+    return () => {
+      window.cancelAnimationFrame(frame)
+      window.clearTimeout(timer)
+      if (element) element.style.transition = ''
+    }
+  }, [hydrated, leftPanelRef, leftSidebarVisible])
+
+  useEffect(() => {
+    if (!hydrated || !todoEnabled) return
+    const element = rightPanelElementRef.current
+    if (element) element.style.transition = 'flex-grow 180ms ease, flex-basis 180ms ease'
+    const frame = window.requestAnimationFrame(() => {
+      if (rightSidebarVisible) rightPanelRef.current?.expand()
+      else rightPanelRef.current?.collapse()
+    })
+    const timer = window.setTimeout(() => {
+      if (element) element.style.transition = ''
+    }, 220)
+    return () => {
+      window.cancelAnimationFrame(frame)
+      window.clearTimeout(timer)
+      if (element) element.style.transition = ''
+    }
+  }, [hydrated, rightPanelRef, rightSidebarVisible, todoEnabled])
 
   useEffect(() => {
     if (!hydrated) return
@@ -240,25 +311,81 @@ export default function App() {
 
   return (
     <>
-      <div className={styles.appRoot}>
+      <div className={styles.appShell}>
         <TitleBar />
-        <div style={{ display: 'flex', flex: 1, minHeight: 0 }}>
-          {sidebarVisible ? <ProjectSidebar /> : null}
-          <ErrorBoundary label="view">
-            <Suspense fallback={<LoadingScreen />}>
-              {activeView === 'home' ? (
-                <HomeView />
-              ) : activeView === 'agentCanvas' ? (
-                <AgentCanvasPOC />
-              ) : (
-                <WorkspaceView />
-              )}
-            </Suspense>
-          </ErrorBoundary>
-        </div>
+        <PanelGroup orientation="horizontal" className={styles.shellBody}>
+          <Panel
+            id="alethe-left-sidebar"
+            panelRef={leftPanelRef}
+            elementRef={leftPanelElementRef}
+            defaultSize={leftSidebarVisible ? `${leftSidebarDefaultRef.current}px` : '0px'}
+            minSize="220px"
+            maxSize="380px"
+            collapsedSize="0px"
+            collapsible
+            groupResizeBehavior="preserve-pixel-size"
+            onResize={(size, _id, previous) => {
+              if (size.inPixels >= 220 && previous && Math.abs(size.inPixels - previous.inPixels) >= 1) {
+                const nextWidth = Math.max(220, Math.min(380, Math.round(size.inPixels)))
+                leftSidebarDefaultRef.current = nextWidth
+                setPreferences({ leftSidebarWidth: nextWidth })
+              }
+            }}
+          >
+            <div className={styles.sidebarContent} data-hidden={!leftSidebarVisible}>
+              <ProjectSidebar />
+            </div>
+          </Panel>
+          <Separator className={`${styles.shellSeparator} ${leftSidebarVisible ? '' : styles.shellSeparatorHidden}`} />
+
+          <Panel id="alethe-main" minSize="360px">
+            <main className={styles.mainView}>
+              <ErrorBoundary label="view">
+                <Suspense fallback={<LoadingScreen />}>
+                  {activeView === 'home' ? (
+                    <HomeView />
+                  ) : activeView === 'agentCanvas' ? (
+                    <AgentCanvasPOC />
+                  ) : (
+                    <WorkspaceView />
+                  )}
+                </Suspense>
+              </ErrorBoundary>
+            </main>
+          </Panel>
+
+          {todoEnabled ? (
+            <>
+              <Separator className={`${styles.shellSeparator} ${rightSidebarVisible ? '' : styles.shellSeparatorHidden}`} />
+              <Panel
+                id="alethe-todo-sidebar"
+                panelRef={rightPanelRef}
+                elementRef={rightPanelElementRef}
+                defaultSize={rightSidebarVisible ? `${rightSidebarDefaultRef.current}px` : '0px'}
+                minSize="260px"
+                maxSize="420px"
+                collapsedSize="0px"
+                collapsible
+                groupResizeBehavior="preserve-pixel-size"
+                onResize={(size, _id, previous) => {
+                  if (size.inPixels >= 260 && previous && Math.abs(size.inPixels - previous.inPixels) >= 1) {
+                    const nextWidth = Math.max(260, Math.min(420, Math.round(size.inPixels)))
+                    rightSidebarDefaultRef.current = nextWidth
+                    setPreferences({ rightSidebarWidth: nextWidth })
+                  }
+                }}
+              >
+                <div className={styles.sidebarContent} data-hidden={!rightSidebarVisible}>
+                  <RightSidebar />
+                </div>
+              </Panel>
+            </>
+          ) : null}
+        </PanelGroup>
       </div>
       <FocusOverlay />
       <LinkViewerOverlay />
+      <DictationButton />
       <MainMenu />
       <ErrorBoundary label="modals">
       <NewProjectModal />
@@ -266,6 +393,7 @@ export default function App() {
       <EditGroupModal />
       <EditProjectModal />
       <NewTerminalModal />
+      <AddContentModal />
       <NewSubTabModal />
       <PreferencesModal />
       <ProfilesModal />
@@ -285,7 +413,9 @@ export default function App() {
         </Suspense>
       ) : null}
       <ThemePickerModal />
+      <TodoSettingsModal />
       <TopbarSettingsModal />
+      <AiUsageModal />
       <UpdateModal />
       </ErrorBoundary>
       <InAppNotifications />

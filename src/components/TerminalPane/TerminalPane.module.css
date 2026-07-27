@@ -1,10 +1,14 @@
 .pane {
   display: flex;
   flex-direction: column;
+  width: 100%;
   height: 100%;
+  max-height: 100%;
+  min-width: 0;
+  min-height: 0;
   background: var(--bg-sunken);
   border: 1px solid var(--border);
-  border-radius: 10px;
+  border-radius: 0;
   overflow: hidden;
   position: relative;
   transition:
@@ -13,12 +17,15 @@
     opacity 0.15s ease;
 }
 
-/* Foco do pane (Alethe focus mode): outline pontilhado azul,
-   sem bg/lift extras. Acende sempre que o xterm de dentro recebe foco.
-   Suprimido quando .paneFocus (overlay) — lá não queremos borda azul. */
+/* Foco do pane (Alethe focus mode): anel sólido em camadas (mesmo padrão do
+   .dropTarget abaixo), sem bg/lift extras. Acende sempre que o xterm de
+   dentro recebe foco. Suprimido quando .paneFocus (overlay) — lá não
+   queremos anel azul. */
 .pane:focus-within:not(.paneFocus) {
-  outline: 2px dashed var(--focus-ring, #38bdf8);
-  outline-offset: -2px;
+  border-color: var(--focus-ring, #38bdf8);
+  box-shadow:
+    inset 0 0 0 1px color-mix(in srgb, var(--focus-ring) 70%, transparent),
+    0 0 0 3px color-mix(in srgb, var(--focus-ring) 22%, transparent);
   z-index: 2;
 }
 
@@ -63,8 +70,8 @@
   position: absolute;
   right: 2px;
   bottom: 2px;
-  width: 14px;
-  height: 14px;
+  width: 16px;
+  height: 16px;
   cursor: nwse-resize;
   z-index: 5;
   background: linear-gradient(
@@ -79,7 +86,7 @@
     var(--fg-faint) 9px,
     transparent 9px
   );
-  opacity: 0.35;
+  opacity: 0.42;
   transition: opacity 0.12s ease;
 }
 .gridResize:hover {
@@ -115,13 +122,13 @@
 /* Header — mais denso (32px) e bg só ligeiramente destacado pra não ficar
    "forte". Baseado no focus-pane-head do canvas-agents mas reduzido. */
 .header {
-  height: 32px;
-  flex: 0 0 32px;
+  height: 28px;
+  flex: 0 0 28px;
   display: flex;
   align-items: center;
   justify-content: space-between;
-  gap: 8px;
-  padding: 0 8px;
+  gap: 6px;
+  padding: 0 6px;
   background: var(--shape-tabs-lane-bg);
   border-bottom: 1px solid var(--shape-tabs-lane-border);
   font-size: 12px;
@@ -131,7 +138,7 @@
 .headLeft {
   display: flex;
   align-items: center;
-  gap: 8px;
+  gap: 6px;
   min-width: 0;
   flex: 1;
 }
@@ -139,7 +146,7 @@
 .headRight {
   display: flex;
   align-items: center;
-  gap: 6px;
+  gap: 4px;
   flex-shrink: 0;
 }
 
@@ -156,7 +163,7 @@
 .identity {
   display: flex;
   align-items: center;
-  gap: 8px;
+  gap: 5px;
   min-width: 0;
 }
 
@@ -189,15 +196,37 @@
   background: var(--status-stopped);
   flex-shrink: 0;
 }
-.status_working { background: var(--status-working); animation: pulse 1.4s infinite; }
+
+.hibernationBadge {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 14px;
+  height: 14px;
+  border-radius: 50%;
+  background: var(--fg-faint);
+  color: var(--bg);
+  flex-shrink: 0;
+  cursor: help;
+}
+.status_working {
+  background: var(--status-working);
+  animation: glowPulse 2s infinite ease-in-out;
+}
 .status_waiting { background: var(--status-waiting); }
 .status_stopped { background: var(--status-stopped); }
 .status_disabled { background: var(--status-disabled); }
 .status_offline { background: var(--status-offline); }
 
-@keyframes pulse {
-  0%, 100% { opacity: 1; }
-  50% { opacity: 0.4; }
+@keyframes glowPulse {
+  0%, 100% {
+    box-shadow: 0 0 0 0px var(--status-working-soft), 0 0 4px var(--status-working);
+    opacity: 1;
+  }
+  50% {
+    box-shadow: 0 0 0 5px rgba(16, 185, 129, 0), 0 0 8px var(--status-working);
+    opacity: 0.8;
+  }
 }
 
 /* Actions sempre visíveis. As secundárias só aparecem quando expandido
@@ -222,8 +251,8 @@
 }
 
 .action {
-  width: 22px;
-  height: 22px;
+  width: 20px;
+  height: 20px;
   display: inline-flex;
   align-items: center;
   justify-content: center;
@@ -251,7 +280,9 @@
 .body {
   flex: 1;
   display: flex;
+  min-width: 0;
   min-height: 0;
+  overflow: hidden;
 }
 
 .terminalArea {

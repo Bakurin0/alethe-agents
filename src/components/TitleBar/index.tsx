@@ -1,20 +1,21 @@
 import { getCurrentWindow } from '@tauri-apps/api/window'
-import { ArrowLeft, ArrowRight, Maximize2, Menu, Minus, PanelLeftClose, PanelLeftOpen, Pencil, Pin, RefreshCw, Users, Workflow, X } from 'lucide-react'
+import { ArrowLeft, ArrowRight, Maximize2, Menu, Minus, PanelLeftClose, PanelLeftOpen, PanelRightClose, PanelRightOpen, Pencil, Pin, RefreshCw, Users, Workflow, X } from 'lucide-react'
 import { useEffect, useRef, useState } from 'react'
 
 import { ContextMenu, type MenuItem } from '../ProjectSidebar/ContextMenu'
-import { ClaudeIcon, CodexIcon } from '../icons/AgentIcons'
+import { AntigravityIcon, ClaudeIcon, CodexIcon } from '../icons/AgentIcons'
 
 import { getCachedClaudeUsage } from '../../lib/claudeUsageCache'
 import { getCachedCodexUsage } from '../../lib/codexUsageCache'
+import { getCachedAntigravityUsage } from '../../lib/antigravityUsageCache'
+import { requestAppClose } from '../../hooks/useCloseConfirmation'
 import { observeClaudeReset, observeCodexReset } from '../../lib/limitResetWatch'
 import { useT } from '../../lib/i18n'
-import { getMemoryStats, killPty } from '../../lib/tauri'
+import { killPty } from '../../lib/tauri'
 import { useProjectsStore } from '../../stores/projectsStore'
 import { useUiStore } from '../../stores/uiStore'
 import styles from './TitleBar.module.css'
 
-const RAM_POLL_INTERVAL_MS = 5000
 const CLAUDE_POLL_INTERVAL_MS = 5 * 60_000
 const APP_TITLE = import.meta.env.DEV ? '(DEV) Alethe' : 'Alethe'
 
@@ -40,21 +41,49 @@ function formatPct(value: number): string {
   return `${value.toFixed(0)}%`
 }
 
+function MemoryPillButton({ ramMb }: { ramMb: number }) {
+  const memoryStats = useUiStore((s) => s.memoryStats)
+  const openModal = useUiStore((s) => s.openModal_)
+  const t = useT()
+  const availableMb = memoryStats?.system_available_mb ?? 16384
+
+  let pressureClass = ''
+  if (availableMb < 256) {
+    pressureClass = styles.ramPressureCritical
+  } else if (availableMb < 512) {
+    pressureClass = styles.ramPressureHigh
+  } else if (availableMb < 1024) {
+    pressureClass = styles.ramPressureMedium
+  } else if (availableMb < 2048) {
+    pressureClass = styles.ramPressureLow
+  }
+
+  return (
+    <button
+      type="button"
+      className={`${styles.ramPill} ${pressureClass}`}
+      title={`${t('ui.titlebar.openMemoryAnalytics')} · ${availableMb.toFixed(0)} MB livre`}
+      onClick={() => openModal('memoryAnalytics')}
+    >
+      {ramMb.toFixed(0)} MB
+    </button>
+  )
+}
+
 export function TitleBar() {
   const t = useT()
   const toggleMainMenu = useUiStore((s) => s.toggleMainMenu)
-  const sidebarVisible = useUiStore((s) => s.sidebarVisible)
-  const toggleSidebar = useUiStore((s) => s.toggleSidebar)
   const activeView = useUiStore((s) => s.activeView)
   const agentCanvasSession = useUiStore((s) => s.agentCanvasSession)
   const setAgentCanvasSession = useUiStore((s) => s.setAgentCanvasSession)
   const setActiveView = useUiStore((s) => s.setActiveView)
   const ramMb = useUiStore((s) => s.ramMb)
-  const addMemorySample = useUiStore((s) => s.addMemorySample)
   const claudeUsage = useUiStore((s) => s.claudeUsage)
   const codexUsage = useUiStore((s) => s.codexUsage)
+  const antigravityUsage = useUiStore((s) => s.antigravityUsage)
   const setClaudeUsage = useUiStore((s) => s.setClaudeUsage)
   const setCodexUsage = useUiStore((s) => s.setCodexUsage)
+  const setAntigravityUsage = useUiStore((s) => s.setAntigravityUsage)
   const openModal = useUiStore((s) => s.openModal_)
   const workspaceTabs = useProjectsStore((s) => s.workspace.tabs)
   const activeWorkspaceTabId = useProjectsStore((s) => s.workspace.activeTabId)
@@ -63,13 +92,15 @@ export function TitleBar() {
   const profiles = useProjectsStore((s) => s.profiles)
   const activeProfileId = useProjectsStore((s) => s.activeProfileId)
   const preferences = useProjectsStore((s) => s.preferences)
-  const activateWorkspaceTab = useProjectsStore((s) => s.activateWorkspaceTab)
+  const setPreferences = useProjectsStore((s) => s.setPreferences)
   const toggleWorkspaceTabPinned = useProjectsStore((s) => s.toggleWorkspaceTabPinned)
   const closeSavedWorkspaceTab = useProjectsStore((s) => s.closeSavedWorkspaceTab)
   const addWorkspaceTabToCurrent = useProjectsStore((s) => s.addWorkspaceTabToCurrent)
-  const [tabMenu, setTabMenu] = useState<{ x: number; y: number; items: MenuItem[] } | null>(null)
+  const activateWorkspaceTab = useProjectsStore((s) => s.activateWorkspaceTab)
   const navigateWorkspaceHistory = useProjectsStore((s) => s.navigateWorkspaceHistory)
+  const [tabMenu, setTabMenu] = useState<{ x: number; y: number; items: MenuItem[] } | null>(null)
   const activeProfile = profiles.find((profile) => profile.id === activeProfileId) ?? null
+  const antigravityReady = antigravityUsage?.status === 'ready' && antigravityUsage.buckets.length > 0
 
   const closeAgentPlanning = () => {
     if (!agentCanvasSession) return
@@ -83,33 +114,9 @@ export function TitleBar() {
     setAgentCanvasSession(null)
   }
 
-  // Pausa o polling (RAM + usage) quando a janela não está focada/visível —
-  // telemetria não precisa rodar em background. Reativa no próximo tick.
+  // Pausa apenas o polling remoto de usage quando a janela não está visível.
+  // O supervisor de memória continua ativo no background por segurança.
   const activeRef = useRef(true)
-
-  // RAM polling — adiado pra não competir com boot/render inicial.
-  useEffect(() => {
-    let cancelled = false
-    let interval: number | null = null
-    const tick = async () => {
-      if (!activeRef.current) return
-      try {
-        const stats = await getMemoryStats()
-        if (!cancelled) addMemorySample(stats)
-      } catch {
-        /* ignora — backend ainda subindo */
-      }
-    }
-    const startupDelay = window.setTimeout(() => {
-      void tick()
-      interval = window.setInterval(tick, RAM_POLL_INTERVAL_MS)
-    }, 3000)
-    return () => {
-      cancelled = true
-      window.clearTimeout(startupDelay)
-      if (interval !== null) window.clearInterval(interval)
-    }
-  }, [addMemorySample])
 
   // Claude usage polling — adiado 1.5s (HTTP call externa, não trava boot).
   useEffect(() => {
@@ -178,6 +185,34 @@ export function TitleBar() {
     }
   }, [setCodexUsage])
 
+  // Antigravity usage polling — checa localmente se agy.exe está instalado e lê as conversas ativas.
+  useEffect(() => {
+    let cancelled = false
+    let interval: number | null = null
+    const tick = async () => {
+      if (!activeRef.current) return
+      try {
+        const usage = await getCachedAntigravityUsage()
+        if (!cancelled) {
+          setAntigravityUsage(usage)
+        }
+      } catch {
+        if (!cancelled) {
+          setAntigravityUsage(null)
+        }
+      }
+    }
+    const startupDelay = window.setTimeout(() => {
+      void tick()
+      interval = window.setInterval(tick, CLAUDE_POLL_INTERVAL_MS)
+    }, 3000)
+    return () => {
+      cancelled = true
+      window.clearTimeout(startupDelay)
+      if (interval !== null) window.clearInterval(interval)
+    }
+  }, [setAntigravityUsage])
+
   const win = getCurrentWindow()
 
   // Rastreia foco/visibilidade da janela pra pausar o polling em background.
@@ -216,13 +251,13 @@ export function TitleBar() {
       </button>
       <button
         type="button"
-        className={`${styles.iconBtn} ${sidebarVisible ? styles.iconBtnActive : ''}`}
-        onClick={toggleSidebar}
-        title={sidebarVisible ? t('ui.titlebar.closeSidebar') : t('ui.titlebar.openSidebar')}
-        aria-label={sidebarVisible ? t('ui.titlebar.closeSidebar') : t('ui.titlebar.openSidebar')}
-        aria-pressed={sidebarVisible}
+        className={`${styles.iconBtn} ${preferences.leftSidebarVisible ? styles.iconBtnActive : ''}`}
+        onClick={() => setPreferences({ leftSidebarVisible: !preferences.leftSidebarVisible })}
+        title={preferences.leftSidebarVisible ? t('ui.titlebar.closeSidebar') : t('ui.titlebar.openSidebar')}
+        aria-label={preferences.leftSidebarVisible ? t('ui.titlebar.closeSidebar') : t('ui.titlebar.openSidebar')}
+        aria-pressed={preferences.leftSidebarVisible}
       >
-        {sidebarVisible ? <PanelLeftClose size={14} /> : <PanelLeftOpen size={14} />}
+        {preferences.leftSidebarVisible ? <PanelLeftClose size={14} /> : <PanelLeftOpen size={14} />}
       </button>
       <span className={styles.title} data-tauri-drag-region>
         {APP_TITLE}
@@ -379,10 +414,17 @@ export function TitleBar() {
         ) : null}
         {preferences.topbarShowClaudeUsage && claudeUsage !== null ? (
           <div className={styles.usageWidget}>
-            <span className={`${styles.usagePill} ${styles.claudeUsage}`} style={{ '--pill-color': usagePillColor(claudeUsage.five_hour.utilization) } as React.CSSProperties}>
+            <button
+              type="button"
+              className={`${styles.usagePill} ${styles.claudeUsage}`}
+              style={{ '--pill-color': usagePillColor(claudeUsage.five_hour.utilization) } as React.CSSProperties}
+              onClick={() => openModal('aiUsage')}
+              title={t('ui.titlebar.openUsageDetails')}
+              aria-label={t('ui.titlebar.openUsageDetails')}
+            >
               <ClaudeIcon size={13} />
               <span>{claudeUsage.five_hour.utilization.toFixed(0)}%</span>
-            </span>
+            </button>
             <div className={styles.usagePopover} role="tooltip" aria-label={t('ui.titlebar.itemClaude')}>
               <div className={styles.usagePopoverTitle}>{t('ui.titlebar.itemClaude')}</div>
               <div className={styles.usagePopoverMain}>
@@ -405,10 +447,17 @@ export function TitleBar() {
         ) : null}
         {preferences.topbarShowCodexUsage && codexUsage !== null ? (
           <div className={styles.usageWidget}>
-            <span className={`${styles.usagePill} ${styles.codexUsage}`} style={{ '--pill-color': usagePillColor(codexUsage.primary.used_percent) } as React.CSSProperties}>
+            <button
+              type="button"
+              className={`${styles.usagePill} ${styles.codexUsage}`}
+              style={{ '--pill-color': usagePillColor(codexUsage.primary.used_percent) } as React.CSSProperties}
+              onClick={() => openModal('aiUsage')}
+              title={t('ui.titlebar.openUsageDetails')}
+              aria-label={t('ui.titlebar.openUsageDetails')}
+            >
               <CodexIcon size={13} />
               <span>{codexUsage.primary.used_percent.toFixed(0)}%</span>
-            </span>
+            </button>
             <div className={styles.usagePopover} role="tooltip" aria-label={t('ui.titlebar.itemCodex')}>
               <div className={styles.usagePopoverTitle}>{t('ui.titlebar.itemCodex')}</div>
               <div className={styles.usagePopoverMain}>
@@ -429,15 +478,73 @@ export function TitleBar() {
             </div>
           </div>
         ) : null}
+        {preferences.topbarShowAntigravityUsage && antigravityUsage !== null ? (
+          <div className={styles.usageWidget}>
+            <button
+              type="button"
+              className={`${styles.usagePill} ${styles.antigravityUsage}`}
+              style={{ '--pill-color': antigravityReady ? usagePillColor(antigravityUsage.used_percent) : 'var(--fg-faint)' } as React.CSSProperties}
+              onClick={() => openModal('aiUsage')}
+              title={t('ui.titlebar.openUsageDetails')}
+              aria-label={t('ui.titlebar.openUsageDetails')}
+            >
+              <AntigravityIcon size={13} />
+              <span>{antigravityReady ? formatPct(antigravityUsage.used_percent) : '—'}</span>
+            </button>
+            <div className={styles.usagePopover} role="tooltip" aria-label={t('ui.titlebar.itemAntigravity')}>
+              <div className={styles.usagePopoverTitle}>{t('ui.titlebar.itemAntigravity')}</div>
+              {antigravityReady ? (
+                <>
+                  <div className={styles.usagePopoverMain}>
+                    <span>{t('widget.mostUsed')}</span>
+                    <strong>{formatPct(antigravityUsage.used_percent)}</strong>
+                  </div>
+                  {antigravityUsage.buckets.map((bucket) => (
+                    <div className={styles.usagePopoverLine} key={`${bucket.label}:${bucket.resets_at}`}>
+                      <span title={bucket.models.join(', ')}>{bucket.label}</span>
+                      <strong>{formatPct(bucket.used_percent)} · {formatResetTime(bucket.resets_at)}</strong>
+                    </div>
+                  ))}
+                </>
+              ) : (
+                <div className={styles.usagePopoverMain}>
+                  <span>{t('widget.statusLabel')}</span>
+                  <strong>
+                    {antigravityUsage.status === 'no_cli'
+                      ? t('widget.antigravityNotInstalled')
+                      : antigravityUsage.status === 'no_auth'
+                        ? t('widget.antigravityNotSignedIn')
+                        : t('widget.usageUnavailable')}
+                  </strong>
+                </div>
+              )}
+              {antigravityUsage.cli_path ? (
+                <div className={styles.usagePopoverFooter} title={antigravityUsage.cli_path}>
+                  {antigravityUsage.cli_path.split(/[\\/]/).pop()}
+                </div>
+              ) : null}
+            </div>
+          </div>
+        ) : null}
         {preferences.topbarShowMemory && ramMb !== null ? (
-          <button type="button" className={styles.ramPill} title={t('ui.titlebar.openMemoryAnalytics')} onClick={() => openModal('memoryAnalytics')}>
-            {ramMb.toFixed(0)} MB
-          </button>
+          <MemoryPillButton ramMb={ramMb} />
         ) : null}
         <button type="button" className={styles.editWidgets} title={t('ui.titlebar.customize')} aria-label={t('ui.titlebar.customize')} onClick={() => openModal('topbarSettings')}>
           <Pencil size={12} />
         </button>
       </div>
+      {preferences.enabledFeatures.todos ? (
+        <button
+          type="button"
+          className={`${styles.iconBtn} ${preferences.rightSidebarVisible ? styles.iconBtnActive : ''}`}
+          onClick={() => setPreferences({ rightSidebarVisible: !preferences.rightSidebarVisible })}
+          title={preferences.rightSidebarVisible ? t('ui.titlebar.closeTodoSidebar') : t('ui.titlebar.openTodoSidebar')}
+          aria-label={preferences.rightSidebarVisible ? t('ui.titlebar.closeTodoSidebar') : t('ui.titlebar.openTodoSidebar')}
+          aria-pressed={preferences.rightSidebarVisible}
+        >
+          {preferences.rightSidebarVisible ? <PanelRightClose size={14} /> : <PanelRightOpen size={14} />}
+        </button>
+      ) : null}
       <button
         type="button"
         className={styles.windowBtn}
@@ -459,7 +566,7 @@ export function TitleBar() {
       <button
         type="button"
         className={`${styles.windowBtn} ${styles.close}`}
-        onClick={() => void win.close()}
+        onClick={() => void requestAppClose()}
         title={t('ui.titlebar.close')}
         aria-label={t('ui.titlebar.close')}
       >

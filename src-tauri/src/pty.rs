@@ -1,17 +1,19 @@
 use portable_pty::{native_pty_system, MasterPty, PtySize};
 use serde::Serialize;
-use std::collections::{HashMap, VecDeque};
+use std::collections::{HashMap, HashSet, VecDeque};
 use std::fs;
 use std::io::{Read, Write};
 use std::path::{Path, PathBuf};
-use std::sync::{Arc, Mutex};
+use std::sync::atomic::{AtomicU8, Ordering};
+use std::sync::{Arc, Condvar, Mutex, OnceLock};
 use std::thread;
-use std::time::Instant;
+use std::time::{Duration, Instant};
 use tauri::{AppHandle, Emitter, State};
 
 use crate::cli_resolver::{command_builder_for_terminal, find_windows_cli_launcher};
 use crate::diagnostics::append_spawn_log;
 use crate::paths::{scrollback_dir, scrollback_path};
+use crate::process_tree;
 
 pub const SCROLLBACK_CAP_BYTES: usize = 4 * 1024 * 1024;
 pub const SCROLLBACK_FLUSH_INTERVAL_MS: u128 = 250;
@@ -19,6 +21,10 @@ pub const SCROLLBACK_FLUSH_INTERVAL_MS: u128 = 250;
 /// `SCROLLBACK_CAP_BYTES`. 2× o cap = ~2× de write-amplification amortizada
 /// sobre a saída real, e no máximo ~8 MB por terminal em disco.
 pub const SCROLLBACK_COMPACT_BYTES: u64 = SCROLLBACK_CAP_BYTES as u64 * 2;
+const TEARDOWN_NORMAL: u8 = 0;
+const TEARDOWN_KILLED: u8 = 1;
+const TEARDOWN_SUSPENDED: u8 = 2;
+const TEARDOWN_RESTARTED: u8 = 3;
 
 pub struct ScrollbackBuffer {
     pub data: VecDeque<u8>,
@@ -52,6 +58,7 @@ fn valid_utf8_prefix_len(buf: &[u8]) -> usize {
 }
 
 pub struct PtySession {
+    pub pty_id: String,
     pub master: Box<dyn MasterPty + Send>,
     // writer fica em Arc<Mutex> pra write_pty poder soltar o lock global de
     // sessions antes de escrever. Sem isso, escritas longas de um PTY bloqueiam
@@ -59,11 +66,65 @@ pub struct PtySession {
     pub writer: Arc<Mutex<Box<dyn Write + Send>>>,
     pub child: Arc<Mutex<Box<dyn portable_pty::Child + Send + Sync>>>,
     pub scrollback: Arc<Mutex<ScrollbackBuffer>>,
+    /// Sinaliza que o reader terminou de persistir a cauda final. Suspensão
+    /// espera esta barreira antes de permitir que o mesmo id seja retomado.
+    pub reader_done: Arc<(Mutex<Option<bool>>, Condvar)>,
+    /// Motivo do teardown. Kill/restart pulam o flush final; suspend espera o
+    /// flush final do reader antes de permitir a retomada do mesmo `ptyId`.
+    pub teardown: Arc<AtomicU8>,
     pub command: Option<String>,
     pub cwd: Option<String>,
+    pub read_active: Arc<(std::sync::Mutex<bool>, std::sync::Condvar)>,
 }
 
 pub type PtySessions = Arc<Mutex<HashMap<String, PtySession>>>;
+
+/// Coordena somente spawns do MESMO id. O mutex de `PtySessions` não pode
+/// permanecer travado durante `openpty`/resolução/spawn do processo: isso
+/// serializava todos os terminais apesar da fila do frontend permitir paralelismo.
+static SPAWN_COORDINATOR: OnceLock<(Mutex<HashSet<String>>, Condvar)> = OnceLock::new();
+
+struct SpawnReservation {
+    id: String,
+}
+
+impl Drop for SpawnReservation {
+    fn drop(&mut self) {
+        let (spawning, ready) =
+            SPAWN_COORDINATOR.get_or_init(|| (Mutex::new(HashSet::new()), Condvar::new()));
+        if let Ok(mut ids) = spawning.lock() {
+            ids.remove(&self.id);
+            ready.notify_all();
+        }
+    }
+}
+
+fn reserve_spawn(
+    sessions: &PtySessions,
+    id: &str,
+) -> Result<Option<SpawnReservation>, String> {
+    let (spawning, ready) =
+        SPAWN_COORDINATOR.get_or_init(|| (Mutex::new(HashSet::new()), Condvar::new()));
+    let mut ids = spawning
+        .lock()
+        .map_err(|_| "PTY spawn coordinator lock poisoned".to_string())?;
+
+    loop {
+        let already_spawned = sessions
+            .lock()
+            .map_err(|_| "PTY sessions lock poisoned".to_string())?
+            .contains_key(id);
+        if already_spawned {
+            return Ok(None);
+        }
+        if ids.insert(id.to_string()) {
+            return Ok(Some(SpawnReservation { id: id.to_string() }));
+        }
+        ids = ready
+            .wait(ids)
+            .map_err(|_| "PTY spawn coordinator wait poisoned".to_string())?;
+    }
+}
 
 #[derive(Serialize)]
 pub struct SpawnPtyResponse {
@@ -71,8 +132,15 @@ pub struct SpawnPtyResponse {
 }
 
 #[derive(Clone, Serialize)]
-struct PtyExitPayload {
-    code: Option<i32>,
+pub struct PtyExitPayload {
+    pub code: Option<i32>,
+    pub reason: &'static str,
+}
+
+#[derive(Clone, Serialize)]
+pub struct PtySuspendedPayload {
+    pub id: String,
+    pub reason: &'static str,
 }
 
 #[derive(Serialize)]
@@ -85,6 +153,14 @@ pub struct PtyProcessSnapshot {
     pub cmdline: Option<String>,
     pub memory_mb: f64,
     pub alive: bool,
+}
+
+#[tauri::command]
+pub fn pty_exists(sessions: State<'_, PtySessions>, id: String) -> Result<bool, String> {
+    let sessions = sessions
+        .lock()
+        .map_err(|_| "PTY sessions lock poisoned".to_string())?;
+    Ok(sessions.contains_key(&id))
 }
 
 #[tauri::command]
@@ -109,16 +185,15 @@ pub fn spawn_pty(
     let id = id.unwrap_or_else(|| nanoid::nanoid!());
     let requested_command = command.clone();
 
-    let mut sessions_guard = sessions
-        .lock()
-        .map_err(|_| "PTY sessions lock poisoned".to_string())?;
-    if sessions_guard.contains_key(&id) {
+    let sessions_ref = Arc::clone(sessions.inner());
+    let Some(_spawn_reservation) = reserve_spawn(&sessions_ref, &id)? else {
         return Ok(SpawnPtyResponse { id });
-    }
+    };
 
     let scrollback = Arc::new(Mutex::new(ScrollbackBuffer::new(load_scrollback(
         &app, &id,
     )?)));
+    let teardown = Arc::new(AtomicU8::new(TEARDOWN_NORMAL));
     let pty_system = native_pty_system();
     let pair = pty_system
         .openpty(PtySize {
@@ -193,6 +268,9 @@ pub fn spawn_pty(
     let shell_spawn_ms = spawn_started.elapsed().as_millis();
     let child = Arc::new(Mutex::new(child));
     let child_pid = child.lock().ok().and_then(|child| child.process_id());
+    if let Some(pid) = child_pid {
+        process_tree::register_pty_root(&id, pid);
+    }
     let mut reader = pair
         .master
         .try_clone_reader()
@@ -208,16 +286,51 @@ pub fn spawn_pty(
     let scrollback_app = app.clone();
     let scrollback_id = id.clone();
     let thread_scrollback = Arc::clone(&scrollback);
+    let thread_teardown = Arc::clone(&teardown);
+    let reader_done = Arc::new((Mutex::new(None), Condvar::new()));
+    let thread_reader_done = Arc::clone(&reader_done);
     let thread_child = Arc::clone(&child);
     let thread_sessions = Arc::clone(sessions.inner());
     let initial_warning = cwd_warning.clone();
+    let read_active = Arc::new((std::sync::Mutex::new(true), std::sync::Condvar::new()));
+    let thread_read_active = Arc::clone(&read_active);
 
-    thread::spawn(move || {
-        // 32 KiB: menos syscalls e menos eventos IPC sob saída pesada (builds,
-        // cat de arquivo grande) sem custo de latência pra outputs pequenos.
-        let mut buffer = [0_u8; 32 * 1024];
-        // Cauda de um caractere UTF-8 multibyte partido entre duas leituras.
+    // Reader síncrono na thread-pool bloqueante do Tokio manda chunks por um
+    // canal MPSC; o batcher async coalesce por até 16ms (60 FPS) ou 64 KB antes
+    // de emitir. Resultado: 1 evento IPC + 1 push_scrollback por LOTE em vez de
+    // 1 por read — elimina micro-stutters com N terminais em saída pesada.
+    let (tx, mut rx) = tokio::sync::mpsc::channel::<Vec<u8>>(1024);
+
+    tauri::async_runtime::spawn(async move {
+        tokio::task::spawn_blocking(move || {
+            // 32 KiB: menos syscalls sob saída pesada (builds, cat de arquivo
+            // grande) sem custo de latência pra outputs pequenos.
+            let mut buffer = [0_u8; 32 * 1024];
+            loop {
+                // Checa se leitura está ativa. Se não, bloqueia no Condvar.
+                {
+                    let (lock, cvar) = &*thread_read_active;
+                    let mut active = lock.lock().unwrap();
+                    while !*active {
+                        active = cvar.wait(active).unwrap();
+                    }
+                }
+
+                match reader.read(&mut buffer) {
+                    Ok(0) => break,
+                    Ok(count) => {
+                        if tx.blocking_send(buffer[..count].to_vec()).is_err() {
+                            break;
+                        }
+                    }
+                    Err(_) => break,
+                }
+            }
+        });
+
+        // Cauda de um caractere UTF-8 multibyte partido entre dois lotes.
         let mut carry: Vec<u8> = Vec::new();
+        let mut batch: Vec<u8> = Vec::new();
 
         if let Some(warning) = initial_warning {
             let _ = event_app.emit(&event_name, &warning);
@@ -230,54 +343,71 @@ pub fn spawn_pty(
         }
 
         loop {
-            match reader.read(&mut buffer) {
-                Ok(0) => break,
-                Ok(count) => {
-                    // Scrollback recebe os bytes crus desta leitura (sempre
-                    // corretos — só o emit precisa de fronteira de caractere).
-                    let _ = push_scrollback(
-                        &scrollback_app,
-                        &scrollback_id,
-                        &thread_scrollback,
-                        &buffer[..count],
-                    );
+            // Bloqueia até o primeiro chunk — zero wakeups quando o terminal
+            // está ocioso. None = reader terminou (EOF/erro) e canal fechou.
+            let Some(first) = rx.recv().await else { break };
+            batch.extend_from_slice(&first);
 
-                    // Emit PRIMEIRO o que é UTF-8 completo — user vê o echo na
-                    // hora, sem disk I/O no caminho da tecla. Caractere partido
-                    // no limite do read fica em `carry` pro próximo ciclo.
-                    if carry.is_empty() {
-                        // Caminho rápido (caso comum): nada pendente, zero alloc.
-                        let valid = valid_utf8_prefix_len(&buffer[..count]);
-                        if valid > 0 {
-                            // SAFETY: buffer[..valid] é UTF-8 válido por construção.
-                            let text = unsafe { std::str::from_utf8_unchecked(&buffer[..valid]) };
-                            let _ = event_app.emit(&event_name, text);
-                        }
-                        if valid < count {
-                            carry.extend_from_slice(&buffer[valid..count]);
-                        }
-                    } else {
-                        carry.extend_from_slice(&buffer[..count]);
-                        let valid = valid_utf8_prefix_len(&carry);
-                        if valid > 0 {
-                            // SAFETY: carry[..valid] é UTF-8 válido por construção.
-                            let text = unsafe { std::str::from_utf8_unchecked(&carry[..valid]) };
-                            let _ = event_app.emit(&event_name, text);
-                            carry.drain(..valid);
-                        }
-                    }
-
-                    // `carry` só deve guardar a cauda de UM caractere (≤3 bytes).
-                    // Se passar disso, são bytes inválidos que nunca completam:
-                    // emite lossy (mostra �) e zera pra não vazar nem travar.
-                    if carry.len() > 3 {
-                        let lossy = String::from_utf8_lossy(&carry).into_owned();
-                        let _ = event_app.emit(&event_name, lossy.as_str());
-                        carry.clear();
-                    }
+            // Coalesce o que chegar em até 16ms ou até encher 64 KB.
+            let batch_started = Instant::now();
+            while batch.len() < 64 * 1024 {
+                let remaining =
+                    Duration::from_millis(16).saturating_sub(batch_started.elapsed());
+                if remaining.is_zero() {
+                    break;
                 }
-                Err(_) => break,
+                match tokio::time::timeout(remaining, rx.recv()).await {
+                    Ok(Some(chunk)) => batch.extend_from_slice(&chunk),
+                    // None = canal fechou; ainda emitimos o lote acumulado.
+                    Ok(None) => break,
+                    // Timeout de 16ms estourou.
+                    Err(_) => break,
+                }
             }
+
+            let count = batch.len();
+            // Scrollback recebe os bytes crus do lote (sempre corretos — só o
+            // emit precisa de fronteira de caractere).
+            let _ = push_scrollback(&scrollback_app, &scrollback_id, &thread_scrollback, &batch);
+
+            // Emit PRIMEIRO o que é UTF-8 completo — user vê o echo na hora,
+            // sem disk I/O no caminho da tecla. Caractere partido no limite do
+            // lote fica em `carry` pro próximo ciclo.
+            if carry.is_empty() {
+                // Caminho rápido (caso comum): nada pendente, zero alloc.
+                let valid = valid_utf8_prefix_len(&batch);
+                if valid > 0 {
+                    // SAFETY: batch[..valid] é UTF-8 válido por construção.
+                    let text = unsafe { std::str::from_utf8_unchecked(&batch[..valid]) };
+                    let _ = event_app.emit(&event_name, text);
+                }
+                if valid < count {
+                    carry.extend_from_slice(&batch[valid..]);
+                }
+            } else {
+                carry.extend_from_slice(&batch);
+                let valid = valid_utf8_prefix_len(&carry);
+                if valid > 0 {
+                    // SAFETY: carry[..valid] é UTF-8 válido por construção.
+                    let text = unsafe { std::str::from_utf8_unchecked(&carry[..valid]) };
+                    let _ = event_app.emit(&event_name, text);
+                    carry.drain(..valid);
+                }
+            }
+
+            // `carry` só deve guardar a cauda de UM caractere (≤3 bytes).
+            // Se passar disso, são bytes inválidos que nunca completam:
+            // emite lossy (mostra �) e zera pra não vazar nem travar.
+            if carry.len() > 3 {
+                let lossy = String::from_utf8_lossy(&carry).into_owned();
+                let _ = event_app.emit(&event_name, lossy.as_str());
+                carry.clear();
+            }
+
+            batch.clear();
+
+            // Backpressure leve pra dar vazão à fila IPC do webview.
+            tokio::time::sleep(Duration::from_millis(2)).await;
         }
 
         // Flush de qualquer cauda restante no fim do stream.
@@ -289,11 +419,44 @@ pub fn spawn_pty(
         // PTY morreu: garante o scrollback no disco e LIBERA o buffer em RAM (até
         // 4 MiB). A sessão fica no HashMap; attach_pty recarrega do disco se preciso.
         // Só libera se o flush deu certo, pra nunca perder dados não persistidos.
-        if flush_scrollback(&scrollback_app, &scrollback_id, &thread_scrollback).is_ok() {
+        //
+        // EXCEÇÃO kill/restart (`killed`): NÃO reescreve o .bin. Em kill_pty o
+        // delete_scrollback já removeu o arquivo; em restart_pty um novo spawn
+        // reusou o mesmo id — em ambos, um Overwrite tardio deste reader morto
+        // ressuscitaria/corromperia o arquivo. Aqui só liberamos o buffer em RAM.
+        let teardown_reason = thread_teardown.load(Ordering::SeqCst);
+        let persisted = if teardown_reason == TEARDOWN_KILLED
+            || teardown_reason == TEARDOWN_RESTARTED
+        {
             if let Ok(mut buffer) = thread_scrollback.lock() {
                 buffer.data = VecDeque::new();
+                buffer.pending.clear();
                 buffer.dirty = false;
             }
+            true
+        } else {
+            let flushed = flush_scrollback(&scrollback_app, &scrollback_id, &thread_scrollback)
+                .and_then(|_| {
+                    if teardown_reason == TEARDOWN_SUSPENDED {
+                        wait_for_scrollback_writer()
+                    } else {
+                        Ok(())
+                    }
+                })
+                .is_ok();
+            if flushed {
+                if let Ok(mut buffer) = thread_scrollback.lock() {
+                    buffer.data = VecDeque::new();
+                    buffer.dirty = false;
+                }
+            }
+            flushed
+        };
+
+        let (done_lock, done_ready) = &*thread_reader_done;
+        if let Ok(mut done) = done_lock.lock() {
+            *done = Some(persisted);
+            done_ready.notify_all();
         }
 
         let code = thread_child
@@ -301,7 +464,13 @@ pub fn spawn_pty(
             .ok()
             .and_then(|mut child| child.wait().ok())
             .map(|status| status.exit_code() as i32);
-        let _ = event_app.emit(&exit_event_name, PtyExitPayload { code });
+        let reason = match teardown_reason {
+            TEARDOWN_KILLED => "killed",
+            TEARDOWN_SUSPENDED => "suspended",
+            TEARDOWN_RESTARTED => "restarted",
+            _ => "exited",
+        };
+        let _ = event_app.emit(&exit_event_name, PtyExitPayload { code, reason });
 
         if let Some(pid) = child_pid {
             if let Ok(mut sessions) = thread_sessions.lock() {
@@ -328,15 +497,22 @@ pub fn spawn_pty(
     );
 
     let session = PtySession {
+        pty_id: id.clone(),
         master: pair.master,
         writer,
         child,
         scrollback,
+        reader_done,
+        teardown,
         command: requested_command,
         cwd,
+        read_active,
     };
 
-    sessions_guard.insert(id.clone(), session);
+    sessions
+        .lock()
+        .map_err(|_| "PTY sessions lock poisoned".to_string())?
+        .insert(id.clone(), session);
 
     Ok(SpawnPtyResponse { id })
 }
@@ -368,12 +544,15 @@ pub fn restart_pty(
     command: Option<String>,
     cwd: Option<String>,
     extra_args: Option<Vec<String>>,
+    launcher_override: Option<String>,
+    env: Option<HashMap<String, String>>,
 ) -> Result<SpawnPtyResponse, String> {
     {
         let mut sessions = sessions
             .lock()
             .map_err(|_| "PTY sessions lock poisoned".to_string())?;
         if let Some(session) = sessions.remove(&id) {
+            session.teardown.store(TEARDOWN_RESTARTED, Ordering::SeqCst);
             if let Ok(mut child) = session.child.lock() {
                 if let Some(pid) = child.process_id() {
                     kill_process_tree(pid);
@@ -393,8 +572,8 @@ pub fn restart_pty(
         command,
         cwd,
         extra_args,
-        None,
-        None,
+        launcher_override,
+        env,
     )
 }
 
@@ -479,7 +658,36 @@ pub fn resize_pty(
             pixel_width: 0,
             pixel_height: 0,
         })
-        .map_err(|error| error.to_string())
+        .map_err(|error| error.to_string())?;
+
+    // OpenCode no Windows/Linux/macOS nem sempre redesenha a TUI após resize — a
+    // tela fica truncada até a próxima tecla. Ctrl+L (Form Feed) força o
+    // redraw em todas as plataformas.
+    if session.command.as_deref() == Some("opencode") {
+        if let Ok(mut writer) = session.writer.lock() {
+            let _ = writer.write_all(&[12]);
+            let _ = writer.flush();
+        }
+    }
+
+    Ok(())
+}
+
+fn terminate_session(session: PtySession) {
+    process_tree::unregister_pty(&session.pty_id);
+    {
+        let (lock, cvar) = &*session.read_active;
+        if let Ok(mut active) = lock.lock() {
+            *active = true;
+            cvar.notify_all();
+        }
+    }
+    if let Ok(mut child) = session.child.lock() {
+        if let Some(pid) = child.process_id() {
+            kill_process_tree(pid);
+        }
+        let _ = child.kill();
+    }
 }
 
 #[tauri::command]
@@ -493,16 +701,69 @@ pub fn kill_pty(
         .map_err(|_| "PTY sessions lock poisoned".to_string())?;
 
     if let Some(session) = sessions.remove(&id) {
-        if let Ok(mut child) = session.child.lock() {
-            if let Some(pid) = child.process_id() {
-                kill_process_tree(pid);
-            }
-            let _ = child.kill();
-        }
+        session.teardown.store(TEARDOWN_KILLED, Ordering::SeqCst);
+        terminate_session(session);
     }
 
     delete_scrollback(&app, &id)?;
     Ok(())
+}
+
+/// Estaciona um runtime sem apagar scrollback nem identidade de sessão.
+///
+/// Encerra o processo e espera o reader persistir sua última cauda. Assim um
+/// novo spawn com o mesmo id nunca disputa com writes do reader antigo.
+pub fn suspend_session(app: &AppHandle, sessions: &PtySessions, id: &str) -> Result<bool, String> {
+    let session = {
+        let mut sessions = sessions
+            .lock()
+            .map_err(|_| "PTY sessions lock poisoned".to_string())?;
+        sessions.remove(id)
+    };
+    let Some(session) = session else {
+        return Ok(false);
+    };
+
+    session
+        .teardown
+        .store(TEARDOWN_SUSPENDED, Ordering::SeqCst);
+    if let Ok(mut child) = session.child.lock() {
+        if let Some(pid) = child.process_id() {
+            kill_process_tree(pid);
+        }
+        let _ = child.kill();
+    }
+    let (done_lock, done_ready) = &*session.reader_done;
+    let done = done_lock
+        .lock()
+        .map_err(|_| "PTY reader barrier lock poisoned".to_string())?;
+    let (done, timeout) = done_ready
+        .wait_timeout_while(done, Duration::from_secs(5), |status| status.is_none())
+        .map_err(|_| "PTY reader barrier lock poisoned".to_string())?;
+    if timeout.timed_out() && done.is_none() {
+        return Err("PTY reader flush barrier timed out".to_string());
+    }
+    if *done != Some(true) {
+        return Err("PTY reader failed to persist scrollback".to_string());
+    }
+    let _ = app.emit(
+        "resource://pty-suspended",
+        PtySuspendedPayload {
+            id: id.to_string(),
+            reason: "memory-pressure",
+        },
+    );
+    let _ = append_spawn_log(app, &format!("suspend id={id} reason=memory-pressure"));
+    Ok(true)
+}
+
+#[tauri::command]
+pub fn suspend_pty(
+    app: AppHandle,
+    sessions: State<'_, PtySessions>,
+    id: String,
+) -> Result<bool, String> {
+    suspend_session(&app, sessions.inner(), &id)
 }
 
 #[tauri::command]
@@ -521,6 +782,64 @@ pub fn get_pty_cwd(sessions: State<'_, PtySessions>, id: String) -> Option<Strin
     );
     let cwd = sys.process(pid)?.cwd()?.to_string_lossy().to_string();
     Some(cwd)
+}
+
+#[tauri::command]
+pub fn set_pty_read_state(
+    sessions: State<'_, PtySessions>,
+    id: String,
+    active: bool,
+) -> Result<(), String> {
+    let sessions = sessions
+        .lock()
+        .map_err(|_| "PTY sessions lock poisoned".to_string())?;
+    if let Some(session) = sessions.get(&id) {
+        let (lock, cvar) = &*session.read_active;
+        if let Ok(mut read_active) = lock.lock() {
+            *read_active = active;
+            if active {
+                cvar.notify_all();
+            }
+        }
+    }
+    Ok(())
+}
+
+#[tauri::command]
+pub fn set_pty_priority(
+    _sessions: State<'_, PtySessions>,
+    _id: String,
+    _active: bool,
+) -> Result<(), String> {
+    #[cfg(windows)]
+    unsafe {
+        let sessions = _sessions
+            .lock()
+            .map_err(|_| "PTY sessions lock poisoned".to_string())?;
+        if let Some(session) = sessions.get(&_id) {
+            if let Ok(child) = session.child.lock() {
+                if let Some(pid) = child.process_id() {
+                    use windows_sys::Win32::Foundation::CloseHandle;
+                    use windows_sys::Win32::System::Threading::{
+                        OpenProcess, SetPriorityClass, IDLE_PRIORITY_CLASS,
+                        NORMAL_PRIORITY_CLASS, PROCESS_SET_INFORMATION,
+                    };
+
+                    let handle = OpenProcess(PROCESS_SET_INFORMATION, 0, pid);
+                    if !handle.is_null() {
+                        let priority = if _active {
+                            NORMAL_PRIORITY_CLASS
+                        } else {
+                            IDLE_PRIORITY_CLASS
+                        };
+                        let _ = SetPriorityClass(handle, priority);
+                        let _ = CloseHandle(handle);
+                    }
+                }
+            }
+        }
+    }
+    Ok(())
 }
 
 #[tauri::command]
@@ -603,6 +922,8 @@ enum ScrollbackWrite {
     Append { path: PathBuf, bytes: Vec<u8> },
     /// Reescreve o arquivo inteiro (usado no teardown do PTY, uma vez).
     Overwrite { path: PathBuf, bytes: Vec<u8> },
+    /// Confirma que todos os appends/overwrites anteriores já chegaram ao disco.
+    Barrier(std::sync::mpsc::Sender<()>),
 }
 
 /// Anexa e, se o arquivo cresceu além do limite, compacta pra cauda do cap.
@@ -637,25 +958,37 @@ fn scrollback_writer() -> &'static std::sync::mpsc::Sender<ScrollbackWrite> {
         let (tx, rx) = std::sync::mpsc::channel::<ScrollbackWrite>();
         thread::spawn(move || {
             while let Ok(msg) = rx.recv() {
-                let path = match &msg {
-                    ScrollbackWrite::Append { path, .. } => path,
-                    ScrollbackWrite::Overwrite { path, .. } => path,
-                };
-                if let Some(parent) = path.parent() {
-                    let _ = fs::create_dir_all(parent);
-                }
                 match &msg {
                     ScrollbackWrite::Append { path, bytes } => {
+                        if let Some(parent) = path.parent() {
+                            let _ = fs::create_dir_all(parent);
+                        }
                         append_and_maybe_compact(path, bytes);
                     }
                     ScrollbackWrite::Overwrite { path, bytes } => {
+                        if let Some(parent) = path.parent() {
+                            let _ = fs::create_dir_all(parent);
+                        }
                         let _ = fs::write(path, bytes);
+                    }
+                    ScrollbackWrite::Barrier(done) => {
+                        let _ = done.send(());
                     }
                 }
             }
         });
         tx
     })
+}
+
+fn wait_for_scrollback_writer() -> Result<(), String> {
+    let (done_tx, done_rx) = std::sync::mpsc::channel();
+    scrollback_writer()
+        .send(ScrollbackWrite::Barrier(done_tx))
+        .map_err(|_| "scrollback writer unavailable".to_string())?;
+    done_rx
+        .recv_timeout(std::time::Duration::from_secs(3))
+        .map_err(|_| "scrollback writer barrier timed out".to_string())
 }
 
 pub fn push_scrollback(
@@ -784,14 +1117,52 @@ pub fn kill_all_sessions(sessions: &PtySessions) {
         .unwrap_or_default();
 
     for session in drained {
-        if let Ok(mut child) = session.child.lock() {
-            if let Some(pid) = child.process_id() {
-                kill_process_tree(pid);
-            }
-            let _ = child.kill();
-        }
+        terminate_session(session);
     }
 }
+
+/// Rede de segurança no Windows contra terminais órfãos. Cria um Job Object com
+/// KILL_ON_JOB_CLOSE e assigna o PRÓPRIO processo do app; todos os shells ConPTY
+/// e seus descendentes (node/claude/codex/MCP) herdam o job. Enquanto o app vive,
+/// o handle do job fica aberto; quando o app morre por QUALQUER via — fechar
+/// normal, crash ou kill forçado (onde `RunEvent::Exit` NÃO roda) — o SO fecha o
+/// handle e mata a árvore inteira. Complementa (não substitui) `kill_all_sessions`.
+/// Deve ser chamado bem cedo no boot, antes de qualquer spawn. Falha silenciosa
+/// (no-op) se o SO recusar — sem regressão.
+#[cfg(windows)]
+pub fn install_kill_on_close_guard() {
+    use std::mem::{size_of, zeroed};
+    use windows_sys::Win32::System::JobObjects::{
+        AssignProcessToJobObject, CreateJobObjectW, JobObjectExtendedLimitInformation,
+        SetInformationJobObject, JOBOBJECT_EXTENDED_LIMIT_INFORMATION,
+        JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE,
+    };
+    use windows_sys::Win32::System::Threading::GetCurrentProcess;
+
+    unsafe {
+        let job = CreateJobObjectW(std::ptr::null(), std::ptr::null());
+        if job.is_null() {
+            return;
+        }
+        let mut info: JOBOBJECT_EXTENDED_LIMIT_INFORMATION = zeroed();
+        info.BasicLimitInformation.LimitFlags = JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE;
+        if SetInformationJobObject(
+            job,
+            JobObjectExtendedLimitInformation,
+            (&info as *const JOBOBJECT_EXTENDED_LIMIT_INFORMATION).cast(),
+            size_of::<JOBOBJECT_EXTENDED_LIMIT_INFORMATION>() as u32,
+        ) == 0
+        {
+            return;
+        }
+        let _ = AssignProcessToJobObject(job, GetCurrentProcess());
+        // Handle vazado DE PROPÓSITO: fechá-lo dispararia o kill enquanto o app
+        // ainda vive. Fica aberto até o processo morrer, quando o SO o fecha.
+    }
+}
+
+#[cfg(not(windows))]
+pub fn install_kill_on_close_guard() {}
 
 #[cfg(test)]
 mod tests {

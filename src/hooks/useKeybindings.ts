@@ -56,6 +56,27 @@ export function useKeybindings() {
 
       if (!ctrl && inEditable) return
 
+      // R → reinicia o terminal selecionado quando o foco está na UI.
+      // Dentro do xterm o helper é um textarea, então a digitação normal de "r" é preservada.
+      if (!ctrl && !e.shiftKey && !e.altKey && (e.key === 'r' || e.key === 'R')) {
+        const projects = useProjectsStore.getState()
+        const selected = useUiStore.getState().activeTerminal
+        const project = selected
+          ? projects.projects.find((item) => item.id === selected.projectId)
+          : null
+        const terminal = project?.terminals.find((item) => item.id === selected?.terminalId)
+        if (!selected || !terminal || terminal.disabled || (terminal.kind && terminal.kind !== 'terminal')) {
+          return
+        }
+        e.preventDefault()
+        window.dispatchEvent(
+          new CustomEvent('alethe:terminal-restart-request', {
+            detail: { terminalId: selected.terminalId },
+          }),
+        )
+        return
+      }
+
       // Ctrl+T → cria shell rápido
       if (ctrl && !e.shiftKey && !e.altKey && (e.key === 't' || e.key === 'T')) {
         e.preventDefault()
@@ -77,6 +98,15 @@ export function useKeybindings() {
         const project = selectActiveProject(useProjectsStore.getState())
         if (!project) return
         useUiStore.getState().openModal_('newTerminal', { projectId: project.id })
+        return
+      }
+
+      // Ctrl+Shift+A → modal de conteúdo (Markdown ou browser)
+      if (ctrl && e.shiftKey && !e.altKey && (e.key === 'A' || e.key === 'a')) {
+        e.preventDefault()
+        const project = selectActiveProject(useProjectsStore.getState())
+        if (!project) return
+        useUiStore.getState().openModal_('addContent', { projectId: project.id })
         return
       }
 
@@ -137,6 +167,40 @@ export function useKeybindings() {
         return
       }
 
+      // Shift+Tab → próximo terminal dentro do grupo/projeto atual.
+      if (!ctrl && e.shiftKey && !e.altKey && e.key === 'Tab') {
+        e.preventDefault()
+        const projects = useProjectsStore.getState()
+        const ui = useUiStore.getState()
+        const activeGroupId = projects.workspace.activeGroupId
+        const scopedProjectIds = activeGroupId
+          ? collectGroupProjectIds(activeGroupId, projects.groups)
+          : projects.activeProjectId
+            ? new Set([projects.activeProjectId])
+            : null
+        const terminals = projects.workspace.containers.flatMap((container) => {
+          if (scopedProjectIds && !scopedProjectIds.has(container.projectId)) return []
+          const project = projects.projects.find((item) => item.id === container.projectId)
+          if (!project) return []
+          return container.paneIds.flatMap((terminalId) => {
+            const terminal = project.terminals.find((item) => item.id === terminalId)
+            return terminal && !terminal.disabled
+              ? [{ projectId: container.projectId, terminalId }]
+              : []
+          })
+        })
+        if (terminals.length === 0) return
+
+        const activeTerminalId = ui.activeTerminal?.terminalId ?? projects.workspace.focusedTerminalId
+        const currentIndex = terminals.findIndex((item) => item.terminalId === activeTerminalId)
+        const next = terminals[(currentIndex + 1) % terminals.length]
+        projects.focusWorkspaceTerminal(next.projectId, next.terminalId)
+        ui.setActiveTerminal(next.projectId, next.terminalId)
+        ui.requestPaneFocus(next.terminalId)
+        ui.setActiveView('workspace')
+        return
+      }
+
       // Ctrl+Tab → alterna tabs de projeto da topbar sem reordenar os slots.
       if (ctrl && e.key === 'Tab') {
         e.preventDefault()
@@ -160,6 +224,24 @@ export function useKeybindings() {
     window.addEventListener('keydown', onKey, true)
     return () => window.removeEventListener('keydown', onKey, true)
   }, [])
+}
+
+function collectGroupProjectIds(
+  groupId: string,
+  groups: ReturnType<typeof useProjectsStore.getState>['groups'],
+): Set<string> {
+  const projectIds = new Set<string>()
+  const pending = [groupId]
+  while (pending.length > 0) {
+    const currentId = pending.shift()!
+    const group = groups.find((item) => item.id === currentId)
+    if (!group) continue
+    for (const projectId of group.projectIds) projectIds.add(projectId)
+    for (const child of groups) {
+      if (child.parentGroupId === currentId) pending.push(child.id)
+    }
+  }
+  return projectIds
 }
 
 function isZoomKey(e: KeyboardEvent): boolean {

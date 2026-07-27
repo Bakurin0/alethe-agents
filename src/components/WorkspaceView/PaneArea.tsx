@@ -5,14 +5,30 @@ import { cellStyle, gridContainerStyle, reconcileGridLayout } from '../../lib/gr
 import type { GridLayout, LayoutMode, Terminal } from '../../lib/types'
 import { MarkdownPane } from '../MarkdownPane'
 import { TerminalPane } from '../TerminalPane'
+import { WebPane } from '../WebPane'
+import { GraphifyView } from '../GraphifyView'
 import styles from './WorkspaceView.module.css'
 
 /** Renderiza o pane certo conforme o tipo (terminal ou viewer de arquivo). */
-function Pane({ projectId, terminal }: { projectId: string; terminal: Terminal }) {
+function Pane({
+  projectId,
+  terminal,
+  paneDragEnabled = true,
+}: {
+  projectId: string
+  terminal: Terminal
+  paneDragEnabled?: boolean
+}) {
+  if (terminal.kind === 'graphify') {
+    return <GraphifyView repo={terminal.cwd} projectId={projectId} terminalId={terminal.id} />
+  }
   if (terminal.kind === 'markdown' || terminal.kind === 'file') {
     return <MarkdownPane projectId={projectId} terminal={terminal} />
   }
-  return <TerminalPane projectId={projectId} terminal={terminal} />
+  if (terminal.kind === 'web') {
+    return <WebPane projectId={projectId} terminal={terminal} />
+  }
+  return <TerminalPane projectId={projectId} terminal={terminal} paneDragEnabled={paneDragEnabled} />
 }
 
 export type PaneAreaProps = {
@@ -28,7 +44,7 @@ export function PaneArea({ projectId, idPrefix, terminals, layoutMode }: PaneAre
   if (terminals.length === 1) {
     return (
       <div className={styles.singlePane}>
-        <Pane projectId={projectId} terminal={terminals[0]} />
+        <Pane projectId={projectId} terminal={terminals[0]} paneDragEnabled={false} />
       </div>
     )
   }
@@ -71,7 +87,7 @@ function GridLayoutComponent({
         const cell = reconciled.cells[t.id]
         if (!cell) return null
         return (
-          <div key={t.id} style={cellStyle(cell)}>
+          <div key={t.id} className={styles.gridCell} style={cellStyle(cell)}>
             <Pane projectId={projectId} terminal={t} />
           </div>
         )

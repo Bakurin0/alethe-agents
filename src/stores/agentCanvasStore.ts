@@ -229,7 +229,12 @@ export const useAgentCanvasStore = create<AgentCanvasState>((set, get) => ({
           result: raw.last_assistant_message ?? nodes[idx].result,
           transcriptPath: raw.agent_transcript_path ?? nodes[idx].transcriptPath,
         }
-        return { nodes }
+        // Poda a encarnação que terminou: sem isto, `incarnations` ganharia uma
+        // entrada por turno de teammate, pra sempre (a maior fonte de crescimento).
+        if (s.incarnations[id] === undefined) return { nodes }
+        const incarnations = { ...s.incarnations }
+        delete incarnations[id]
+        return { nodes, incarnations }
       })
       return
     }
@@ -309,10 +314,12 @@ export const useAgentCanvasStore = create<AgentCanvasState>((set, get) => ({
           set((s) => ({
             pendingPrompts: {
               ...s.pendingPrompts,
+              // Limita a fila: spawns órfãos (sem Start correspondente) não podem
+              // acumular pra sempre.
               [subagentType]: [
                 ...(s.pendingPrompts[subagentType] ?? []),
                 { description: str(input.description), prompt: str(input.prompt) },
-              ],
+              ].slice(-32),
             },
           }))
         }

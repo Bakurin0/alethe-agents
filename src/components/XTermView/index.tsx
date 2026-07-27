@@ -10,31 +10,39 @@ import '@xterm/xterm/css/xterm.css'
 
 import { pickFile } from '../../lib/dialog'
 import { AgentCompletionMonitor } from '../../lib/agentCompletionMonitor'
+import { preparePtyRuntimeLaunch } from '../../lib/agentRuntimeAdapter'
 import { recordAgentActivityInput } from '../../lib/activityTracker'
 import { buildAgentLaunch } from '../../lib/sessionLaunch'
 import { claimDiscoveredSession, registerSessionClaim } from '../../lib/sessionDiscovery'
-import { consumeSession, removeSession, saveSession } from '../../lib/sessionResume'
+import { consumeSession, removeSession, savedConversationIdFor, saveSession } from '../../lib/sessionResume'
 import { waitForSessionHint } from '../../lib/sessionWatch'
 import { acquireSpawnSlot, releaseSpawnSlot } from '../../lib/spawnQueue'
 import { readScopedStorage, writeScopedStorage } from '../../lib/storageNamespace'
+import { acquireWebglContext } from '../../lib/webglPool'
 import {
   attachPty,
   findCliLauncher,
+  graphifyCodexConfigWrite,
+  graphifyEnsureGraph,
+  graphifyMcpConfigPath,
+  graphifyOpenCodeConfigWrite,
   killPty,
   listenPtyData,
   listenPtyExit,
   openInBrowser,
   openInFileExplorer,
+  ptyExists,
   readClipboardText,
   resizePty,
   spawnPty,
+  snapshotAntigravitySessions,
   snapshotClaudeSessions,
   snapshotCodexSessions,
   writeClipboardText,
   writePty,
 } from '../../lib/tauri'
 import { getLocale, translate, useT } from '../../lib/i18n'
-import type { AgentType, Theme } from '../../lib/types'
+import { agentCliCommand, type AgentRuntimeProfile, type AgentType, type Theme } from '../../lib/types'
 import { useProjectsStore } from '../../stores/projectsStore'
 import { useTerminalsStore } from '../../stores/terminalsStore'
 import { useUiStore } from '../../stores/uiStore'
@@ -228,18 +236,14 @@ function makeXtermLink(
   columns: number,
   link: DetectedTerminalLink,
   handlers: {
-    open: (text: string) => void
-    hover: (event: MouseEvent, link: DetectedTerminalLink) => void
-    leave: () => void
+    openMenu: (event: MouseEvent, link: DetectedTerminalLink) => void
   },
 ): ILink {
   return {
     text: link.text,
     range: terminalLinkRange(logicalLineStart, columns, link),
     decorations: { pointerCursor: true, underline: true },
-    activate: (_event: MouseEvent, text: string) => handlers.open(text),
-    hover: (event: MouseEvent) => handlers.hover(event, link),
-    leave: handlers.leave,
+    activate: (event: MouseEvent) => handlers.openMenu(event, link),
   }
 }
 
@@ -251,20 +255,43 @@ export type XTermViewProps = {
   command?: AgentType | null
   cwd?: string | null
   extraArgs?: string[]
+  /** Prompt opcional enviado uma única vez após o boot do processo. */
+  initialInput?: string
   /** Identidade persistida da conversa deste pane. */
   sessionId?: string
+  /** Identidade estável da sub-tab, independente das trocas de PTY. */
+  sessionKey?: string
   /** Env extra só deste PTY. */
   env?: Record<string, string>
+  /** RFC-004 — raiz do repo quando o projeto tem Graphify habilitado. Presente:
+   * o spawn injeta o MCP do grafo (Claude via `--mcp-config`, Codex/OpenCode via
+   * merge no config do projeto) e garante o bootstrap do grafo. */
+  graphifyRepo?: string | null
+  runtimeProfile?: AgentRuntimeProfile
   terminalTheme?: Theme
   onSpawned?: (id: string) => void
-  onSessionId?: (id: string) => void
+  onSessionId?: (id: string | undefined) => void
+  onInitialInputSent?: () => void
   onExit?: (code: number | null) => void
   onAgentComplete?: () => void
 }
 
 const PROMPT_HISTORY_KEY = (id: string) => `prompt-history:${id}`
+// Abaixo deste tempo (ms) consideramos que o agent "morreu no nascimento" — típico
+// de sessão de resume inválida ou binário quebrado. Serve de gatilho pro fallback
+// que reabre sessão nova em vez de deixar o pane cinza.
+const EARLY_EXIT_MS = 4000
 const PASTE_CHUNK_SIZE = 1024
 const PASTE_CHUNK_DELAY_MS = 8
+// Nunca entregue um burst inteiro de saída ao xterm em um único frame. TUIs
+// como o OpenCode ecoam colagens grandes e podem gerar centenas de KB de saída;
+// um terminal.write() gigante bloqueia o WebView e faz a aplicação parecer
+// travada. A fila continua preservando todos os bytes, só distribui o trabalho.
+const TERMINAL_WRITE_FRAME_BUDGET = 64 * 1024
+const LINK_MENU_WIDTH = 272
+const LINK_MENU_MAX_HEIGHT = 276
+const LINK_MENU_MARGIN = 10
+const LINK_MENU_OFFSET = 6
 
 function loadPromptHistory(ptyId: string): string[] {
   const raw = readScopedStorage(PROMPT_HISTORY_KEY(ptyId), true)
@@ -305,11 +332,16 @@ export function XTermView({
   command,
   cwd,
   extraArgs,
+  initialInput,
   sessionId,
+  sessionKey,
   env,
+  graphifyRepo,
+  runtimeProfile = 'full',
   terminalTheme = 'dark',
   onSpawned,
   onSessionId,
+  onInitialInputSent,
   onExit,
   onAgentComplete,
 }: XTermViewProps) {
@@ -318,9 +350,7 @@ export function XTermView({
   const terminalRef = useRef<Terminal | null>(null)
   const ptyIdRef = useRef<string | null>(null)
   const lastCtrlCRef = useRef(0)
-  const linkTooltipHideTimerRef = useRef<number | null>(null)
-  const linkTooltipShowTimerRef = useRef<number | null>(null)
-  const pendingLinkRef = useRef<LinkActionState | null>(null)
+  const linkMenuRef = useRef<HTMLDivElement | null>(null)
   const linkActionsRef = useRef<LinkActionState | null>(null)
 
   const cliPathOverride = useProjectsStore((s) =>
@@ -330,11 +360,13 @@ export function XTermView({
 
   const onSpawnedRef = useRef(onSpawned)
   const onSessionIdRef = useRef(onSessionId)
+  const onInitialInputSentRef = useRef(onInitialInputSent)
   const onExitRef = useRef(onExit)
   const onAgentCompleteRef = useRef(onAgentComplete)
   useEffect(() => {
     onSpawnedRef.current = onSpawned
     onSessionIdRef.current = onSessionId
+    onInitialInputSentRef.current = onInitialInputSent
     onExitRef.current = onExit
     onAgentCompleteRef.current = onAgentComplete
   })
@@ -343,75 +375,88 @@ export function XTermView({
   const historyCursorRef = useRef(-1)
   const currentLineRef = useRef('')
 
+  // Estado do fallback de early-exit (sessão de resume órfã → reabrir sessão nova).
+  const spawnedAtRef = useRef(0)
+  const usedResumeRef = useRef(false)
+  const earlyExitRetriedRef = useRef(false)
+  const forceFreshRef = useRef(false)
+
   const [commandNotFound, setCommandNotFound] = useState<string | null>(null)
   const [retryKey, setRetryKey] = useState(0)
-  const [bootPhase, setBootPhase] = useState<'queued' | 'spawning' | 'attaching' | 'ready'>('queued')
+  const [bootPhase, setBootPhase] = useState<
+    'preparing' | 'queued' | 'spawning' | 'attaching' | 'ready'
+  >('preparing')
   const [linkActions, setLinkActions] = useState<LinkActionState | null>(null)
   const [dropActive, setDropActive] = useState(false)
-
-  const clearLinkTooltipHideTimer = useCallback(() => {
-    if (linkTooltipHideTimerRef.current === null) return
-    window.clearTimeout(linkTooltipHideTimerRef.current)
-    linkTooltipHideTimerRef.current = null
-  }, [])
-
-  const clearLinkTooltipShowTimer = useCallback(() => {
-    if (linkTooltipShowTimerRef.current === null) return
-    window.clearTimeout(linkTooltipShowTimerRef.current)
-    linkTooltipShowTimerRef.current = null
-  }, [])
+  const sessionPersistenceKey = sessionKey ?? ptyId
 
   const hideLinkActions = useCallback(() => {
-    clearLinkTooltipShowTimer()
-    clearLinkTooltipHideTimer()
-    pendingLinkRef.current = null
     setLinkActions(null)
-  }, [clearLinkTooltipShowTimer, clearLinkTooltipHideTimer])
+  }, [])
 
-  // Saiu do link (ou do tooltip): fecha com folga pra dar tempo de atravessar o
-  // gap link→tooltip sem ele sumir — a causa clássica do "some antes de clicar".
-  const scheduleHideLinkActions = useCallback(() => {
-    clearLinkTooltipShowTimer()
-    clearLinkTooltipHideTimer()
-    linkTooltipHideTimerRef.current = window.setTimeout(() => {
-      linkTooltipHideTimerRef.current = null
-      pendingLinkRef.current = null
-      setLinkActions(null)
-    }, 450)
-  }, [clearLinkTooltipShowTimer, clearLinkTooltipHideTimer])
-
-  // Hover num link: só abre depois de uma intenção de hover (~320ms) pra não
-  // poluir a tela quando o mouse só passa por cima. Se já há um tooltip aberto,
-  // troca na hora (transição suave entre links vizinhos).
-  const showLinkActions = useCallback(
+  // Clique no link abre um menu compacto junto ao cursor. A posição usa uma
+  // estimativa conservadora do tamanho para nunca cortar o menu na viewport.
+  const showLinkActionsMenu = useCallback(
     (event: MouseEvent, link: DetectedTerminalLink) => {
-      clearLinkTooltipHideTimer()
-      const next: LinkActionState = {
+      event.preventDefault()
+      event.stopPropagation()
+      // O xterm inicia seleção no pointerdown antes de chamar `activate` no
+      // clique. Limpa esse gesto residual para o menu não parecer estar
+      // "segurando" e selecionando o conteúdo que ficou atrás dele.
+      terminalRef.current?.clearSelection()
+      window.getSelection()?.removeAllRanges()
+
+      const maxLeft = window.innerWidth - LINK_MENU_WIDTH - LINK_MENU_MARGIN
+      const x = Math.max(
+        LINK_MENU_MARGIN,
+        Math.min(event.clientX + LINK_MENU_OFFSET, maxLeft),
+      )
+      const below = event.clientY + LINK_MENU_OFFSET
+      const y =
+        below + LINK_MENU_MAX_HEIGHT <= window.innerHeight - LINK_MENU_MARGIN
+          ? below
+          : Math.max(
+              LINK_MENU_MARGIN,
+              event.clientY - LINK_MENU_MAX_HEIGHT - LINK_MENU_OFFSET,
+            )
+
+      setLinkActions({
         text: link.text,
         kind: link.kind,
         fileKind: link.fileKind,
-        x: Math.min(Math.max(event.clientX, 180), window.innerWidth - 180),
-        y: Math.max(event.clientY, 72),
-      }
-      pendingLinkRef.current = next
-      if (linkActionsRef.current) {
-        setLinkActions(next)
-        return
-      }
-      clearLinkTooltipShowTimer()
-      linkTooltipShowTimerRef.current = window.setTimeout(() => {
-        linkTooltipShowTimerRef.current = null
-        if (pendingLinkRef.current) setLinkActions(pendingLinkRef.current)
-      }, 320)
+        x,
+        y,
+      })
     },
-    [clearLinkTooltipHideTimer, clearLinkTooltipShowTimer],
+    [],
   )
 
-  // Espelha o estado num ref pra os handlers (que rodam no provider do xterm)
-  // lerem "tem tooltip aberto?" sem virar dependência e recriar o listener.
+  // Espelha o estado num ref pro listener do xterm, criado uma vez por PTY.
   useEffect(() => {
     linkActionsRef.current = linkActions
   }, [linkActions])
+
+  useEffect(() => {
+    if (!linkActions) return
+
+    const closeOnOutsidePointer = (event: PointerEvent) => {
+      if (!linkMenuRef.current?.contains(event.target as Node)) hideLinkActions()
+    }
+    const closeOnEscape = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') hideLinkActions()
+    }
+
+    document.addEventListener('pointerdown', closeOnOutsidePointer, true)
+    window.addEventListener('keydown', closeOnEscape, true)
+    window.addEventListener('blur', hideLinkActions)
+    window.addEventListener('resize', hideLinkActions)
+    return () => {
+      document.removeEventListener('pointerdown', closeOnOutsidePointer, true)
+      window.removeEventListener('keydown', closeOnEscape, true)
+      window.removeEventListener('blur', hideLinkActions)
+      window.removeEventListener('resize', hideLinkActions)
+    }
+  }, [hideLinkActions, linkActions])
 
   const openFileInGrid = useCallback(
     (target: string) => {
@@ -515,24 +560,31 @@ export function XTermView({
     if (!container) return
 
     let disposed = false
+    const spawnQueueAbort = new AbortController()
     let unlistenData: (() => void) | null = null
     let unlistenExit: (() => void) | null = null
     let unlistenDragDrop: (() => void) | null = null
     let resizeTimer: number | null = null
     let writeFrame: number | null = null
-    let pendingWrite = ''
+    let pendingWrites: string[] = []
+    let pendingWriteLength = 0
     let lastCols = 0
     let lastRows = 0
     let forceNextResize = false
     let completionMonitor: AgentCompletionMonitor | null = null
     let linkProviderDisposable: { dispose: () => void } | null = null
     let linkScrollDisposable: { dispose: () => void } | null = null
+    let writeRecoveryPending = false
 
+    const resourcePolicy = useProjectsStore.getState().preferences.resourcePolicy
     const terminal = new Terminal({
       cursorBlink: true,
       convertEol: false,
       allowProposedApi: true,
-      scrollback: getTerminalScrollbackRows(),
+      scrollback: getTerminalScrollbackRows({
+        agent: command != null && command !== 'shell',
+        memoryBudgetMb: resourcePolicy.memoryBudgetMb,
+      }),
       windowsPty: { backend: 'conpty', buildNumber: 22000 },
       fontFamily: 'Cascadia Mono, Consolas, "Courier New", monospace',
       fontSize: 14,
@@ -544,6 +596,15 @@ export function XTermView({
     terminal.loadAddon(searchAddon)
     terminal.open(container)
     terminalRef.current = terminal
+    const clampHorizontalScroll = () => {
+      container.scrollLeft = 0
+      const xterm = container.querySelector<HTMLElement>('.xterm')
+      const viewport = container.querySelector<HTMLElement>('.xterm-viewport')
+      const screen = container.querySelector<HTMLElement>('.xterm-screen')
+      if (xterm) xterm.scrollLeft = 0
+      if (viewport) viewport.scrollLeft = 0
+      if (screen) screen.style.maxWidth = '100%'
+    }
     linkProviderDisposable = terminal.registerLinkProvider({
       provideLinks: (bufferLineNumber, callback) => {
         const logicalLine = getLogicalTerminalLine(terminal.buffer.active, bufferLineNumber)
@@ -553,78 +614,91 @@ export function XTermView({
         }
         const links = detectTerminalLinks(logicalLine.text).map((link) =>
           makeXtermLink(logicalLine.startLine, terminal.cols, link, {
-            // Clique default: URL abre no browser externo, path abre no app
-            // padrão do SO. O visualizador in-app fica opcional no botão do tooltip.
-            open: (text) => void openLinkInBrowser(text),
-            hover: showLinkActions,
-            leave: scheduleHideLinkActions,
+            openMenu: showLinkActionsMenu,
           }),
         )
         callback(links.length > 0 ? links : undefined)
       },
     })
 
-    // Se a tela rola (stream do agente), o tooltip — ancorado no ponto do cursor —
+    // Se a tela rola (stream do agente), o menu — ancorado no ponto do clique —
     // apontaria pro vazio; fecha junto pra não virar fantasma.
     linkScrollDisposable = terminal.onScroll(() => {
-      if (
-        linkActionsRef.current ||
-        pendingLinkRef.current ||
-        linkTooltipShowTimerRef.current !== null
-      ) {
-        clearLinkTooltipShowTimer()
-        clearLinkTooltipHideTimer()
-        pendingLinkRef.current = null
-        setLinkActions(null)
-      }
+      if (linkActionsRef.current) setLinkActions(null)
     })
 
     // Renderer WebGL (GPU) — o renderer DOM padrão trava a digitação,
     // principalmente com zoom da WebView ≠ 100%. Fallback: DOM renderer.
     let webglAddon: WebglAddon | null = null
-    try {
-      webglAddon = new WebglAddon()
-      webglAddon.onContextLoss(() => {
-        // Perda de contexto GL (ex.: muitos terminais estouram o limite de
-        // contextos da WebView, ou soluço do processo de GPU). Descarta o addon
-        // (o xterm volta pro renderer DOM) e NÃO recria — evita thrash.
+    let releaseWebglContext: (() => void) | null = acquireWebglContext()
+    if (releaseWebglContext) {
+      try {
+        webglAddon = new WebglAddon()
+        webglAddon.onContextLoss(() => {
+          // Perda de contexto GL (ex.: muitos terminais estouram o limite de
+          // contextos da WebView, ou soluço do processo de GPU). Descarta o addon
+          // (o xterm volta pro renderer DOM) e NÃO recria — evita thrash.
+          webglAddon?.dispose()
+          webglAddon = null
+          releaseWebglContext?.()
+          releaseWebglContext = null
+          // Um syncScrollArea assíncrono já agendado pode ler `dimensions` de um
+          // renderer morto e lançar ("Cannot read properties of undefined
+          // (reading 'dimensions')"), o que cascateia e derruba a render. Força um
+          // re-fit/refresh no próximo frame pra reestabelecer as dimensões — só se
+          // o container tiver tamanho válido, e sempre dentro de try/catch.
+          window.requestAnimationFrame(() => {
+            try {
+              const rect = container.getBoundingClientRect()
+              if (rect.width < 50 || rect.height < 30) return
+              fitAddon.fit()
+              terminal.refresh(0, Math.max(0, terminal.rows - 1))
+              terminal.focus()
+            } catch {
+              /* container invisível / em teardown — ignora */
+            }
+          })
+        })
+        terminal.loadAddon(webglAddon)
+      } catch {
         webglAddon?.dispose()
         webglAddon = null
-        // Um syncScrollArea assíncrono já agendado pode ler `dimensions` de um
-        // renderer morto e lançar ("Cannot read properties of undefined
-        // (reading 'dimensions')"), o que cascateia e derruba a render. Força um
-        // re-fit/refresh no próximo frame pra reestabelecer as dimensões — só se
-        // o container tiver tamanho válido, e sempre dentro de try/catch.
-        window.requestAnimationFrame(() => {
-          try {
-            const rect = container.getBoundingClientRect()
-            if (rect.width < 50 || rect.height < 30) return
-            fitAddon.fit()
-            terminal.refresh(0, Math.max(0, terminal.rows - 1))
-          } catch {
-            /* container invisível / em teardown — ignora */
-          }
-        })
-      })
-      terminal.loadAddon(webglAddon)
-    } catch {
-      webglAddon?.dispose()
-      webglAddon = null
+        releaseWebglContext()
+        releaseWebglContext = null
+      }
     }
 
     terminal.focus()
 
     const flushPendingWrite = () => {
       writeFrame = null
-      if (!pendingWrite) return
-      const chunk = pendingWrite
-      pendingWrite = ''
-      terminal.write(chunk)
+      if (pendingWriteLength === 0) return
+
+      let budget = TERMINAL_WRITE_FRAME_BUDGET
+      let output = ''
+      while (budget > 0 && pendingWrites.length > 0) {
+        const head = pendingWrites[0]
+        const take = Math.min(budget, head.length)
+        output += head.slice(0, take)
+        budget -= take
+        pendingWriteLength -= take
+        if (take === head.length) pendingWrites.shift()
+        else pendingWrites[0] = head.slice(take)
+      }
+
+      if (output) {
+        terminal.write(output)
+        clampHorizontalScroll()
+      }
+      if (pendingWriteLength > 0) {
+        writeFrame = window.requestAnimationFrame(flushPendingWrite)
+      }
     }
 
     const queueTerminalWrite = (chunk: string) => {
       if (!chunk) return
-      pendingWrite += chunk
+      pendingWrites.push(chunk)
+      pendingWriteLength += chunk.length
       if (writeFrame !== null) return
       writeFrame = window.requestAnimationFrame(flushPendingWrite)
     }
@@ -650,12 +724,21 @@ export function XTermView({
     container.addEventListener('wheel', onWheel, { passive: false, capture: true })
 
     const pasteText = (raw: string) => {
-      if (!raw) return
-      const id = ptyIdRef.current
-      if (!id) return
-      const text = normalizePastedText(raw)
-      recordPromptInput(text)
-      void writePtyChunked(id, text, terminal.modes.bracketedPasteMode)
+      // Colar NUNCA pode quebrar o pane: qualquer erro (normalização, PTY morto,
+      // invoke falhando) é engolido e só logado. Sem terminal vivo, ignora.
+      try {
+        if (!raw) return
+        const id = ptyIdRef.current
+        if (!id) return
+        const text = normalizePastedText(raw)
+        useTerminalsStore.getState().recordIo(id)
+        recordPromptInput(text)
+        void writePtyChunked(id, text, terminal.modes.bracketedPasteMode).catch((err) => {
+          console.warn('[pty-paste] falha ao escrever colagem no PTY (ignorado):', err)
+        })
+      } catch (err) {
+        console.warn('[pty-paste] colagem ignorada (erro):', err)
+      }
     }
 
     // Arrastar arquivo do SO pro terminal: o onDragDropEvent do Tauri é global,
@@ -750,6 +833,7 @@ export function XTermView({
     })
 
     const focusTerminal = () => terminal.focus()
+    container.addEventListener('pointerdown', focusTerminal, true)
     container.addEventListener('click', focusTerminal)
 
     const onPaste = (event: ClipboardEvent) => {
@@ -783,6 +867,7 @@ export function XTermView({
       } catch {
         /* refresh pode falhar durante teardown/layout invisível */
       }
+      clampHorizontalScroll()
       const force = forceNextResize
       forceNextResize = false
       if (!force && terminal.cols === lastCols && terminal.rows === lastRows) return
@@ -791,6 +876,9 @@ export function XTermView({
       void resizePty(id, terminal.cols, terminal.rows)
     }
     const scheduleResize = (force = false) => {
+      // Guard de unmount: neutraliza os setTimeout(120/320ms) de onResizeRequest
+      // e evita re-armar o resizeTimer que o cleanup já limpou.
+      if (disposed) return
       forceNextResize ||= force
       if (resizeTimer !== null) window.clearTimeout(resizeTimer)
       resizeTimer = window.setTimeout(runResize, 80)
@@ -813,17 +901,93 @@ export function XTermView({
       scheduleResize()
     }, 150)
 
+    const attachExistingPty = async (existingId: string) => {
+      setBootPhase('attaching')
+      ptyIdRef.current = existingId
+      useTerminalsStore.getState().registerPty(existingId)
+      onSpawnedRef.current?.(existingId)
+
+      if (command === 'claude' || command === 'codex' || command === 'opencode') {
+        completionMonitor = new AgentCompletionMonitor({
+          ptyId: existingId,
+          agent: command,
+          label: command,
+          cwd,
+          onStatusChange: (status) =>
+            useTerminalsStore.getState().setStatus(existingId, status),
+          onComplete: () => onAgentCompleteRef.current?.(),
+        })
+      }
+
+      const replay = await attachPty(existingId)
+      if (disposed) return
+      if (replay) queueTerminalWrite(replay)
+
+      const dataUnlisten = await listenPtyData(existingId, (chunk) => {
+        useTerminalsStore.getState().recordIo(existingId)
+        queueTerminalWrite(chunk)
+        completionMonitor?.handleOutput(chunk)
+      })
+      if (disposed) {
+        dataUnlisten()
+        return
+      }
+      unlistenData = dataUnlisten
+
+      const exitUnlisten = await listenPtyExit(existingId, (payload) => {
+        console.info(
+          `[pty-launch] ${command ?? 'shell'} EXIT (attach) id=${existingId} code=${payload.code ?? '—'} reason=${payload.reason ?? '—'}`,
+        )
+        if (payload.reason === 'restarted') {
+          useTerminalsStore.getState().markExited(existingId)
+          return
+        }
+        if (payload.reason === 'suspended') {
+          useTerminalsStore.getState().markSuspended(existingId)
+          completionMonitor?.dispose()
+          completionMonitor = null
+          return
+        }
+        useTerminalsStore.getState().markExited(existingId)
+        completionMonitor?.dispose()
+        completionMonitor = null
+        removeSession(sessionPersistenceKey)
+        onExitRef.current?.(payload.code)
+      })
+      if (disposed) {
+        exitUnlisten()
+        return
+      }
+      unlistenExit = exitUnlisten
+
+      scheduleResize()
+      if (!disposed) setBootPhase('ready')
+    }
+
     terminal.onData((data) => {
       const id = ptyIdRef.current
       if (!id) return
+      useTerminalsStore.getState().recordIo(id)
       recordPromptInput(data)
       completionMonitor?.handleInput(data)
       const trackedPtyId = ptyIdRef.current
       if (trackedPtyId) recordAgentActivityInput(trackedPtyId, data)
-      void writePty(id, data)
+      if (container.scrollWidth > container.clientWidth + 2) scheduleResize(true)
+      clampHorizontalScroll()
+      void writePty(id, data).catch((error) => {
+        console.warn(`[pty-input] falha ao escrever em ${id}; solicitando recuperação`, error)
+        if (disposed || writeRecoveryPending) return
+        writeRecoveryPending = true
+        window.dispatchEvent(
+          new CustomEvent('alethe:terminal-restart-request', { detail: { ptyId: id } }),
+        )
+        window.setTimeout(() => {
+          writeRecoveryPending = false
+        }, 5_000)
+      })
     })
 
-    const RESUMABLE_AGENTS = ['claude', 'codex', 'opencode']
+    const RESUMABLE_AGENTS = ['claude', 'codex', 'opencode', 'antigravity']
 
     async function start() {
       try {
@@ -839,7 +1003,18 @@ export function XTermView({
           /* sem layout ainda — o resize agendado cobre */
         }
         setCommandNotFound(null)
-        setBootPhase('queued')
+        setBootPhase('preparing')
+
+        const existingRuntime = useTerminalsStore.getState().byPtyId[ptyId]
+        if (existingRuntime?.alive && !existingRuntime.parked) {
+          await attachExistingPty(ptyId)
+          return
+        }
+        const backendHasPty = await ptyExists(ptyId).catch(() => false)
+        if (backendHasPty) {
+          await attachExistingPty(ptyId)
+          return
+        }
 
         // Pré-resolve CLI: se for agent, precisa achar override OU launcher
         // auto-detectado antes de spawnar. Sem isso, o pwsh executa `& 'claude'`
@@ -848,9 +1023,12 @@ export function XTermView({
         if (command && command !== 'shell') {
           if (cliPathOverride) {
             launcherOverride = cliPathOverride
+            console.info(`[pty-launch] ${command} usando override: ${cliPathOverride}`)
           } else {
             const auto = await findCliLauncher(command)
+            console.info(`[pty-launch] ${command} findCliLauncher → ${auto ?? 'null (NÃO ENCONTRADO)'}`)
             if (!auto) {
+              console.warn(`[pty-launch] ${command} não resolvido — mostrando overlay "not found" e ficando offline`)
               setCommandNotFound(command)
               useTerminalsStore.getState().setStatus(ptyId, 'offline')
               return
@@ -860,53 +1038,90 @@ export function XTermView({
 
         // projects.json é a fonte principal. O marcador de crash no localStorage
         // serve apenas de fallback para arquivos antigos que ainda não tinham ID.
-        const savedSession = command && RESUMABLE_AGENTS.includes(command) ? consumeSession(ptyId) : null
-        const savedConversationId = command === 'claude'
-          ? savedSession?.claudeSessionId
-          : command === 'codex'
-            ? savedSession?.codexSessionId
-            : undefined
+        const savedSession = command && RESUMABLE_AGENTS.includes(command)
+          ? consumeSession(sessionPersistenceKey)
+          : null
+        const savedConversationId = savedConversationIdFor(savedSession, command, cwd)
         let resumeId = sessionId ?? savedConversationId
-        // Claude: valida que a conversa ainda existe no cwd antes de passar
-        // --resume. Se o id ficou órfão (conversa apagada, cwd diferente de onde
-        // nasceu, ou o --session-id forçado nunca virou transcript), o CLI aborta
-        // com "No conversation found" — mesmo havendo conversas reais ali (que o
-        // /resume interativo mostraria). Em vez de quebrar ou começar em branco,
-        // RECUPERAMOS a sessão mais recente daquele cwd (snapshot vem ordenado
-        // recent-first). O id recuperado é persistido logo abaixo, então se
-        // auto-cura pras próximas aberturas. Só agimos quando o snapshot SUCEDE;
-        // erro/timeout mantém o resume original (evita falso negativo).
-        // Ressalva: com 2+ panes Claude no MESMO cwd, ambos podem cair na mesma
-        // conversa mais recente — aceitável pro caso comum (1 Claude por pasta).
-        if (command === 'claude' && resumeId && cwd) {
+        // Fallback: se a tentativa anterior morreu no nascimento usando resume,
+        // reabre ignorando o id órfão para nascer uma sessão limpa.
+        if (forceFreshRef.current) {
+          console.warn(`[pty-launch] ${command} reabrindo SEM resume (fallback de early-exit)`)
+          resumeId = undefined
+        }
+        // Valida a conversa antes de passar o argumento de resume. IDs persistidos
+        // podem ficar órfãos após limpeza de histórico ou sincronização entre PCs;
+        // nesse caso removemos o vínculo e iniciamos uma conversa limpa.
+        if (
+          (command === 'claude' || command === 'codex' || command === 'antigravity')
+          && resumeId
+          && cwd
+        ) {
           try {
-            const existing = await snapshotClaudeSessions(cwd)
-            if (!existing.some((s) => s.id === resumeId)) {
-              resumeId = existing[0]?.id
+            const existing = command === 'claude'
+              ? await snapshotClaudeSessions(cwd)
+              : command === 'codex'
+                ? await snapshotCodexSessions(cwd)
+                : await snapshotAntigravitySessions(cwd)
+            if (!existing.some((session) => session.id === resumeId)) {
+              console.warn(`[pty-launch] ${command} ignorando sessão órfã ${resumeId}`)
+              resumeId = undefined
+              removeSession(sessionPersistenceKey)
+              onSessionIdRef.current?.(undefined)
             }
           } catch {
             /* mantém o resume — não arrisca falso negativo */
           }
           if (disposed) return
         }
+        const preparedRuntime = command
+          ? preparePtyRuntimeLaunch(command, runtimeProfile, extraArgs ?? [], env)
+          : { args: extraArgs ?? [], env }
+        // RFC-004 — Graphify por projeto: garante o bootstrap do grafo e injeta o
+        // MCP nos 3 CLIs. Best-effort — falha do Graphify NUNCA bloqueia o spawn.
+        // Claude recebe `--mcp-config`; Codex/OpenCode recebem por merge no config
+        // do projeto (não têm flag), escrito antes do spawn.
+        let graphifyMcpPath: string | undefined
+        if (graphifyRepo && (command === 'claude' || command === 'codex' || command === 'opencode')) {
+          void graphifyEnsureGraph(graphifyRepo).catch(() => undefined)
+          if (command === 'claude') {
+            graphifyMcpPath = await graphifyMcpConfigPath(graphifyRepo).catch(() => undefined)
+          } else if (command === 'opencode') {
+            await graphifyOpenCodeConfigWrite(graphifyRepo).catch(() => {})
+          } else if (command === 'codex') {
+            await graphifyCodexConfigWrite(graphifyRepo).catch(() => {})
+          }
+          if (disposed) return
+        }
         const launch = command
-          ? buildAgentLaunch(command, extraArgs ?? [], resumeId)
-          : { args: extraArgs ?? [], sessionId: undefined, createdSession: false }
+          ? buildAgentLaunch(command, preparedRuntime.args, resumeId, undefined, graphifyMcpPath)
+          : { args: preparedRuntime.args, sessionId: undefined, createdSession: false }
         const spawnArgs = launch.args.length > 0 ? launch.args : undefined
+        if (command && command !== 'shell') {
+          console.info(
+            `[pty-launch] ${command} args=${JSON.stringify(spawnArgs ?? [])} resumeId=${resumeId ?? '—'} launcherOverride=${launcherOverride ?? '(auto/PATH)'}`,
+          )
+        }
         if (launch.sessionId && launch.sessionId !== sessionId) {
           onSessionIdRef.current?.(launch.sessionId)
         }
         if (command && cwd) registerSessionClaim(command, cwd, launch.sessionId)
 
-        // Snapshot leve das sessões Codex existentes antes do spawn para
-        // identificar e persistir o ID novo sem usar `resume --last`.
-        const codexSessionsBeforePromise = (command === 'codex' && cwd && !launch.sessionId)
-          ? snapshotCodexSessions(cwd).catch(() => [])
+        // Snapshot leve antes do spawn para identificar e persistir o ID novo
+        // de agentes que não permitem escolher o ID no nascimento.
+        const discoveredSessionsBeforePromise = cwd && !launch.sessionId
+          ? command === 'codex'
+            ? snapshotCodexSessions(cwd).catch(() => [])
+            : command === 'antigravity'
+              ? snapshotAntigravitySessions(cwd).catch(() => [])
+              : null
           : null
 
         // Serializa spawns globalmente — sem isso, abrir grupo com N×M terminais
         // dispara muitos spawn_pty em paralelo e trava o app.
-        await acquireSpawnSlot()
+        setBootPhase('queued')
+        const acquiredSpawnSlot = await acquireSpawnSlot(spawnQueueAbort.signal)
+        if (!acquiredSpawnSlot) return
         if (disposed) {
           releaseSpawnSlot()
           return
@@ -918,20 +1133,26 @@ export function XTermView({
             cols: terminal.cols,
             rows: terminal.rows,
             id: ptyId,
-            command: command ?? undefined,
+            command: command ? agentCliCommand(command) : undefined,
             cwd: cwd ?? undefined,
             extraArgs: spawnArgs,
             launcherOverride,
-            env,
+            env: preparedRuntime.env,
           })
         } finally {
           releaseSpawnSlot()
         }
+        console.info(`[pty-launch] ${command ?? 'shell'} spawn OK id=${response.id}`)
+        spawnedAtRef.current = Date.now()
+        usedResumeRef.current = Boolean(resumeId)
         if (disposed) return
         setBootPhase('attaching')
         ptyIdRef.current = response.id
         useTerminalsStore.getState().registerPty(response.id)
         onSpawnedRef.current?.(response.id)
+        if (command && cwd && launch.sessionId) {
+          registerSessionClaim(command, cwd, launch.sessionId, response.id)
+        }
 
         if (command === 'claude' || command === 'codex' || command === 'opencode') {
           completionMonitor = new AgentCompletionMonitor({
@@ -948,33 +1169,43 @@ export function XTermView({
         // Marca sessão como ativa — se o app fechar abruptamente, o próximo
         // spawn vai consumir essa entrada e injetar o resume adequado da CLI.
         if (command && RESUMABLE_AGENTS.includes(command)) {
-          saveSession(ptyId, {
+          saveSession(sessionPersistenceKey, {
             sessionId: response.id,
             claudeSessionId: command === 'claude' ? launch.sessionId : undefined,
             codexSessionId: command === 'codex' ? launch.sessionId : undefined,
+            antigravitySessionId: command === 'antigravity' ? launch.sessionId : undefined,
             cwd: cwd ?? '',
             agent: command,
             timestamp: Date.now(),
           })
 
-          // Codex precisa do ID especifico; `resume --last` junta terminais
-          // diferentes na mesma conversa quando existem 2+ Codex abertos.
-          if (command === 'codex' && cwd && codexSessionsBeforePromise) {
-            const detectCodexSession = async () => {
-              const before = new Set((await codexSessionsBeforePromise).map((s) => s.id))
-              for (let attempt = 0; attempt < 4; attempt++) {
-                // Acorda no hint do watcher (session://new) ou no teto de 3s.
-                await Promise.race([
-                  new Promise((r) => setTimeout(r, 3000)),
-                  waitForSessionHint('codex'),
-                ])
+          // Codex e Antigravity precisam do ID específico para não misturar
+          // conversas de panes diferentes no próximo boot.
+          if ((command === 'codex' || command === 'antigravity') && cwd && discoveredSessionsBeforePromise) {
+            const detectCreatedSession = async () => {
+              const before = new Set((await discoveredSessionsBeforePromise).map((s) => s.id))
+              // Janela ~30s (10×3s): o Codex às vezes leva a escrever o arquivo de
+              // sessão (init do app-server, cwd frio), e sem detectar o id o boot
+              // seguinte começa do zero. Para assim que acha; sem custo se detectar rápido.
+              for (let attempt = 0; attempt < 10; attempt++) {
+                if (command === 'codex') {
+                  await Promise.race([
+                    new Promise((resolve) => setTimeout(resolve, 3000)),
+                    waitForSessionHint('codex'),
+                  ])
+                } else {
+                  await new Promise((resolve) => setTimeout(resolve, 3000))
+                }
                 if (disposed) return
-                const sessions = await snapshotCodexSessions(cwd).catch(() => [])
-                const newSession = claimDiscoveredSession('codex', cwd, before, sessions)
+                const sessions = command === 'codex'
+                  ? await snapshotCodexSessions(cwd).catch(() => [])
+                  : await snapshotAntigravitySessions(cwd).catch(() => [])
+                const newSession = claimDiscoveredSession(command, cwd, before, sessions, response.id)
                 if (newSession) {
-                  saveSession(ptyId, {
+                  saveSession(sessionPersistenceKey, {
                     sessionId: response.id,
-                    codexSessionId: newSession.id,
+                    codexSessionId: command === 'codex' ? newSession.id : undefined,
+                    antigravitySessionId: command === 'antigravity' ? newSession.id : undefined,
                     cwd: cwd ?? '',
                     agent: command,
                     timestamp: Date.now(),
@@ -984,7 +1215,7 @@ export function XTermView({
                 }
               }
             }
-            void detectCodexSession()
+            void detectCreatedSession()
           }
         }
 
@@ -996,6 +1227,7 @@ export function XTermView({
         // a cleanup function já rodou com unlistenData/unlistenExit ainda
         // undefined — chamamos manualmente pra evitar listener órfão.
         const dataUnlisten = await listenPtyData(response.id, (chunk) => {
+          useTerminalsStore.getState().recordIo(response.id)
           queueTerminalWrite(chunk)
           completionMonitor?.handleOutput(chunk)
         })
@@ -1005,13 +1237,63 @@ export function XTermView({
         }
         unlistenData = dataUnlisten
 
-        const exitUnlisten = await listenPtyExit(response.id, (code) => {
+        const exitUnlisten = await listenPtyExit(response.id, (payload) => {
+          console.info(
+            `[pty-launch] ${command ?? 'shell'} EXIT id=${response.id} code=${payload.code ?? '—'} reason=${payload.reason ?? '—'}`,
+          )
+          if (payload.reason === 'restarted') {
+            useTerminalsStore.getState().markExited(response.id)
+            return
+          }
+          if (payload.reason === 'suspended') {
+            useTerminalsStore.getState().markSuspended(response.id)
+            completionMonitor?.dispose()
+            completionMonitor = null
+            return
+          }
+          const isAgent =
+            command === 'claude' || command === 'codex' || command === 'opencode' || command === 'antigravity'
+          const elapsed = Date.now() - spawnedAtRef.current
+          // Fallback 1: agent morreu no nascimento COM resume → sessão órfã.
+          // Limpa e reabre uma vez com sessão nova, em vez de deixar o pane cinza.
+          if (
+            isAgent &&
+            elapsed < EARLY_EXIT_MS &&
+            usedResumeRef.current &&
+            !earlyExitRetriedRef.current
+          ) {
+            earlyExitRetriedRef.current = true
+            forceFreshRef.current = true
+            console.warn(
+              `[pty-launch] ${command} saiu em ${elapsed}ms com resume — reabrindo sessão nova (fallback)`,
+            )
+            useTerminalsStore.getState().markExited(response.id)
+            completionMonitor?.dispose()
+            completionMonitor = null
+            removeSession(sessionPersistenceKey)
+            terminal.write(
+              '\r\n\x1b[33m[alethe] sessão anterior indisponível — reabrindo sessão nova…\x1b[0m\r\n',
+            )
+            setRetryKey((v) => v + 1)
+            return
+          }
+          // Fallback 2: agent morreu no nascimento SEM resume (binário/instalação
+          // quebrada). Não relança em loop; deixa um aviso visível em vez de cinza.
+          if (isAgent && elapsed < EARLY_EXIT_MS) {
+            console.warn(
+              `[pty-launch] ${command} saiu em ${elapsed}ms (code ${payload.code ?? '—'}) — sem retry`,
+            )
+            terminal.write(
+              `\r\n\x1b[31m[alethe] ${command} encerrou imediatamente (code ${payload.code ?? '—'}).\x1b[0m\r\n` +
+                '\x1b[90mVerifique a instalação do CLI ou configure o caminho nas preferências.\x1b[0m\r\n',
+            )
+          }
           useTerminalsStore.getState().markExited(response.id)
           completionMonitor?.dispose()
           completionMonitor = null
           // Clean exit → não resume na próxima vez
-          removeSession(ptyId)
-          onExitRef.current?.(code)
+          removeSession(sessionPersistenceKey)
+          onExitRef.current?.(payload.code)
         })
         if (disposed) {
           exitUnlisten()
@@ -1019,9 +1301,33 @@ export function XTermView({
         }
         unlistenExit = exitUnlisten
 
+        const prompt = initialInput?.trim()
+        if (prompt) {
+          const sendInitialInput = async () => {
+            const earliestSendAt = Date.now() + 1_500
+            const deadline = Date.now() + 15_000
+            while (!disposed && Date.now() < deadline) {
+              await new Promise((resolve) => window.setTimeout(resolve, 250))
+              const runtime = useTerminalsStore.getState().byPtyId[response.id]
+              const quietFor = runtime ? Date.now() - runtime.lastIoAt : 0
+              if (Date.now() >= earliestSendAt && runtime?.alive && quietFor >= 700) break
+            }
+            if (disposed) return
+            try {
+              await writePtyChunked(response.id, prompt, true)
+              await writePty(response.id, '\r')
+              onInitialInputSentRef.current?.()
+            } catch (error) {
+              console.warn('[pty-launch] não foi possível enviar o prompt inicial:', error)
+            }
+          }
+          void sendInitialInput()
+        }
+
         scheduleResize()
         if (!disposed) setBootPhase('ready')
       } catch (err) {
+        console.error(`[pty-launch] ${command ?? 'shell'} FALHOU ao iniciar PTY:`, err)
         terminal.writeln(`Failed to start PTY: ${String(err)}`)
         if (!disposed) setBootPhase('ready')
       }
@@ -1030,7 +1336,9 @@ export function XTermView({
 
     return () => {
       disposed = true
+      spawnQueueAbort.abort()
       container.removeEventListener('wheel', onWheel, true)
+      container.removeEventListener('pointerdown', focusTerminal, true)
       container.removeEventListener('click', focusTerminal)
       container.removeEventListener('paste', onPaste)
       window.removeEventListener('alethe:zoom-changed', scheduleObservedResize)
@@ -1038,7 +1346,8 @@ export function XTermView({
       ro.disconnect()
       if (resizeTimer !== null) window.clearTimeout(resizeTimer)
       if (writeFrame !== null) window.cancelAnimationFrame(writeFrame)
-      pendingWrite = ''
+      pendingWrites = []
+      pendingWriteLength = 0
       window.clearTimeout(initialFitTimer)
       unlistenData?.()
       unlistenExit?.()
@@ -1047,17 +1356,18 @@ export function XTermView({
       linkScrollDisposable?.dispose()
       completionMonitor?.dispose()
       completionMonitor = null
-      clearLinkTooltipShowTimer()
-      clearLinkTooltipHideTimer()
-      pendingLinkRef.current = null
       setLinkActions(null)
       if (terminalRef.current === terminal) terminalRef.current = null
       ptyIdRef.current = null
       terminal.dispose()
+      releaseWebglContext?.()
+      releaseWebglContext = null
     }
-    // ptyId/retryKey são as chaves de identidade. Outros props lidos via refs.
+    // A identidade estável da sub-tab evita remontar assim que o spawn troca o
+    // ptyId temporário pelo ID real; isso também deixa a descoberta assíncrona
+    // da conversa terminar e persistir o ID antes de um reload.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [ptyId, retryKey])
+  }, [sessionPersistenceKey, retryKey])
 
   useEffect(() => {
     const terminal = terminalRef.current
@@ -1083,12 +1393,14 @@ export function XTermView({
   )
 
   const bootLabel =
-    bootPhase === 'queued'
-      ? 'Aguardando vez na fila…'
+    bootPhase === 'preparing'
+      ? t('term.bootPreparing')
+      : bootPhase === 'queued'
+        ? t('term.bootQueued')
       : bootPhase === 'spawning'
-        ? 'Iniciando processo…'
+        ? t('term.bootSpawning')
         : bootPhase === 'attaching'
-          ? 'Conectando ao terminal…'
+          ? t('term.bootAttaching')
           : null
 
   return (
@@ -1120,89 +1432,103 @@ export function XTermView({
       ) : null}
       {linkActions ? (
         <div
-          className={`${styles.linkActions} xterm-hover`}
+          ref={linkMenuRef}
+          className={styles.linkMenu}
           style={{ left: linkActions.x, top: linkActions.y }}
-          onMouseEnter={clearLinkTooltipHideTimer}
-          onMouseLeave={scheduleHideLinkActions}
+          role="menu"
+          aria-label={t('xterm.linkMenu')}
+          onPointerDown={(event) => {
+            event.stopPropagation()
+            if (event.target === event.currentTarget) event.preventDefault()
+          }}
         >
-          <span className={styles.linkActionsText} title={linkActions.text}>
-            {linkActions.text}
-          </span>
-          <div className={styles.linkActionsButtons}>
-            {(linkActions.fileKind === 'markdown' || linkActions.fileKind === 'text') &&
-            projectId ? (
-              <button
-                type="button"
-                className={styles.linkActionBtn}
-                onClick={() => {
-                  openFileInGrid(linkActions.text)
-                  hideLinkActions()
-                }}
-                title={t('xterm.openInGrid')}
-                aria-label={t('xterm.openInGrid')}
-              >
-                <LayoutGrid size={14} />
-              </button>
-            ) : null}
+          <div className={styles.linkMenuHeader}>
+            <span className={styles.linkMenuText} title={linkActions.text}>
+              {linkActions.text}
+            </span>
             <button
               type="button"
-              className={styles.linkActionBtn}
-              onClick={() => {
-                void openLinkInFolder(linkActions.text)
-                hideLinkActions()
-              }}
-              disabled={linkActions.kind === 'url'}
-              title={t('xterm.openInFolder')}
-              aria-label={t('xterm.openInFolder')}
-            >
-              <FolderOpen size={14} />
-            </button>
-            <button
-              type="button"
-              className={styles.linkActionBtn}
-              onClick={() => {
-                void copyLinkText(linkActions.text)
-                hideLinkActions()
-              }}
-              title={t('xterm.copy')}
-              aria-label={t('xterm.copy')}
-            >
-              <Copy size={14} />
-            </button>
-            {linkActions.kind === 'url' ? (
-              <button
-                type="button"
-                className={styles.linkActionBtn}
-                onClick={() => {
-                  openLinkInAppViewer(linkActions.text)
-                  hideLinkActions()
-                }}
-                title={t('xterm.openInApp')}
-                aria-label={t('xterm.openInApp')}
-              >
-                <AppWindow size={14} />
-              </button>
-            ) : null}
-            <button
-              type="button"
-              className={styles.linkActionBtn}
-              onClick={() => {
-                void openLinkInBrowser(linkActions.text)
-                hideLinkActions()
-              }}
-              title={t(linkActions.kind === 'url' ? 'xterm.openInBrowser' : 'xterm.openInDefaultApp')}
-              aria-label={t(linkActions.kind === 'url' ? 'xterm.openInBrowser' : 'xterm.openInDefaultApp')}
-            >
-              <ExternalLink size={14} />
-            </button>
-            <button
-              type="button"
-              className={styles.linkActionBtn}
+              className={styles.linkMenuClose}
               onClick={hideLinkActions}
               title={t('common.close')}
               aria-label={t('common.close')}
             >
               <X size={14} />
+            </button>
+          </div>
+          <div className={styles.linkMenuItems}>
+            {(linkActions.fileKind === 'markdown' || linkActions.fileKind === 'text') &&
+            projectId ? (
+              <button
+                type="button"
+                className={styles.linkMenuItem}
+                role="menuitem"
+                onClick={() => {
+                  openFileInGrid(linkActions.text)
+                  hideLinkActions()
+                }}
+              >
+                <LayoutGrid size={15} />
+                <span>{t('xterm.openInGrid')}</span>
+              </button>
+            ) : null}
+            {linkActions.kind === 'url' ? (
+              <button
+                type="button"
+                className={styles.linkMenuItem}
+                role="menuitem"
+                onClick={() => {
+                  openLinkInAppViewer(linkActions.text)
+                  hideLinkActions()
+                }}
+              >
+                <AppWindow size={15} />
+                <span>{t('xterm.openInApp')}</span>
+              </button>
+            ) : null}
+            <button
+              type="button"
+              className={styles.linkMenuItem}
+              role="menuitem"
+              onClick={() => {
+                void openLinkInBrowser(linkActions.text)
+                hideLinkActions()
+              }}
+            >
+              <ExternalLink size={15} />
+              <span>
+                {t(
+                  linkActions.kind === 'url'
+                    ? 'xterm.openInBrowser'
+                    : 'xterm.openInDefaultApp',
+                )}
+              </span>
+            </button>
+            {linkActions.kind === 'path' ? (
+              <button
+                type="button"
+                className={styles.linkMenuItem}
+                role="menuitem"
+                onClick={() => {
+                  void openLinkInFolder(linkActions.text)
+                  hideLinkActions()
+                }}
+              >
+                <FolderOpen size={15} />
+                <span>{t('xterm.openInFolder')}</span>
+              </button>
+            ) : null}
+            <button
+              type="button"
+              className={styles.linkMenuItem}
+              role="menuitem"
+              onClick={() => {
+                void copyLinkText(linkActions.text)
+                hideLinkActions()
+              }}
+            >
+              <Copy size={15} />
+              <span>{t('xterm.copy')}</span>
             </button>
           </div>
         </div>

@@ -1,70 +1,174 @@
-/* Container raiz do app. No macOS, arredonda os cantos para casar com o recorte
-   do contentView feito no AppKit (window_style.rs). O --bg vive aqui (não no
-   body) porque html/body ficam transparentes no macOS — ver reset.css. */
-.appRoot {
+.appShell {
+  width: 100vw;
+  height: 100dvh;
+  max-height: 100dvh;
   display: flex;
   flex-direction: column;
-  height: 100vh;
+  overflow: hidden;
   background: var(--bg);
 }
 
-:global([data-platform='macos']) .appRoot {
-  border-radius: 16px;
+.shellBody {
+  flex: 1 1 0;
+  width: 100%;
+  height: auto !important;
+  min-height: 0;
+  min-width: 0;
   overflow: hidden;
+}
+
+.shellBody :global([data-panel]) {
+  min-width: 0;
+  min-height: 0;
+  overflow: hidden;
+  transition: flex-grow 220ms cubic-bezier(0.16, 1, 0.3, 1), flex-basis 220ms cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+.shellBody :global([data-panel-group]:active [data-panel]),
+.shellBody :global([data-panel-group][data-resize-handle-active] [data-panel]) {
+  transition: none !important;
+}
+
+.mainView {
+  display: flex;
+  width: 100%;
+  height: 100%;
+  min-width: 0;
+  min-height: 0;
+  overflow: hidden;
+  background: var(--bg);
+}
+
+.shellSeparator {
+  position: relative;
+  width: 1px;
+  flex: 0 0 1px;
+  background: var(--border);
+  transition: background-color 120ms ease, opacity 160ms ease;
+}
+
+.shellSeparatorHidden {
+  opacity: 0;
+  pointer-events: none;
+}
+
+.sidebarContent {
+  width: 100%;
+  height: 100%;
+  opacity: 1;
+  transform: translateX(0);
+  transition: opacity 150ms ease, transform 180ms ease;
+}
+
+.sidebarContent[data-hidden='true'] {
+  opacity: 0;
+  transform: translateX(-8px);
+  pointer-events: none;
+}
+
+[data-panel='alethe-todo-sidebar'] .sidebarContent[data-hidden='true'] {
+  transform: translateX(8px);
+}
+
+.shellSeparator::after {
+  content: '';
+  position: absolute;
+  inset: 0 -3px;
+}
+
+.shellSeparator:hover,
+.shellSeparator[data-resize-handle-active] {
+  background: var(--border-strong);
 }
 
 .loadingScreen {
   display: grid;
   place-items: center;
-  width: 100vw;
-  height: 100vh;
+  width: 100%;
+  height: 100%;
   overflow: hidden;
   background:
-    radial-gradient(circle at 50% 42%, var(--accent-soft), transparent 30%),
+    radial-gradient(circle at 50% 44%, var(--accent-soft), transparent 46%),
     var(--bg);
   color: var(--fg);
 }
 
-:global([data-platform='macos']) .loadingScreen {
-  border-radius: 16px;
-  overflow: hidden;
-}
-
-.loadingMark {
-  width: min(60vmin, 520px);
-  height: auto;
+.loadingInner {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 20px;
   user-select: none;
   pointer-events: none;
+}
+
+/* Marca isolada (SVG) tingida por token → nítida e correta em dark e light,
+   sem o chrome glossy do ícone do app. */
+.loadingMark {
+  width: 128px;
+  height: 128px;
+  background: var(--fg);
+  -webkit-mask: url('./assets/alethe-mark.svg') center / contain no-repeat;
+  mask: url('./assets/alethe-mark.svg') center / contain no-repeat;
+  opacity: 0.94;
   animation:
     markIn 0.6s ease-out both,
-    breathe 4.4s ease-in-out 0.6s infinite;
+    breathe 4.6s ease-in-out 0.6s infinite;
+}
+
+.loadingWordmark {
+  font-family: var(--font-sans);
+  font-size: 13px;
+  font-weight: 600;
+  letter-spacing: 0.44em;
+  text-transform: uppercase;
+  color: var(--fg-muted);
+  padding-left: 0.44em;
+  animation: markIn 0.6s ease-out 0.14s both;
+}
+
+.loadingSpinner {
+  margin-top: 2px;
+  animation: markIn 0.6s ease-out 0.28s both;
 }
 
 @keyframes markIn {
   from {
     opacity: 0;
-    transform: scale(0.94);
+    transform: translateY(4px) scale(0.96);
   }
   to {
     opacity: 1;
-    transform: scale(1);
+    transform: translateY(0) scale(1);
   }
 }
 
 @keyframes breathe {
   0%,
   100% {
-    filter: drop-shadow(0 0 8px var(--accent-ring));
+    opacity: 0.82;
+    transform: scale(1);
   }
   50% {
-    filter: drop-shadow(0 0 28px color-mix(in srgb, var(--accent) 45%, transparent));
+    opacity: 1;
+    transform: scale(1.015);
   }
 }
 
 @media (prefers-reduced-motion: reduce) {
+  .sidebarContent,
+  .shellSeparator {
+    transition: none;
+  }
+
   .loadingMark {
     animation: none;
-    filter: drop-shadow(0 0 18px var(--accent-ring));
+    opacity: 0.94;
+  }
+
+  .loadingWordmark,
+  .loadingSpinner {
+    animation: none;
   }
 }
 

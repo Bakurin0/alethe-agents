@@ -23,7 +23,13 @@ export function NowPlayingWidget({ enabled }: Props) {
         onClick={() => void connect()}
         disabled={loading}
       >
-        {loading ? t('widget.authorizing') : `▶ ${t('widget.connectSpotify')}`}
+        <span className={styles.spotifyMark} aria-hidden="true">
+          <SpotifyGlyph />
+        </span>
+        <span className={styles.spotifyConnectInfo}>
+          <strong>{loading ? t('widget.authorizing') : t('widget.connectSpotify')}</strong>
+          <small>{t('widget.spotifyConnectHint')}</small>
+        </span>
       </button>
     )
   }
@@ -34,7 +40,7 @@ export function NowPlayingWidget({ enabled }: Props) {
   return (
     <button
       type="button"
-      className={styles.nowPlaying}
+      className={`${styles.nowPlaying} ${current.playing ? styles.nowPlayingActive : ''}`}
       aria-label={current.playing ? t('widget.nowPlaying') : t('widget.lastTrack')}
     >
       <div className={styles.nowPlayingCover}>
@@ -50,6 +56,11 @@ export function NowPlayingWidget({ enabled }: Props) {
         ) : (
           <Music size={18} />
         )}
+        {current.playing ? (
+          <span className={styles.nowPlayingCoverStatus}>
+            <Equalizer />
+          </span>
+        ) : null}
       </div>
       <div className={styles.nowPlayingInfo}>
         <div className={styles.nowPlayingTrack}>{current.track}</div>
@@ -63,6 +74,16 @@ export function NowPlayingWidget({ enabled }: Props) {
         </div>
       </div>
     </button>
+  )
+}
+
+function SpotifyGlyph() {
+  return (
+    <svg viewBox="0 0 24 24" aria-hidden="true">
+      <path d="M6.4 8.1c3.9-1.1 8.2-.7 11.5 1.1" />
+      <path d="M7.2 11.6c3.2-.9 6.9-.5 9.7 1" />
+      <path d="M8 15c2.6-.7 5.4-.4 7.7.8" />
+    </svg>
   )
 }
 

@@ -1,22 +1,49 @@
 .workspace {
   flex: 1;
+  width: 100%;
+  height: 100%;
   display: flex;
   flex-direction: column;
   background: var(--bg);
   min-width: 0;
+  min-height: 0;
+  overflow: hidden;
 }
 
 .area {
   flex: 1;
   position: relative;
-  padding: 10px;
+  padding: 0;
   overflow: hidden;
+  min-width: 0;
+  min-height: 0;
 }
 
 .singlePane,
 .fullSize {
   width: 100%;
   height: 100%;
+  min-width: 0;
+  min-height: 0;
+  overflow: hidden;
+}
+
+.fullSize :global([data-panel]) {
+  min-width: 0;
+  min-height: 0;
+  overflow: hidden;
+  transition: flex-grow 220ms cubic-bezier(0.16, 1, 0.3, 1), flex-basis 220ms cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+.fullSize :global([data-panel-group]:active [data-panel]),
+.fullSize :global([data-panel-group][data-resize-handle-active] [data-panel]) {
+  transition: none !important;
+}
+
+.gridCell {
+  min-width: 0;
+  min-height: 0;
+  overflow: hidden;
 }
 
 /* Separators visíveis com gap + dot handle ao hover. Usadas via prop
@@ -31,12 +58,15 @@
   transition: background 0.12s ease;
 }
 .sepH {
-  width: 12px;
+  /* Hitbox amplo; a linha continua fina no centro via ::before. */
+  width: 10px;
   cursor: col-resize;
+  background: transparent;
 }
 .sepV {
-  height: 12px;
+  height: 10px;
   cursor: row-resize;
+  background: transparent;
 }
 
 /* Linha sutil sempre visível no meio do separator. */
@@ -46,18 +76,18 @@
   position: absolute;
   background: var(--border-strong);
   border-radius: 2px;
-  opacity: 0.45;
+  opacity: 0.7;
   transition: opacity 0.12s ease, background 0.12s ease;
   top: 50%;
   left: 50%;
   transform: translate(-50%, -50%);
 }
 .sepH::before {
-  width: 2px;
+  width: 1px;
   height: 100%;
 }
 .sepV::before {
-  height: 2px;
+  height: 1px;
   width: 100%;
 }
 
@@ -79,19 +109,23 @@
   transform: translate(-50%, -50%);
 }
 .sepH::after {
-  width: 4px;
+  width: 3px;
   height: 36px;
 }
 .sepV::after {
-  height: 4px;
+  height: 3px;
   width: 36px;
 }
 .sepH:hover::after,
-.sepV:hover::after {
+.sepV:hover::after,
+.sepH[data-resize-handle-active]::after,
+.sepV[data-resize-handle-active]::after {
   opacity: 1;
 }
 .sepH:hover::before,
-.sepV:hover::before {
+.sepV:hover::before,
+.sepH[data-resize-handle-active]::before,
+.sepV[data-resize-handle-active]::before {
   opacity: 0;
 }
 

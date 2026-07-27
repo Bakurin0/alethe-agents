@@ -2,14 +2,16 @@
   flex: 1 1 auto;
   width: 100%;
   height: 100%;
+  max-height: 100%;
   min-width: 0;
   min-height: 0;
   position: relative;
   /* bg vem inline (cor do tema do xterm) pra a área de padding casar
      com o fundo do terminal — sem isso o padding mostraria o chrome. */
   background: var(--bg-sunken);
-  padding: 6px 6px 6px 10px;
+  padding: 4px 6px 2px 8px;
   overflow: hidden;
+  contain: size layout paint;
 }
 
 /* Realce quando um arquivo do SO está sendo arrastado sobre este pane. */
@@ -21,10 +23,25 @@
 .host :global(.xterm) {
   width: 100%;
   height: 100%;
+  max-width: 100%;
+  overflow: hidden;
+}
+
+.host :global(.xterm-screen),
+.host :global(.xterm-rows),
+.host :global(.xterm-helpers),
+.host :global(.xterm-text-layer),
+.host :global(.xterm-link-layer),
+.host :global(.xterm-cursor-layer) {
+  max-width: 100% !important;
+  overflow: hidden;
 }
 
 .host :global(.xterm .xterm-viewport) {
+  width: 100% !important;
+  max-width: 100%;
   overflow-y: scroll !important;
+  overflow-x: hidden !important;
   scrollbar-gutter: stable;
   background-color: transparent;
 }
@@ -106,105 +123,114 @@
   letter-spacing: 0.02em;
 }
 
-.linkActions {
+.linkMenu {
   position: fixed;
   z-index: 1200;
   display: flex;
-  align-items: center;
-  max-width: min(520px, calc(100vw - 24px));
-  gap: 8px;
-  padding: 7px 8px;
+  width: 272px;
+  max-width: calc(100vw - 20px);
+  max-height: calc(100vh - 20px);
+  flex-direction: column;
+  overflow: hidden;
   border: 1px solid var(--border-accent);
   border-radius: var(--radius-md);
-  background: color-mix(in srgb, var(--surface-modal) 96%, transparent);
+  background: var(--surface-modal);
   color: var(--fg);
   box-shadow: var(--shadow-lg);
-  transform: translate(-50%, calc(-100% - 5px));
-  animation: linkActionsIn 120ms ease-out;
+  animation: linkMenuIn 110ms ease-out;
+  user-select: none;
 }
 
-/* Ponte invisível cobrindo o gap link→tooltip pra o hover não "cair" no meio
-   do caminho e o tooltip sumir antes do clique. */
-.linkActions::before {
-  content: '';
-  position: absolute;
-  left: 0;
-  right: 0;
-  bottom: -14px;
-  height: 14px;
+.linkMenuHeader {
+  display: flex;
+  min-height: 39px;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 6px 6px 10px;
+  border-bottom: 1px solid var(--border-subtle);
+  background: var(--bg-sunken);
 }
 
-.linkActions::after {
-  content: '';
-  position: absolute;
-  left: 50%;
-  bottom: -5px;
-  width: 9px;
-  height: 9px;
-  border-right: 1px solid var(--border-accent);
-  border-bottom: 1px solid var(--border-accent);
-  background: inherit;
-  transform: translateX(-50%) rotate(45deg);
-}
-
-.linkActionsText {
+.linkMenuText {
   min-width: 0;
-  max-width: 320px;
+  flex: 1 1 auto;
   overflow: hidden;
   color: var(--fg-muted);
   font-family: var(--font-mono);
   font-size: 11px;
-  line-height: 1.2;
+  line-height: 1.3;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
 
-.linkActionsButtons {
-  position: relative;
-  z-index: 1;
-  display: flex;
-  align-items: center;
-  gap: 4px;
-  flex: 0 0 auto;
-}
-
-.linkActionBtn {
+.linkMenuClose {
   display: grid;
+  width: 27px;
+  height: 27px;
+  flex: 0 0 auto;
   place-items: center;
-  width: 28px;
-  height: 28px;
   border: 1px solid transparent;
   border-radius: var(--radius-sm);
   color: var(--fg-muted);
   background: transparent;
+}
+
+.linkMenuClose:hover {
+  color: var(--fg);
+  border-color: var(--border);
+  background: var(--accent-soft);
+}
+
+.linkMenuItems {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  overflow-y: auto;
+  padding: 5px;
+}
+
+.linkMenuItem {
+  display: flex;
+  width: 100%;
+  min-height: 34px;
+  align-items: center;
+  gap: 9px;
+  padding: 6px 9px;
+  border: 1px solid transparent;
+  border-radius: var(--radius-sm);
+  color: var(--fg-muted);
+  background: transparent;
+  font-size: 12px;
+  text-align: left;
   transition:
     background 100ms ease,
     border-color 100ms ease,
     color 100ms ease;
 }
 
-.linkActionBtn:hover:not(:disabled) {
+.linkMenuItem:hover,
+.linkMenuItem:focus-visible {
   color: var(--fg);
   border-color: var(--accent-border);
   background: var(--accent-soft);
+  outline: none;
 }
 
-.linkActionBtn:disabled {
-  cursor: default;
-  opacity: 0.38;
+.linkMenuItem svg {
+  flex: 0 0 auto;
 }
 
 @keyframes bootSpin {
   to { transform: rotate(360deg); }
 }
 
-@keyframes linkActionsIn {
+@keyframes linkMenuIn {
   from {
     opacity: 0;
-    transform: translate(-50%, calc(-100% - 2px)) scale(0.98);
+    transform: translateY(-3px) scale(0.98);
   }
   to {
     opacity: 1;
-    transform: translate(-50%, calc(-100% - 5px)) scale(1);
+    transform: translateY(0) scale(1);
   }
 }

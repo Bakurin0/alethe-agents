@@ -1,5 +1,5 @@
 import { create } from 'zustand'
-import type { ClaudeUsage, CodexUsage, MemoryStats } from '../lib/tauri'
+import type { AntigravityUsage, ClaudeUsage, CodexUsage, MemoryStats, RuntimeSnapshot } from '../lib/tauri'
 import type { AgentType } from '../lib/types'
 import type { UpdateInfo } from '../lib/updater'
 
@@ -15,6 +15,7 @@ type ModalKind =
   | 'editGroup'
   | 'editProject'
   | 'newTerminal'
+  | 'addContent'
   | 'newSubTab'
   | 'preferences'
   | 'findJump'
@@ -23,14 +24,17 @@ type ModalKind =
   | 'layoutDesigner'
   | 'suspendGroup'
   | 'memoryAnalytics'
+  | 'aiUsage'
   | 'themePicker'
   | 'profiles'
   | 'sync'
+  | 'todoSettings'
   | 'topbarSettings'
   | 'updateAvailable'
   | null
 
 export type ActiveView = 'home' | 'workspace' | 'agentCanvas'
+export type RightSidebarMode = 'todo' | 'markdown'
 
 export type MemorySample = MemoryStats & {
   ts: number
@@ -53,12 +57,13 @@ type UiState = {
   openModal: ModalKind
   modalContext: Record<string, unknown> | null
   showMainMenu: boolean
-  sidebarVisible: boolean
   ramMb: number | null
   memoryStats: MemoryStats | null
+  runtimeSnapshot: RuntimeSnapshot | null
   memoryHistory: MemorySample[]
   claudeUsage: ClaudeUsage | null
   codexUsage: CodexUsage | null
+  antigravityUsage: AntigravityUsage | null
   /** ID do terminal em focus mode (overlay fullscreen blur). null = sem focus. */
   focusedTerminalId: string | null
   /** Pulso pra requisitar foco num pane específico (sidebar click). */
@@ -66,6 +71,9 @@ type UiState = {
   activeTerminal: { projectId: string; terminalId: string } | null
   /** View principal sendo exibida no main. */
   activeView: ActiveView
+  /** Conteúdo contextual da sidebar direita. */
+  rightSidebarMode: RightSidebarMode
+  rightSidebarMarkdown: { path: string; title: string } | null
   /** POC do agent canvas: pasta escolhida + id do PTY do claude embutido. */
   agentCanvasSession: { folder: string; ptyId: string } | null
   /** Teto de gasto (USD) da sessão do canvas. null = sem teto. */
@@ -82,17 +90,20 @@ type UiState = {
   openModal_: (kind: Exclude<ModalKind, null>, context?: Record<string, unknown>) => void
   closeModal: () => void
   toggleMainMenu: () => void
-  toggleSidebar: () => void
   setRamMb: (value: number | null) => void
   addMemorySample: (value: MemoryStats) => void
+  setRuntimeSnapshot: (value: RuntimeSnapshot | null) => void
   clearMemoryHistory: () => void
   setClaudeUsage: (value: ClaudeUsage | null) => void
   setCodexUsage: (value: CodexUsage | null) => void
+  setAntigravityUsage: (value: AntigravityUsage | null) => void
   setFocusedTerminal: (id: string | null) => void
   requestPaneFocus: (terminalId: string) => void
   setActiveTerminal: (projectId: string, terminalId: string) => void
   setActiveView: (v: ActiveView) => void
   toggleHome: () => void
+  openMarkdownSidebar: (path: string, title?: string) => void
+  showTodoSidebar: () => void
   setAgentCanvasSession: (session: { folder: string; ptyId: string } | null) => void
   setAgentCanvasBudget: (usd: number | null) => void
   pushToast: (toast: {
@@ -113,16 +124,19 @@ export const useUiStore = create<UiState>((set) => ({
   openModal: null,
   modalContext: null,
   showMainMenu: false,
-  sidebarVisible: true,
   ramMb: null,
   memoryStats: null,
+  runtimeSnapshot: null,
   memoryHistory: [],
   claudeUsage: null,
   codexUsage: null,
+  antigravityUsage: null,
   focusedTerminalId: null,
   focusRequest: null,
   activeTerminal: null,
   activeView: 'workspace',
+  rightSidebarMode: 'todo',
+  rightSidebarMarkdown: null,
   agentCanvasSession: null,
   agentCanvasBudgetUsd: null,
   toasts: [],
@@ -133,7 +147,6 @@ export const useUiStore = create<UiState>((set) => ({
   openModal_: (kind, context) => set({ openModal: kind, modalContext: context ?? null }),
   closeModal: () => set({ openModal: null, modalContext: null }),
   toggleMainMenu: () => set((s) => ({ showMainMenu: !s.showMainMenu })),
-  toggleSidebar: () => set((s) => ({ sidebarVisible: !s.sidebarVisible })),
   setRamMb: (value) => set({ ramMb: value }),
   addMemorySample: (value) =>
     set((s) => ({
@@ -141,9 +154,11 @@ export const useUiStore = create<UiState>((set) => ({
       memoryStats: value,
       memoryHistory: [...s.memoryHistory, { ...value, ts: Date.now() }].slice(-MAX_MEMORY_HISTORY),
     })),
+  setRuntimeSnapshot: (value) => set({ runtimeSnapshot: value }),
   clearMemoryHistory: () => set({ memoryHistory: [] }),
   setClaudeUsage: (value) => set({ claudeUsage: value }),
   setCodexUsage: (value) => set({ codexUsage: value }),
+  setAntigravityUsage: (value) => set({ antigravityUsage: value }),
   setFocusedTerminal: (id) => set({ focusedTerminalId: id }),
   requestPaneFocus: (terminalId) => set({ focusRequest: { terminalId, ts: Date.now() } }),
   setActiveTerminal: (projectId, terminalId) => set({ activeTerminal: { projectId, terminalId } }),
@@ -151,6 +166,12 @@ export const useUiStore = create<UiState>((set) => ({
     set((s) => (s.activeView === v ? s : { activeView: v })),
   toggleHome: () =>
     set((s) => ({ activeView: s.activeView === 'home' ? 'workspace' : 'home' })),
+  openMarkdownSidebar: (path, title) =>
+    set({
+      rightSidebarMode: 'markdown',
+      rightSidebarMarkdown: { path, title: title || path.split(/[\\/]/).pop() || path },
+    }),
+  showTodoSidebar: () => set({ rightSidebarMode: 'todo', rightSidebarMarkdown: null }),
   setAgentCanvasSession: (session) => set({ agentCanvasSession: session }),
   setAgentCanvasBudget: (usd) => set({ agentCanvasBudgetUsd: usd }),
   pushToast: ({ title, body, agent, silent }) =>
@@ -162,10 +183,10 @@ export const useUiStore = create<UiState>((set) => ({
         createdAt: Date.now(),
         agent,
       }
-      return {
-        toasts: silent ? s.toasts : [entry, ...s.toasts].slice(0, MAX_TOASTS),
-        notifications: [entry, ...s.notifications].slice(0, MAX_NOTIFICATIONS),
-      }
+      const notifications = [entry, ...s.notifications].slice(0, MAX_NOTIFICATIONS)
+      if (silent) return { notifications }
+      const toasts = [...s.toasts, entry].slice(-MAX_TOASTS)
+      return { toasts, notifications }
     }),
   dismissToast: (id) =>
     set((s) => ({ toasts: s.toasts.filter((toast) => toast.id !== id) })),

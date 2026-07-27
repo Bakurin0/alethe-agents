@@ -1,53 +1,21 @@
 .sidebar {
-  width: clamp(240px, 21vw, 340px);
-  min-width: 220px;
-  max-width: min(380px, 42vw);
+  width: 100%;
+  min-width: 0;
   height: 100%;
-  background: var(--bg-sunken);
-  border-right: 1px solid var(--border);
+  /* Orca keeps the navigation one step above the workbench, without a loose accent block. */
+  background: var(--bg);
   display: flex;
   flex-direction: column;
   overflow: hidden;
-  resize: horizontal;
-}
-
-.homeRow {
-  padding: 8px 8px 6px;
-  border-bottom: 1px solid var(--border);
-}
-
-.homeBtn {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  width: 100%;
-  padding: 7px 10px;
-  border-radius: var(--radius-sm);
-  font-size: 12px;
-  font-weight: 500;
-  color: var(--fg-muted);
-  cursor: pointer;
-  background: transparent;
-  text-align: left;
-}
-
-.homeBtn:hover {
-  background: var(--panel-hover);
-  color: var(--fg);
-}
-
-.homeBtnActive,
-.homeBtnActive:hover {
-  background: var(--accent-faint);
-  color: var(--fg);
 }
 
 .sidebarTabs {
   display: flex;
   align-items: center;
-  gap: 2px;
-  height: 38px;
-  padding: 0 8px;
+  justify-content: flex-start;
+  gap: 4px;
+  min-height: 34px;
+  padding: 4px 10px;
   border-bottom: 1px solid var(--border);
 }
 
@@ -55,20 +23,27 @@
   display: flex;
   align-items: center;
   justify-content: center;
-  width: 32px;
-  height: 100%;
+  width: 28px;
+  height: 26px;
+  flex: 0 0 28px;
   padding: 0;
-  border-bottom: 2px solid transparent;
+  border: 1px solid transparent;
+  border-radius: var(--radius-sm);
   color: var(--fg-muted);
   cursor: pointer;
   background: transparent;
+}
+
+.sidebarTab span {
+  display: none;
 }
 .sidebarTab:hover {
   background: var(--panel-hover);
   color: var(--fg);
 }
 .sidebarTabActive {
-  border-bottom-color: var(--accent);
+  border-color: var(--border);
+  background: var(--panel-hover);
   color: var(--fg);
 }
 
@@ -92,7 +67,7 @@
 .explorerPanel {
   flex: 1;
   min-height: 0;
-  background: var(--bg-sunken);
+  background: var(--bg);
   display: flex;
   flex-direction: column;
   overflow: hidden;
@@ -149,7 +124,7 @@
   flex: 1;
   overflow-y: auto;
   overflow-x: hidden;
-  padding: 0 4px 6px;
+  padding: 4px 5px 8px;
   min-height: 0;
   scrollbar-gutter: stable;
 }
@@ -162,7 +137,7 @@
 }
 
 .projectNode {
-  margin-bottom: 2px;
+  margin-bottom: 1px;
   min-width: 0;
 }
 
@@ -170,7 +145,8 @@
   display: flex;
   align-items: center;
   gap: 6px;
-  padding: 5px 6px;
+  min-height: 29px;
+  padding: 4px 5px;
   border-radius: var(--radius-sm);
   font-size: 13px;
   color: var(--fg);
@@ -183,11 +159,11 @@
   background: var(--panel-hover);
 }
 .projectActive {
-  background: var(--accent-faint);
+  background: var(--panel);
   color: var(--fg);
 }
 .projectActive:hover {
-  background: var(--accent-faint);
+  background: var(--panel);
 }
 .projectDropTarget {
   outline: 1.5px dashed var(--accent);
@@ -215,10 +191,11 @@
 
 /* Indicador de Projeto: quadradinho com cantos arredondados (■). */
 .projectChip {
-  width: 9px;
-  height: 9px;
-  border-radius: 2px;
-  background: var(--fg-faint);
+  width: 16px;
+  height: 16px;
+  display: grid;
+  place-items: center;
+  color: var(--fg-muted);
   flex-shrink: 0;
 }
 
@@ -233,36 +210,31 @@
 /* ------------ Group ------------ */
 
 .groupBox {
-  position: relative;
-  margin: 14px 4px 8px;
-  padding: 14px 4px 6px;
-  border: 1px solid color-mix(in srgb, var(--group-color, var(--border)) 35%, transparent);
-  border-radius: var(--radius-md);
+  margin: 5px 0 3px;
+  padding: 0;
   min-width: 0;
 }
 
 .groupTag {
-  position: absolute;
-  top: -10px;
-  left: 8px;
-  display: inline-flex;
+  display: flex;
   align-items: center;
   gap: 6px;
-  padding: 2px 8px 2px 4px;
-  background: var(--bg-sunken);
+  width: 100%;
+  height: 28px;
+  padding: 0 5px;
+  background: transparent;
   font-size: 10px;
   font-weight: 700;
   text-transform: uppercase;
   letter-spacing: 0.06em;
   color: var(--fg-muted);
   border-radius: var(--radius-sm);
-  height: 18px;
   cursor: pointer;
-  z-index: 2;
-  max-width: calc(100% - 16px);
+  max-width: 100%;
 }
 .groupTag:hover {
   color: var(--fg);
+  background: var(--panel-hover);
 }
 
 .groupChevronBtn {
@@ -281,9 +253,10 @@
 
 /* Indicador de Grupo: bullet redondo (●) ou ícone de imagem. */
 .groupBullet {
-  width: 8px;
-  height: 8px;
-  border-radius: 50%;
+  width: 16px;
+  height: 16px;
+  display: grid;
+  place-items: center;
   flex-shrink: 0;
 }
 
@@ -308,13 +281,14 @@
   display: flex;
   flex-direction: column;
   gap: 1px;
-  padding: 4px 0 0;
+  margin-left: 11px;
+  padding: 1px 0 2px 5px;
+  border-left: 1px solid color-mix(in srgb, var(--group-color, var(--border)) 28%, var(--border));
   min-width: 0;
 }
 
 .groupEmpty {
-  padding: 12px 8px;
-  text-align: center;
+  padding: 7px 8px;
   font-size: 11px;
   color: var(--fg-faint);
 }
@@ -324,8 +298,9 @@
   display: flex;
   align-items: center;
   gap: 6px;
-  margin: 6px 4px 4px;
-  padding: 6px 8px;
+  margin: 4px 0 2px;
+  min-height: 28px;
+  padding: 4px 5px;
   border-radius: var(--radius-sm);
   cursor: pointer;
   user-select: none;
@@ -386,8 +361,8 @@
 
 /* Seção "Solto" */
 .ungroupedSection {
-  margin-top: 12px;
-  padding: 0 4px;
+  margin-top: 8px;
+  padding: 0;
 }
 .ungroupedHeader {
   font-size: 10px;
@@ -395,7 +370,7 @@
   text-transform: uppercase;
   letter-spacing: 0.06em;
   color: var(--fg-faint);
-  padding: 6px 8px 4px;
+  padding: 6px 6px 3px;
 }
 .ungroupedBody {
   display: flex;
@@ -404,27 +379,30 @@
 }
 
 .projectName {
-  flex: 1;
+  min-width: 0;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
   font-weight: 500;
+  color: var(--fg);
+  font-size: 12.5px;
 }
 
 .count {
+  font-family: var(--font-mono);
   font-size: 10px;
   font-weight: 600;
   color: var(--fg-faint);
-  background: var(--panel);
-  border-radius: 9px;
-  padding: 0 6px;
-  min-width: 18px;
-  text-align: center;
+  padding: 0 3px;
+  min-width: 20px;
+  text-align: right;
   line-height: 16px;
+  font-variant-numeric: tabular-nums;
+  flex: none;
 }
 
 .terminals {
-  margin-left: clamp(12px, 8%, 22px);
+  margin-left: 14px;
   border-left: 1px solid var(--border);
   padding-left: 4px;
   margin-top: 2px;
@@ -435,7 +413,8 @@
   display: flex;
   align-items: center;
   gap: 6px;
-  padding: 4px 6px;
+  min-height: 27px;
+  padding: 3px 5px;
   border-radius: var(--radius-sm);
   font-size: 12px;
   color: var(--fg-muted);
@@ -486,6 +465,102 @@
   white-space: nowrap;
 }
 
+.terminalLoading {
+  color: var(--status-working);
+  flex: 0 0 auto;
+  margin-right: -2px;
+}
+
+/* ⋯ sempre visível e discreto (sem opacity:0 → sem "espaço fantasma"). */
+.terminalMenuBtn {
+  width: 20px;
+  height: 20px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex: 0 0 20px;
+  border-radius: var(--radius-sm);
+  color: var(--text-quaternary);
+  cursor: pointer;
+}
+
+.terminalRow:hover .terminalMenuBtn,
+.terminalRow:focus-within .terminalMenuBtn {
+  color: var(--text-tertiary);
+}
+
+.terminalMenuBtn:hover {
+  background: var(--panel-hover);
+  color: var(--fg);
+}
+
+/* ⋯ das linhas de projeto (roster + header do card ativo). */
+.rowMenuBtn {
+  width: 22px;
+  height: 22px;
+  display: grid;
+  place-items: center;
+  flex: none;
+  border-radius: var(--radius-sm);
+  color: var(--text-quaternary);
+  cursor: pointer;
+}
+.inactiveProjectNode:hover .rowMenuBtn {
+  color: var(--text-tertiary);
+}
+.rowMenuBtn:hover {
+  background: var(--panel-hover);
+  color: var(--fg);
+}
+
+/* Gutter de estado do terminal (loader / done / idle) — 16px, à esquerda. */
+.terminalState {
+  width: 16px;
+  display: grid;
+  place-items: center;
+  flex: none;
+}
+.terminalIdle {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  box-shadow: 0 0 0 1.4px var(--text-quaternary) inset;
+}
+
+/* Terminal em FOCO: fundo + ring off-white + tag (nada de stripe colorida). */
+.terminalFocused {
+  background: var(--panel-hover);
+  color: var(--fg);
+  box-shadow: 0 0 0 1px var(--accent-border) inset;
+}
+.focusTag {
+  font-family: var(--font-mono);
+  font-size: 8.5px;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--text-tertiary);
+  border: 1px solid var(--border-strong);
+  border-radius: 3px;
+  padding: 0 4px;
+  line-height: 13px;
+  flex: none;
+}
+
+/* Monograma do projeto/grupo (substitui o Folder genérico). */
+.monogram {
+  display: grid;
+  place-items: center;
+  flex: none;
+  border-radius: 6px;
+  color: #fff;
+  font-family: var(--font-mono);
+  font-weight: 700;
+  letter-spacing: -0.02em;
+  line-height: 1;
+  text-transform: lowercase;
+  box-shadow: 0 0 0 1px rgba(255, 255, 255, 0.08) inset;
+}
+
 .layoutFooter {
   border-top: 1px solid var(--border);
   padding: 8px 12px 10px;
@@ -516,14 +591,41 @@
 }
 
 @media (max-width: 900px) {
-  .sidebar {
-    width: clamp(220px, 32vw, 300px);
-    max-width: 48vw;
-  }
-
   .layoutLabel {
     display: none;
   }
+}
+
+.projectRow > .iconBtn,
+.projectRow > .projectQuickBtn,
+.groupTag > .iconBtn {
+  opacity: 0;
+}
+
+.projectRow:hover > .iconBtn,
+.projectRow:focus-within > .iconBtn,
+.projectRow:hover > .projectQuickBtn,
+.projectRow:focus-within > .projectQuickBtn,
+.groupTag:hover > .iconBtn,
+.groupTag:focus-within > .iconBtn {
+  opacity: 1;
+}
+
+.projectQuickBtn {
+  width: 20px;
+  height: 20px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex: 0 0 20px;
+  border-radius: var(--radius-sm);
+  color: var(--fg-muted);
+  cursor: pointer;
+}
+
+.projectQuickBtn:hover {
+  color: var(--fg);
+  background: var(--panel-hover);
 }
 
 .layoutBtn {
@@ -568,4 +670,222 @@
   font-weight: 800;
   line-height: 1;
   flex-shrink: 0;
+}
+
+/* Navigation Quick Items at Top */
+.quickNavList {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: 6px 8px;
+  border-bottom: 1px solid var(--border);
+}
+
+.quickNavItem {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 6px 8px;
+  border-radius: var(--radius-sm);
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--fg-muted);
+  background: transparent;
+  border: none;
+  cursor: pointer;
+  width: 100%;
+  text-align: left;
+  transition: background 0.15s, color 0.15s;
+}
+
+.quickNavItem:hover {
+  background: var(--panel-hover);
+  color: var(--fg);
+}
+
+.quickNavIcon {
+  color: var(--text-tertiary);
+  flex-shrink: 0;
+}
+
+/* Card Style Active Project (Matches Reference Image) */
+.activeCard {
+  background: color-mix(in srgb, var(--panel) 92%, #ffffff 5%);
+  border: 1px solid color-mix(in srgb, var(--border-strong) 80%, #ffffff 10%);
+  border-radius: 12px;
+  padding: 10px 12px;
+  margin: 6px 2px;
+  box-shadow: 0 4px 14px rgba(0, 0, 0, 0.2);
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.activeCardHeader {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+}
+
+.statusHookIcon {
+  color: #f59e0b;
+  font-size: 13px;
+  line-height: 1;
+  font-weight: 700;
+  flex-shrink: 0;
+}
+
+.activeCardTitle {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--fg);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  flex: 1;
+}
+
+.badgePrimary {
+  font-size: 10px;
+  font-weight: 500;
+  color: var(--text-tertiary);
+  background: color-mix(in srgb, var(--bg-elevated) 90%, #ffffff 8%);
+  border: 1px solid var(--border);
+  padding: 1px 6px;
+  border-radius: 4px;
+  text-transform: lowercase;
+  flex-shrink: 0;
+}
+
+.activeCardAgentsList {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  margin-top: 0;
+  padding-left: 0;
+}
+
+.cardAgentRow {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 12px;
+  color: var(--fg-muted);
+  padding: 3px 6px;
+  border-radius: 6px;
+  cursor: pointer;
+  transition: background 0.12s, color 0.12s;
+}
+
+.cardAgentRow:hover {
+  background: var(--panel-hover);
+  color: var(--fg);
+}
+
+.cardAgentRowActive {
+  background: color-mix(in srgb, var(--panel-hover) 80%, var(--accent-soft) 20%);
+  color: var(--fg);
+}
+
+.cardAgentStatusDot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: #10b981;
+  flex-shrink: 0;
+}
+
+.cardAgentStatusDotRunning {
+  background: #f59e0b;
+  box-shadow: 0 0 6px rgba(245, 158, 11, 0.6);
+}
+
+.cardAgentName {
+  flex: 1;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.cardAgentTime {
+  font-family: var(--font-mono);
+  font-size: 10px;
+  color: var(--text-quaternary);
+  flex-shrink: 0;
+}
+
+/* Inactive Project Node (roster flat: gutter · monograma · nome/branch · count · ⋯) */
+.inactiveProjectNode {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 34px;
+  padding: 4px 4px 4px 8px;
+  border-radius: var(--radius-md);
+  cursor: pointer;
+  transition: background 0.12s;
+}
+
+.inactiveProjectNode:hover {
+  background: var(--panel-hover);
+}
+
+.inactiveMain {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+}
+
+.inactiveBranch {
+  font-family: var(--font-mono);
+  font-size: 10px;
+  color: var(--text-quaternary);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* Gutter de estado (esquerda): loader dot-matrix quando há trabalho, senão o dot. */
+.stateGutter {
+  width: 16px;
+  display: grid;
+  place-items: center;
+  flex: none;
+}
+
+.rosterLoading {
+  color: var(--status-working);
+}
+
+.inactiveProjectTitleRow {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--fg);
+}
+
+.inactiveDot {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: var(--text-quaternary);
+  flex-shrink: 0;
+}
+
+.inactiveDotActive {
+  background: #10b981;
+}
+
+.inactiveSubtitle {
+  font-size: 11px;
+  color: var(--text-tertiary);
+  padding-left: 15px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }

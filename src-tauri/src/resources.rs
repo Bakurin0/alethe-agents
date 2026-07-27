@@ -1,0 +1,687 @@
+use serde::{Deserialize, Serialize};
+use std::collections::{HashMap, HashSet};
+use std::sync::Mutex;
+use std::time::{Duration, SystemTime, UNIX_EPOCH};
+use sysinfo::{Pid, System};
+use tauri::{AppHandle, Emitter, State};
+
+use crate::pty::{self, PtySessions};
+use crate::stats::MemoryStats;
+
+const SAMPLE_INTERVAL: Duration = Duration::from_secs(5);
+const META_STALE_MS: u64 = 30_000;
+
+#[derive(Clone, Debug, Deserialize, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ResourcePolicy {
+    pub mode: String,
+    pub memory_budget_mb: f64,
+    pub warning_threshold_mb: f64,
+    pub recovery_target_mb: f64,
+    pub hidden_agent_idle_minutes: u64,
+    pub hidden_shell_idle_minutes: u64,
+    pub spawn_grace_seconds: u64,
+}
+
+impl Default for ResourcePolicy {
+    fn default() -> Self {
+        Self {
+            // Monitoring is safe by default. Terminating an existing PTY must
+            // only happen after the user explicitly opts in from Preferences.
+            mode: "manual".to_string(),
+            memory_budget_mb: 1536.0,
+            warning_threshold_mb: 1229.0,
+            recovery_target_mb: 1152.0,
+            hidden_agent_idle_minutes: 15,
+            hidden_shell_idle_minutes: 30,
+            spawn_grace_seconds: 120,
+        }
+    }
+}
+
+impl ResourcePolicy {
+    fn normalized(mut self) -> Self {
+        self.mode = if self.mode == "manual" {
+            "manual".to_string()
+        } else {
+            "smart-lru".to_string()
+        };
+        self.memory_budget_mb = self.memory_budget_mb.clamp(768.0, 8192.0);
+        self.warning_threshold_mb = self
+            .warning_threshold_mb
+            .clamp(512.0, self.memory_budget_mb - 64.0);
+        self.recovery_target_mb = self
+            .recovery_target_mb
+            .clamp(384.0, self.warning_threshold_mb - 64.0);
+        self.hidden_agent_idle_minutes = self.hidden_agent_idle_minutes.clamp(5, 240);
+        self.hidden_shell_idle_minutes = self.hidden_shell_idle_minutes.clamp(5, 480);
+        self.spawn_grace_seconds = self.spawn_grace_seconds.clamp(30, 900);
+        self
+    }
+}
+
+#[derive(Clone, Debug, Deserialize, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct PtyRuntimeMeta {
+    pub id: String,
+    pub kind: String,
+    pub status: String,
+    pub visible: bool,
+    pub focused: bool,
+    pub protected: bool,
+    pub last_io_at_ms: u64,
+    pub spawned_at_ms: u64,
+    pub last_used_at_ms: u64,
+    pub reported_at_ms: u64,
+}
+
+#[derive(Clone, Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct RuntimeProcess {
+    pub pid: u32,
+    pub parent_pid: Option<u32>,
+    pub name: String,
+    pub working_set_mb: f64,
+    pub private_commit_mb: f64,
+    pub cpu_percent: f32,
+}
+
+#[derive(Clone, Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct PtyResourceStats {
+    pub id: String,
+    pub root_pid: Option<u32>,
+    pub command: Option<String>,
+    pub cwd: Option<String>,
+    pub process_count: usize,
+    pub working_set_mb: f64,
+    pub private_commit_mb: f64,
+    pub effective_memory_mb: f64,
+    pub processes: Vec<RuntimeProcess>,
+}
+
+#[derive(Clone, Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct PressureState {
+    pub level: &'static str,
+    pub spawn_blocked: bool,
+    pub automatic: bool,
+    pub candidate_count: usize,
+    pub last_suspended_id: Option<String>,
+}
+
+#[derive(Clone, Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct RuntimeSnapshot {
+    pub sampled_at_ms: u64,
+    pub memory: MemoryStats,
+    pub private_commit_mb: f64,
+    pub effective_total_mb: f64,
+    pub ptys: Vec<PtyResourceStats>,
+    pub pressure: PressureState,
+}
+
+#[derive(Clone, Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+struct ResourcePressurePayload {
+    level: &'static str,
+    total_mb: f64,
+    budget_mb: f64,
+    spawn_blocked: bool,
+    candidate_count: usize,
+    suspended_id: Option<String>,
+}
+
+struct ResourceState {
+    policy: ResourcePolicy,
+    metas: HashMap<String, PtyRuntimeMeta>,
+    latest: Option<RuntimeSnapshot>,
+    pressure_active: bool,
+    last_level: &'static str,
+}
+
+pub struct ResourceSupervisor {
+    state: Mutex<ResourceState>,
+    system: Mutex<System>,
+}
+
+impl Default for ResourceSupervisor {
+    fn default() -> Self {
+        Self {
+            state: Mutex::new(ResourceState {
+                policy: ResourcePolicy::default(),
+                metas: HashMap::new(),
+                latest: None,
+                pressure_active: false,
+                last_level: "normal",
+            }),
+            system: Mutex::new(System::new()),
+        }
+    }
+}
+
+fn now_ms() -> u64 {
+    SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .map(|duration| duration.as_millis() as u64)
+        .unwrap_or(0)
+}
+
+fn process_private_commit_bytes(pid: u32, fallback: u64) -> u64 {
+    #[cfg(windows)]
+    {
+        use std::mem::size_of;
+        use windows_sys::Win32::Foundation::CloseHandle;
+        use windows_sys::Win32::System::ProcessStatus::{
+            K32GetProcessMemoryInfo, PROCESS_MEMORY_COUNTERS, PROCESS_MEMORY_COUNTERS_EX,
+        };
+        use windows_sys::Win32::System::Threading::{
+            OpenProcess, PROCESS_QUERY_LIMITED_INFORMATION, PROCESS_VM_READ,
+        };
+
+        unsafe {
+            let process = OpenProcess(
+                PROCESS_QUERY_LIMITED_INFORMATION | PROCESS_VM_READ,
+                0,
+                pid,
+            );
+            if process.is_null() {
+                return fallback;
+            }
+            let mut counters = PROCESS_MEMORY_COUNTERS_EX::default();
+            counters.cb = size_of::<PROCESS_MEMORY_COUNTERS_EX>() as u32;
+            let ok = K32GetProcessMemoryInfo(
+                process,
+                (&mut counters as *mut PROCESS_MEMORY_COUNTERS_EX).cast::<PROCESS_MEMORY_COUNTERS>(),
+                counters.cb,
+            );
+            let _ = CloseHandle(process);
+            if ok != 0 {
+                return counters.PrivateUsage as u64;
+            }
+        }
+    }
+    #[cfg(target_os = "linux")]
+    {
+        // smaps_rollup já vem agregado pelo kernel (rápido, sem parsear o
+        // /proc/<pid>/smaps inteiro). Private_Clean + Private_Dirty é a
+        // memória exclusiva do processo — soma entre processos sem contar
+        // páginas compartilhadas (libs, forks) mais de uma vez, ao contrário
+        // do RSS bruto do sysinfo.
+        if let Ok(content) = std::fs::read_to_string(format!("/proc/{pid}/smaps_rollup")) {
+            let mut private_kb = 0_u64;
+            let mut found = false;
+            for line in content.lines() {
+                let value = line
+                    .strip_prefix("Private_Clean:")
+                    .or_else(|| line.strip_prefix("Private_Dirty:"));
+                if let Some(rest) = value {
+                    if let Some(kb) = rest.trim().split_whitespace().next().and_then(|v| v.parse::<u64>().ok()) {
+                        private_kb += kb;
+                        found = true;
+                    }
+                }
+            }
+            if found {
+                return private_kb * 1024;
+            }
+        }
+    }
+    fallback
+}
+
+fn descendants(root: u32, children: &HashMap<u32, Vec<u32>>) -> HashSet<u32> {
+    let mut result = HashSet::new();
+    let mut stack = vec![root];
+    while let Some(pid) = stack.pop() {
+        if !result.insert(pid) {
+            continue;
+        }
+        if let Some(next) = children.get(&pid) {
+            stack.extend(next.iter().copied());
+        }
+    }
+    result
+}
+
+impl ResourceSupervisor {
+    fn collect(&self, sessions: &PtySessions) -> RuntimeSnapshot {
+        let roots = sessions
+            .lock()
+            .ok()
+            .map(|sessions| {
+                sessions
+                    .iter()
+                    .map(|(id, session)| {
+                        (
+                            id.clone(),
+                            session.child.lock().ok().and_then(|child| child.process_id()),
+                            session.command.clone(),
+                            session.cwd.clone(),
+                        )
+                    })
+                    .collect::<Vec<_>>()
+            })
+            .unwrap_or_default();
+
+        let mut system = self.system.lock().unwrap_or_else(|p| p.into_inner());
+        system.refresh_processes(sysinfo::ProcessesToUpdate::All);
+        system.refresh_memory();
+
+        let mut children = HashMap::<u32, Vec<u32>>::new();
+        for (pid, process) in system.processes() {
+            // No Linux, sysinfo lista as threads de /proc/<pid>/task/<tid> como
+            // entradas próprias no mesmo mapa de processos (cada uma com o pid
+            // real como "parent"). thread_kind() é Some(..) só pra essas —
+            // sem filtrar, cada thread reconta a memória inteira do processo
+            // (RSS/privada é por processo, compartilhada entre threads), o que
+            // infla processo e memória em várias vezes (WebKitWebProcess por
+            // ex. roda ~30 threads).
+            if process.thread_kind().is_some() {
+                continue;
+            }
+            if let Some(parent) = process.parent() {
+                children
+                    .entry(parent.as_u32())
+                    .or_default()
+                    .push(pid.as_u32());
+            }
+        }
+
+        let app_pid = std::process::id();
+        let app_tree = descendants(app_pid, &children);
+        let mut app_bytes = 0_u64;
+        let mut webview_bytes = 0_u64;
+        let mut pty_bytes = 0_u64;
+        let mut private_total = 0_u64;
+        for pid in &app_tree {
+            let Some(process) = system.process(Pid::from_u32(*pid)) else {
+                continue;
+            };
+            let working = process.memory();
+            // Soma de working-set/RSS bruto conta páginas compartilhadas
+            // (libs, forks) uma vez POR PROCESSO — com dezenas de processos
+            // isso infla o total muito além da RAM física real. A memória
+            // privada (não-compartilhada) é a que soma corretamente entre
+            // processos.
+            let private = process_private_commit_bytes(*pid, working);
+            private_total += private;
+            let name = process.name().to_string_lossy().to_ascii_lowercase();
+            if *pid == app_pid || name.contains("alethe") {
+                app_bytes += private;
+            } else if name.contains("msedgewebview2") || name.contains("webkit") {
+                webview_bytes += private;
+            } else {
+                pty_bytes += private;
+            }
+        }
+
+        let to_mb = |bytes: u64| bytes as f64 / 1024.0 / 1024.0;
+        let memory = MemoryStats {
+            total_mb: to_mb(app_bytes + webview_bytes + pty_bytes),
+            app_mb: to_mb(app_bytes),
+            webview_mb: to_mb(webview_bytes),
+            ptys_mb: to_mb(pty_bytes),
+            process_count: app_tree.len(),
+            system_total_mb: to_mb(system.total_memory()),
+            system_available_mb: to_mb(system.available_memory()),
+        };
+
+        let mut ptys = roots
+            .into_iter()
+            .map(|(id, root_pid, command, cwd)| {
+                let tree = root_pid
+                    .map(|pid| descendants(pid, &children))
+                    .unwrap_or_default();
+                let mut working = 0_u64;
+                let mut private = 0_u64;
+                let mut processes = tree
+                    .iter()
+                    .filter_map(|pid| {
+                        let process = system.process(Pid::from_u32(*pid))?;
+                        let process_working = process.memory();
+                        let process_private = process_private_commit_bytes(*pid, process_working);
+                        working += process_working;
+                        private += process_private;
+                        Some(RuntimeProcess {
+                            pid: *pid,
+                            parent_pid: process.parent().map(|parent| parent.as_u32()),
+                            name: process.name().to_string_lossy().to_string(),
+                            working_set_mb: to_mb(process_working),
+                            private_commit_mb: to_mb(process_private),
+                            cpu_percent: process.cpu_usage(),
+                        })
+                    })
+                    .collect::<Vec<_>>();
+                processes.sort_by(|a, b| {
+                    b.effective_memory()
+                        .total_cmp(&a.effective_memory())
+                });
+                PtyResourceStats {
+                    id,
+                    root_pid,
+                    command,
+                    cwd,
+                    process_count: tree.len(),
+                    working_set_mb: to_mb(working),
+                    private_commit_mb: to_mb(private),
+                    effective_memory_mb: to_mb(working.max(private)),
+                    processes: processes.into_iter().take(12).collect(),
+                }
+            })
+            .collect::<Vec<_>>();
+        ptys.sort_by(|a, b| b.effective_memory_mb.total_cmp(&a.effective_memory_mb));
+
+        let private_commit_mb = to_mb(private_total);
+        RuntimeSnapshot {
+            sampled_at_ms: now_ms(),
+            effective_total_mb: memory.total_mb.max(private_commit_mb),
+            private_commit_mb,
+            memory,
+            ptys,
+            pressure: PressureState {
+                level: "normal",
+                spawn_blocked: false,
+                automatic: true,
+                candidate_count: 0,
+                last_suspended_id: None,
+            },
+        }
+    }
+}
+
+impl RuntimeProcess {
+    fn effective_memory(&self) -> f64 {
+        self.working_set_mb.max(self.private_commit_mb)
+    }
+}
+
+fn eligible_candidates(
+    snapshot: &RuntimeSnapshot,
+    metas: &HashMap<String, PtyRuntimeMeta>,
+    policy: &ResourcePolicy,
+    now: u64,
+) -> Vec<String> {
+    let live = snapshot
+        .ptys
+        .iter()
+        .map(|pty| (pty.id.as_str(), pty))
+        .collect::<HashMap<_, _>>();
+    let mut candidates = metas
+        .values()
+        .filter_map(|meta| {
+            let stats = live.get(meta.id.as_str())?;
+            if meta.visible
+                || meta.focused
+                || meta.protected
+                || meta.status == "working"
+                || now.saturating_sub(meta.reported_at_ms) > META_STALE_MS
+                || now.saturating_sub(meta.spawned_at_ms) < policy.spawn_grace_seconds * 1000
+            {
+                return None;
+            }
+            let idle_minutes = if meta.kind == "shell" {
+                policy.hidden_shell_idle_minutes
+            } else {
+                policy.hidden_agent_idle_minutes
+            };
+            if now.saturating_sub(meta.last_io_at_ms) < idle_minutes * 60_000 {
+                return None;
+            }
+            Some((
+                meta.id.clone(),
+                meta.kind != "shell",
+                meta.last_used_at_ms,
+                stats.effective_memory_mb,
+            ))
+        })
+        .collect::<Vec<_>>();
+    candidates.sort_by(|a, b| {
+        a.1.cmp(&b.1)
+            .then_with(|| a.2.cmp(&b.2))
+            .then_with(|| b.3.total_cmp(&a.3))
+    });
+    candidates.into_iter().map(|entry| entry.0).collect()
+}
+
+fn run_cycle(
+    app: &AppHandle,
+    sessions: &PtySessions,
+    supervisor: &ResourceSupervisor,
+) {
+    let mut snapshot = supervisor.collect(sessions);
+    let now = snapshot.sampled_at_ms;
+    let (policy, metas, was_active, previous_level) = {
+        let state = supervisor.state.lock().unwrap_or_else(|p| p.into_inner());
+        (
+            state.policy.clone(),
+            state.metas.clone(),
+            state.pressure_active,
+            state.last_level,
+        )
+    };
+    let automatic = policy.mode == "smart-lru";
+    // Histerese: sem isso, uso oscilando perto do orçamento vira "critical" e
+    // volta pra "warning"/"normal" a cada ciclo (5s), disparando uma
+    // notificação nova a cada troca — nunca "assenta". Uma vez crítico, só
+    // sai desse nível quando cair abaixo do recovery_target_mb (mesma lógica
+    // que pressure_active já usa).
+    let was_critical = previous_level == "critical";
+    let critical = snapshot.effective_total_mb >= policy.memory_budget_mb
+        || (was_critical && snapshot.effective_total_mb > policy.recovery_target_mb);
+    let pressure_active = critical
+        || (was_active && snapshot.effective_total_mb > policy.recovery_target_mb);
+    let candidates = eligible_candidates(&snapshot, &metas, &policy, now);
+    let mut suspended_id = None;
+    let mut suspension_failed = false;
+    if automatic && pressure_active {
+        if let Some(id) = candidates.first() {
+            if pty::suspend_session(app, sessions, id).unwrap_or(false) {
+                suspended_id = Some(id.clone());
+            } else {
+                suspension_failed = true;
+            }
+        }
+    }
+    let spawn_blocked =
+        automatic && critical && (candidates.is_empty() || suspension_failed);
+    let level = if critical {
+        "critical"
+    } else if snapshot.effective_total_mb >= policy.warning_threshold_mb || pressure_active {
+        "warning"
+    } else {
+        "normal"
+    };
+    snapshot.pressure = PressureState {
+        level,
+        spawn_blocked,
+        automatic,
+        candidate_count: candidates.len(),
+        last_suspended_id: suspended_id.clone(),
+    };
+
+    {
+        let mut state = supervisor.state.lock().unwrap_or_else(|p| p.into_inner());
+        state.pressure_active = pressure_active && level != "normal";
+        state.last_level = level;
+        if let Some(id) = &suspended_id {
+            state.metas.remove(id);
+        }
+        state.latest = Some(snapshot.clone());
+    }
+
+    if previous_level != level || suspended_id.is_some() || spawn_blocked {
+        let _ = app.emit(
+            "resource://pressure",
+            ResourcePressurePayload {
+                level,
+                total_mb: snapshot.effective_total_mb,
+                budget_mb: policy.memory_budget_mb,
+                spawn_blocked,
+                candidate_count: candidates.len(),
+                suspended_id,
+            },
+        );
+    }
+}
+
+pub fn start(
+    app: AppHandle,
+    sessions: PtySessions,
+    supervisor: std::sync::Arc<ResourceSupervisor>,
+) {
+    std::thread::spawn(move || loop {
+        run_cycle(&app, &sessions, &supervisor);
+        std::thread::sleep(SAMPLE_INTERVAL);
+    });
+}
+
+#[tauri::command]
+pub fn set_resource_policy(
+    supervisor: State<'_, std::sync::Arc<ResourceSupervisor>>,
+    policy: ResourcePolicy,
+) {
+    let mut state = supervisor.state.lock().unwrap_or_else(|p| p.into_inner());
+    state.policy = policy.normalized();
+}
+
+#[tauri::command]
+pub fn update_pty_runtime_meta(
+    supervisor: State<'_, std::sync::Arc<ResourceSupervisor>>,
+    metas: Vec<PtyRuntimeMeta>,
+) {
+    let mut state = supervisor.state.lock().unwrap_or_else(|p| p.into_inner());
+    let ids = metas
+        .iter()
+        .map(|meta| meta.id.clone())
+        .collect::<HashSet<_>>();
+    state.metas.retain(|id, _| ids.contains(id));
+    for meta in metas {
+        state.metas.insert(meta.id.clone(), meta);
+    }
+}
+
+#[tauri::command]
+pub fn get_runtime_snapshot(
+    sessions: State<'_, PtySessions>,
+    supervisor: State<'_, std::sync::Arc<ResourceSupervisor>>,
+) -> RuntimeSnapshot {
+    if let Some(snapshot) = supervisor
+        .state
+        .lock()
+        .unwrap_or_else(|p| p.into_inner())
+        .latest
+        .clone()
+    {
+        return snapshot;
+    }
+    supervisor.collect(sessions.inner())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn snapshot(id: &str) -> RuntimeSnapshot {
+        RuntimeSnapshot {
+            sampled_at_ms: 1_000_000,
+            memory: MemoryStats {
+                total_mb: 1600.0,
+                app_mb: 40.0,
+                webview_mb: 300.0,
+                ptys_mb: 1260.0,
+                process_count: 12,
+                system_total_mb: 16384.0,
+                system_available_mb: 8192.0,
+            },
+            private_commit_mb: 1700.0,
+            effective_total_mb: 1700.0,
+            ptys: vec![PtyResourceStats {
+                id: id.to_string(),
+                root_pid: Some(1),
+                command: Some("claude".to_string()),
+                cwd: None,
+                process_count: 2,
+                working_set_mb: 400.0,
+                private_commit_mb: 450.0,
+                effective_memory_mb: 450.0,
+                processes: Vec::new(),
+            }],
+            pressure: PressureState {
+                level: "normal",
+                spawn_blocked: false,
+                automatic: true,
+                candidate_count: 0,
+                last_suspended_id: None,
+            },
+        }
+    }
+
+    fn meta(id: &str) -> PtyRuntimeMeta {
+        PtyRuntimeMeta {
+            id: id.to_string(),
+            kind: "agent".to_string(),
+            status: "waiting".to_string(),
+            visible: false,
+            focused: false,
+            protected: false,
+            last_io_at_ms: 1,
+            spawned_at_ms: 1,
+            last_used_at_ms: 1,
+            reported_at_ms: 1_000_000,
+        }
+    }
+
+    #[test]
+    fn working_or_visible_agents_are_never_candidates() {
+        let policy = ResourcePolicy::default();
+        let mut metas = HashMap::from([("a".to_string(), meta("a"))]);
+        metas.get_mut("a").unwrap().status = "working".to_string();
+        assert!(eligible_candidates(&snapshot("a"), &metas, &policy, 1_000_000).is_empty());
+        let meta = metas.get_mut("a").unwrap();
+        meta.status = "waiting".to_string();
+        meta.visible = true;
+        assert!(eligible_candidates(&snapshot("a"), &metas, &policy, 1_000_000).is_empty());
+    }
+
+    #[test]
+    fn idle_hidden_agent_becomes_candidate() {
+        let policy = ResourcePolicy::default();
+        let metas = HashMap::from([("a".to_string(), meta("a"))]);
+        assert_eq!(
+            eligible_candidates(&snapshot("a"), &metas, &policy, 1_000_000),
+            vec!["a".to_string()]
+        );
+    }
+
+    #[test]
+    fn spawn_grace_protects_new_runtimes() {
+        let policy = ResourcePolicy::default();
+        let mut fresh = meta("a");
+        fresh.spawned_at_ms = 999_999;
+        let metas = HashMap::from([("a".to_string(), fresh)]);
+        assert!(eligible_candidates(&snapshot("a"), &metas, &policy, 1_000_000).is_empty());
+    }
+
+    #[test]
+    fn idle_shells_are_parked_before_agents() {
+        let policy = ResourcePolicy::default();
+        let mut sample = snapshot("agent");
+        let mut shell_stats = sample.ptys[0].clone();
+        shell_stats.id = "shell".to_string();
+        sample.ptys.push(shell_stats);
+        let mut shell = meta("shell");
+        shell.kind = "shell".to_string();
+        shell.reported_at_ms = 2_000_000;
+        let mut agent = meta("agent");
+        agent.reported_at_ms = 2_000_000;
+        let metas = HashMap::from([
+            ("agent".to_string(), agent),
+            ("shell".to_string(), shell),
+        ]);
+        assert_eq!(
+            eligible_candidates(&sample, &metas, &policy, 2_000_000),
+            vec!["shell".to_string(), "agent".to_string()]
+        );
+    }
+}

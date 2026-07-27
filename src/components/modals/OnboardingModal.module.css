@@ -8,10 +8,12 @@
 
 .content {
   position: fixed;
-  inset: 24px;
-  margin: auto;
-  width: min(1180px, calc(100vw - 48px));
-  height: min(780px, calc(100vh - 48px));
+  inset: auto;
+  top: 50%;
+  left: 50%;
+  translate: -50% -50%;
+  width: min(860px, calc(100vw - 48px));
+  height: auto;
   max-height: calc(100vh - 48px);
   background: var(--bg-elevated);
   color: var(--fg);
@@ -24,9 +26,8 @@
 }
 
 .shell {
-  height: 100%;
-  display: grid;
-  grid-template-columns: minmax(260px, 320px) minmax(0, 1fr);
+  height: auto;
+  display: block;
   min-height: 0;
 }
 
@@ -48,13 +49,13 @@
 
 .brandLogo {
   display: block;
-  width: 100%;
-  height: 100%;
+  width: 32px;
+  height: 32px;
   object-fit: contain;
 }
 
 .eyebrow {
-  margin-top: 18px;
+  margin-top: 0;
   color: var(--fg-muted);
   font-size: 11px;
   font-weight: 600;
@@ -63,8 +64,8 @@
 }
 
 .headline {
-  margin: 8px 0 0;
-  font-size: 22px;
+  margin: 2px 0 0;
+  font-size: 15px;
   font-weight: 600;
   line-height: 1.1;
   letter-spacing: -0.02em;
@@ -153,6 +154,7 @@
   flex-direction: column;
   min-width: 0;
   min-height: 0;
+  max-height: calc(100vh - 48px);
 }
 
 .mainHeader {
@@ -160,13 +162,23 @@
   align-items: center;
   justify-content: space-between;
   gap: 16px;
-  padding: 20px 22px 0;
+  padding: 13px 18px;
+  border-bottom: 1px solid var(--border);
+  background: color-mix(in srgb, var(--bg-sunken) 58%, transparent);
+}
+
+.compactBrand {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-width: 0;
 }
 
 .progressMeta {
   display: flex;
   flex-direction: column;
-  gap: 5px;
+  align-items: flex-end;
+  gap: 6px;
   min-width: 0;
 }
 
@@ -179,10 +191,20 @@
 }
 
 .progressStep {
-  font-size: 12px;
+  font: 10px var(--font-mono);
   color: var(--fg-muted);
   font-weight: 500;
 }
+
+.progressDots { display: flex; gap: 4px; }
+.progressDots span {
+  width: 18px;
+  height: 3px;
+  border-radius: 999px;
+  background: var(--border-strong);
+  transition: background-color 160ms ease;
+}
+.progressDots span[data-active='true'] { background: var(--accent); }
 
 .progressBar {
   width: min(200px, 100%);
@@ -204,14 +226,14 @@
   flex: 1;
   min-height: 0;
   overflow: auto;
-  padding: 18px 22px 20px;
+  padding: 16px 18px;
 }
 
 .panel {
   display: flex;
   flex-direction: column;
   gap: 16px;
-  min-height: 100%;
+  min-height: 0;
   animation: stepIn 200ms ease both;
 }
 
@@ -255,7 +277,9 @@
   padding: 18px;
   display: flex;
   flex-direction: column;
-  justify-content: space-between;
+  justify-content: center;
+  align-items: center;
+  text-align: center;
   gap: 16px;
 }
 
@@ -536,6 +560,11 @@
   cursor: not-allowed;
 }
 
+.agentOptionUnavailable {
+  filter: saturate(0.35);
+  background: color-mix(in srgb, var(--bg-sunken) 72%, transparent);
+}
+
 .agentIconWrap {
   width: 36px;
   height: 36px;
@@ -568,6 +597,14 @@
   font-weight: 600;
 }
 
+.agentStatus {
+  color: var(--fg-faint);
+  font: 600 9px/1 var(--font-mono);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  white-space: nowrap;
+}
+
 .agentDesc {
   color: var(--fg-muted);
   font-size: 11px;
@@ -579,7 +616,7 @@
   align-items: center;
   justify-content: space-between;
   gap: 14px;
-  padding: 14px 22px 20px;
+  padding: 11px 18px 13px;
   border-top: 1px solid var(--border);
 }
 
@@ -662,11 +699,12 @@
 
 @media (max-width: 900px) {
   .content {
-    inset: 12px;
     width: calc(100vw - 24px);
-    height: calc(100vh - 24px);
+    height: auto;
     max-height: calc(100vh - 24px);
   }
+
+  .main { max-height: calc(100vh - 24px); }
 
   .shell {
     grid-template-columns: 1fr;

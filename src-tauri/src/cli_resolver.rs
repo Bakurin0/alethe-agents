@@ -105,6 +105,7 @@ pub fn command_builder_for_terminal(
         builder.env("Path", combined);
     }
     builder.env("TERM", "xterm-256color");
+    builder.env("COLORTERM", "truecolor");
     scrub_editor_environment(&mut builder);
     builder.env_remove("EDITOR");
     builder.env_remove("VISUAL");
@@ -133,11 +134,20 @@ pub fn find_windows_cli_launcher(command: &str) -> Option<PathBuf> {
         dirs.extend(split_windows_path_expanded(&rebuilt_path()));
         dirs.extend(agent_search_dirs());
 
-        for dir in dirs {
-            for extension in ["cmd", "exe", "bat", "ps1"] {
-                let candidate = dir.join(format!("{command}.{extension}"));
-                if candidate.is_file() {
-                    return Some(candidate);
+        // `antigravity` é o desktop Electron; o agente de terminal oficial é
+        // exclusivamente `agy`. Nunca use o desktop como fallback para o CLI.
+        let candidates_to_try = match command {
+            "antigravity" | "agy" => vec!["agy"],
+            other => vec![other],
+        };
+
+        for cmd_name in candidates_to_try {
+            for dir in &dirs {
+                for extension in ["cmd", "exe", "bat", "ps1"] {
+                    let candidate = dir.join(format!("{cmd_name}.{extension}"));
+                    if candidate.is_file() {
+                        return Some(candidate);
+                    }
                 }
             }
         }
@@ -210,6 +220,8 @@ pub fn agent_search_dirs() -> Vec<PathBuf> {
         dirs.push(profile.join(".cargo").join("bin"));
         dirs.push(profile.join(".bun").join("bin"));
         dirs.push(profile.join("scoop").join("shims"));
+        dirs.push(profile.join("AppData").join("Local").join("agy").join("bin"));
+        dirs.push(profile.join("AppData").join("Local").join("antigravity").join("bin"));
     }
     if let Some(app_data) = env::var_os("APPDATA").map(PathBuf::from) {
         dirs.push(app_data.join("npm"));
@@ -383,6 +395,7 @@ pub(crate) fn build_rebuilt_path() -> String {
         .join(";")
 }
 
+#[allow(dead_code)]
 fn split_windows_path_expanded(path: &str) -> Vec<PathBuf> {
     path.split(';')
         .filter_map(|item| {
@@ -396,6 +409,7 @@ fn split_windows_path_expanded(path: &str) -> Vec<PathBuf> {
         .collect()
 }
 
+#[allow(dead_code)]
 fn expand_windows_env_vars(input: &str) -> String {
     let mut output = input.to_string();
     for (key, value) in env::vars() {

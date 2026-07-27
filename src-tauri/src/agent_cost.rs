@@ -22,11 +22,71 @@ struct Pricing {
     cache_read: f64,
 }
 
+/// Banco SQLite do OpenCode CLI (tokens/custo por sessão).
+///
+/// O OpenCode usa convenção XDG (`~/.local/share/opencode/opencode.db`) mesmo no
+/// Windows — não `%APPDATA%` (verificado rodando `opencode db path` de verdade
+/// nesta máquina: retornou `C:\Users\<user>\.local\share\opencode\opencode.db`,
+/// enquanto `dirs_next::data_dir()` aponta pra `%APPDATA%`, onde o arquivo nunca
+/// existe). Pergunta pro próprio binário primeiro (`db path`, fonte de verdade,
+/// resiliente a mudança futura de convenção); só cai pro palpite de
+/// `dirs_next` se o binário não for encontrado ou o subcomando não existir
+/// (versão antiga do OpenCode).
+pub(crate) fn opencode_db_path() -> Option<PathBuf> {
+    if let Some(path) = opencode_db_path_from_cli() {
+        return Some(path);
+    }
+    opencode_db_path_fallback_guess()
+}
+
+fn opencode_db_path_from_cli() -> Option<PathBuf> {
+    let binary = crate::cli_resolver::find_windows_cli_launcher("opencode")?;
+    let mut cmd = std::process::Command::new(&binary);
+    cmd.args(["db", "path"]);
+    crate::git_control::hide_console(&mut cmd);
+    let output = cmd.output().ok()?;
+    if !output.status.success() {
+        return None;
+    }
+    let raw = String::from_utf8_lossy(&output.stdout);
+    let trimmed = raw.trim();
+    if trimmed.is_empty() {
+        return None;
+    }
+    let path = PathBuf::from(trimmed);
+    if path.is_file() {
+        Some(path)
+    } else {
+        None
+    }
+}
+
+/// Palpite antigo (pré-descoberta do path real via `opencode db path`) — mantido
+/// só como fallback quando o binário não está no PATH/foi desinstalado, mas o
+/// banco ainda existe de uma instalação anterior nesse layout.
+fn opencode_db_path_fallback_guess() -> Option<PathBuf> {
+    #[cfg(target_os = "linux")]
+    {
+        dirs_next::data_local_dir().map(|d| d.join("opencode").join("opencode.db"))
+    }
+    #[cfg(not(target_os = "linux"))]
+    {
+        dirs_next::data_dir().map(|d| d.join("opencode").join("opencode.db"))
+    }
+}
+
 /// Resolve o preço por prefixo do model id (ex.: "claude-opus-4-8",
 /// "claude-sonnet-4-6", "claude-haiku-4-5"). Codex usa modelos GPT, sem preço
 /// público estável aqui — retorna None (tokens ainda somam, custo fica null).
+///
+/// Modelos OpenCode NÃO passam mais por aqui: `session.cost` no `opencode.db`
+/// já vem calculado pelo próprio CLI com pricing ao vivo (confirmado lendo o
+/// schema real — `cost real DEFAULT 0 NOT NULL`), então `get_session_cost_inner`
+/// usa esse valor direto em vez de manter uma tabela hardcoded que ficava
+/// incompleta a cada modelo novo lançado.
 fn pricing_for(model: &str) -> Option<Pricing> {
     let m = model.to_ascii_lowercase();
+
     // input, output → derivados: 5m=1.25x, 1h=2x, read=0.1x
     let base = if m.contains("opus") {
         (5.0, 25.0)
@@ -77,7 +137,14 @@ pub struct SessionCost {
 }
 
 impl ModelCost {
+    /// Preenche `cost_usd` pela tabela hardcoded — mas só se ainda não tiver um
+    /// valor (ex.: OpenCode já traz `cost_usd` direto do banco, calculado pelo
+    /// próprio CLI com pricing ao vivo; nunca sobrescrever isso com um palpite
+    /// pior da tabela estática).
     fn compute_cost(&mut self) {
+        if self.cost_usd.is_some() {
+            return;
+        }
         if let Some(p) = pricing_for(&self.model) {
             let cost = self.input as f64 / 1_000_000.0 * p.input
                 + self.output as f64 / 1_000_000.0 * p.output
@@ -241,6 +308,65 @@ fn get_session_cost_inner(
             };
             parse_claude_cost(&path).into_values().collect()
         }
+        "opencode" => {
+            let db_path = opencode_db_path()
+                .ok_or_else(|| "caminho do banco do OpenCode não encontrado".to_string())?;
+            if !db_path.is_file() {
+                return Err(format!("banco do OpenCode não encontrado em: {db_path:?}"));
+            }
+
+            let conn = rusqlite::Connection::open_with_flags(
+                &db_path,
+                rusqlite::OpenFlags::SQLITE_OPEN_READ_ONLY | rusqlite::OpenFlags::SQLITE_OPEN_NO_MUTEX,
+            )
+            .map_err(|e| format!("falha ao abrir banco do OpenCode: {e}"))?;
+
+            // `session.id` é PRIMARY KEY (confirmado no schema real) — no máximo 1
+            // linha por sessão, então `rows.next()` uma vez é correto (não é bug de
+            // agregação). `session.cost` já vem calculado pelo próprio OpenCode com
+            // pricing ao vivo — muito mais confiável que a tabela hardcoded local
+            // (`pricing_for`), que só cobre um punhado de modelos.
+            let mut stmt = conn
+                .prepare(
+                    "SELECT model, tokens_input, tokens_output, tokens_cache_read, tokens_cache_write, cost FROM session WHERE id = ?1",
+                )
+                .map_err(|e| format!("falha ao preparar query: {e}"))?;
+
+            let mut rows = stmt
+                .query(rusqlite::params![session_id])
+                .map_err(|e| format!("falha ao executar query: {e}"))?;
+
+            let mut result_by_model = Vec::new();
+            if let Some(row) = rows.next().map_err(|e| format!("falha ao ler linha: {e}"))? {
+                let model_raw: String = row.get(0).unwrap_or_default();
+                let tokens_input: u64 = row.get(1).unwrap_or(0);
+                let tokens_output: u64 = row.get(2).unwrap_or(0);
+                let tokens_cache_read: u64 = row.get(3).unwrap_or(0);
+                let tokens_cache_write: u64 = row.get(4).unwrap_or(0);
+                let cost: f64 = row.get(5).unwrap_or(0.0);
+
+                // A coluna `model` pode ser JSON ({"id": "..."}) ou string simples.
+                let model_name = if let Ok(v) = serde_json::from_str::<serde_json::Value>(&model_raw) {
+                    v.get("id")
+                        .and_then(|id| id.as_str())
+                        .unwrap_or(&model_raw)
+                        .to_string()
+                } else {
+                    model_raw
+                };
+
+                result_by_model.push(ModelCost {
+                    model: model_name,
+                    input: tokens_input,
+                    output: tokens_output,
+                    cache_read: tokens_cache_read,
+                    cache_write_5m: tokens_cache_write,
+                    cost_usd: Some(cost),
+                    ..Default::default()
+                });
+            }
+            result_by_model
+        }
         other => return Err(format!("agente sem custo suportado: {other}")),
     };
 
@@ -334,4 +460,150 @@ pub fn get_model_pricing() -> Vec<ModelRate> {
             })
         })
         .collect()
+}
+
+/// Resumo de custo/tokens do OpenCode nas últimas N horas — usado pelo
+/// OpenCodeCard (não existe conceito de "% de plano" pro OpenCode, é
+/// BYOK/multi-provider, então o card mostra custo/tokens acumulado em vez de
+/// uma barra de utilização).
+#[derive(Serialize, Default)]
+pub struct OpenCodeUsageSummary {
+    pub cost_usd: f64,
+    pub input_tokens: u64,
+    pub output_tokens: u64,
+    pub session_count: u32,
+    pub by_model: Vec<ModelCost>,
+}
+
+#[tauri::command]
+pub async fn get_opencode_usage_summary(hours: u32) -> Result<OpenCodeUsageSummary, String> {
+    tokio::task::spawn_blocking(move || get_opencode_usage_summary_inner(hours))
+        .await
+        .map_err(|e| e.to_string())?
+}
+
+fn get_opencode_usage_summary_inner(hours: u32) -> Result<OpenCodeUsageSummary, String> {
+    let db_path = opencode_db_path()
+        .ok_or_else(|| "caminho do banco do OpenCode não encontrado".to_string())?;
+    if !db_path.is_file() {
+        // Banco ainda não existe (OpenCode nunca rodou nesta máquina) — resumo
+        // vazio, não é erro: o card mostra "sem dados" em vez de falhar.
+        return Ok(OpenCodeUsageSummary::default());
+    }
+
+    let conn = rusqlite::Connection::open_with_flags(
+        &db_path,
+        rusqlite::OpenFlags::SQLITE_OPEN_READ_ONLY | rusqlite::OpenFlags::SQLITE_OPEN_NO_MUTEX,
+    )
+    .map_err(|e| format!("falha ao abrir banco do OpenCode: {e}"))?;
+
+    let now_ms = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map(|d| d.as_millis() as i64)
+        .unwrap_or(0);
+    let since_ms = now_ms - (hours as i64) * 3_600_000;
+
+    let mut stmt = conn
+        .prepare(
+            "SELECT model, cost, tokens_input, tokens_output, tokens_cache_read, tokens_cache_write \
+             FROM session WHERE time_updated >= ?1",
+        )
+        .map_err(|e| format!("falha ao preparar query: {e}"))?;
+
+    let mut rows = stmt
+        .query(rusqlite::params![since_ms])
+        .map_err(|e| format!("falha ao executar query: {e}"))?;
+
+    let mut by_model: std::collections::HashMap<String, ModelCost> = std::collections::HashMap::new();
+    let mut session_count = 0u32;
+    while let Some(row) = rows.next().map_err(|e| format!("falha ao ler linha: {e}"))? {
+        let model_raw: String = row.get(0).unwrap_or_default();
+        let cost: f64 = row.get(1).unwrap_or(0.0);
+        let tokens_input: u64 = row.get(2).unwrap_or(0);
+        let tokens_output: u64 = row.get(3).unwrap_or(0);
+        let tokens_cache_read: u64 = row.get(4).unwrap_or(0);
+        let tokens_cache_write: u64 = row.get(5).unwrap_or(0);
+
+        let model_name = if let Ok(v) = serde_json::from_str::<serde_json::Value>(&model_raw) {
+            v.get("id")
+                .and_then(|id| id.as_str())
+                .unwrap_or(&model_raw)
+                .to_string()
+        } else {
+            model_raw
+        };
+        if model_name.is_empty() {
+            continue;
+        }
+
+        session_count += 1;
+        let entry = by_model.entry(model_name.clone()).or_insert_with(|| ModelCost {
+            model: model_name,
+            cost_usd: Some(0.0),
+            ..Default::default()
+        });
+        entry.input += tokens_input;
+        entry.output += tokens_output;
+        entry.cache_read += tokens_cache_read;
+        entry.cache_write_5m += tokens_cache_write;
+        entry.cost_usd = Some(entry.cost_usd.unwrap_or(0.0) + cost);
+    }
+
+    let mut by_model: Vec<ModelCost> = by_model.into_values().collect();
+    by_model.sort_by(|a, b| b.cost_usd.partial_cmp(&a.cost_usd).unwrap_or(std::cmp::Ordering::Equal));
+
+    let cost_usd = by_model.iter().filter_map(|m| m.cost_usd).sum();
+    let input_tokens = by_model.iter().map(|m| m.input).sum();
+    let output_tokens = by_model.iter().map(|m| m.output).sum();
+
+    Ok(OpenCodeUsageSummary {
+        cost_usd,
+        input_tokens,
+        output_tokens,
+        session_count,
+        by_model,
+    })
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn pricing_for_still_resolves_claude_families_after_opencode_table_removal() {
+        assert!(pricing_for("claude-opus-4-8").is_some());
+        assert!(pricing_for("claude-sonnet-4-6").is_some());
+        assert!(pricing_for("claude-haiku-4-5").is_some());
+        // Modelo OpenCode não passa mais pela tabela hardcoded (removida —
+        // session.cost do opencode.db é a fonte agora).
+        assert!(pricing_for("deepseek-v4-flash-free").is_none());
+    }
+
+    #[test]
+    fn compute_cost_never_overwrites_a_pre_set_cost_from_the_opencode_db() {
+        // Simula o que o branch "opencode" de get_session_cost_inner faz: seta
+        // cost_usd direto da coluna `session.cost` (fonte de verdade), e
+        // compute_cost() não pode substituir isso pela tabela hardcoded.
+        let mut mc = ModelCost {
+            model: "deepseek-v4-flash".to_string(),
+            input: 1000,
+            output: 500,
+            cost_usd: Some(0.0123),
+            ..Default::default()
+        };
+        mc.compute_cost();
+        assert_eq!(mc.cost_usd, Some(0.0123));
+    }
+
+    #[test]
+    fn compute_cost_fills_in_claude_pricing_when_none_was_set() {
+        let mut mc = ModelCost {
+            model: "claude-opus-4-8".to_string(),
+            input: 1_000_000,
+            output: 0,
+            ..Default::default()
+        };
+        mc.compute_cost();
+        assert_eq!(mc.cost_usd, Some(5.0));
+    }
 }

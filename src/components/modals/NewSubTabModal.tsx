@@ -4,7 +4,7 @@ import { useEffect, useMemo, useState } from 'react'
 import { useUiStore } from '../../stores/uiStore'
 import { useProjectsStore } from '../../stores/projectsStore'
 import { pickDirectory } from '../../lib/dialog'
-import { UNRESTRICTED_FLAG, type AgentType } from '../../lib/types'
+import { UNRESTRICTED_FLAG, type AgentRuntimeProfile, type AgentType } from '../../lib/types'
 import { AgentIcon } from '../icons/AgentIcons'
 import { useT } from '../../lib/i18n'
 import { Modal } from './Modal'
@@ -15,6 +15,7 @@ const AGENTS: { type: AgentType; label: string }[] = [
   { type: 'shell', label: 'Shell' },
   { type: 'claude', label: 'Claude' },
   { type: 'codex', label: 'Codex' },
+  { type: 'antigravity', label: 'Antigravity' },
   { type: 'opencode', label: 'OpenCode' },
   { type: 'freebuff', label: 'Freebuff' },
   { type: 'mimo', label: 'Mimo' },
@@ -39,11 +40,13 @@ export function NewSubTabModal() {
   })
 
   const [type, setType] = useState<AgentType>('shell')
+  const [runtimeProfile, setRuntimeProfile] = useState<AgentRuntimeProfile>('full')
   const [cwd, setCwd] = useState('')
   const [unrestricted, setUnrestricted] = useState<Record<AgentType, boolean>>({
     shell: false,
     claude: false,
     codex: false,
+    antigravity: false,
     opencode: false,
     freebuff: false,
     mimo: false,
@@ -62,8 +65,9 @@ export function NewSubTabModal() {
 
   const reset = () => {
     setType('shell')
+    setRuntimeProfile('full')
     setCwd('')
-    setUnrestricted({ shell: false, claude: false, codex: false, opencode: false, freebuff: false, mimo: false })
+    setUnrestricted({ shell: false, claude: false, codex: false, antigravity: false, opencode: false, freebuff: false, mimo: false })
   }
 
   const submit = () => {
@@ -74,6 +78,7 @@ export function NewSubTabModal() {
       type,
       cwd: cwd.trim() || inheritedCwd,
       extraArgs,
+      runtimeProfile,
     })
     reset()
     closeModal()
@@ -163,6 +168,27 @@ export function NewSubTabModal() {
           })}
         </div>
       </div>
+      {type !== 'shell' ? (
+        <div className={controls.field}>
+          <label className={controls.label}>{t('term.runtimeProfile')}</label>
+          <div className={controls.pillRow}>
+            {(['full', 'lean', 'diagnostic'] as const).map((profile) => (
+              <button
+                key={profile}
+                type="button"
+                className={`${controls.pill} ${runtimeProfile === profile ? controls.pillActive : ''}`}
+                onClick={() => setRuntimeProfile(profile)}
+                title={t(`term.runtimeProfile.${profile}.desc`)}
+              >
+                {t(`term.runtimeProfile.${profile}`)}
+              </button>
+            ))}
+          </div>
+          <span className={controls.hint}>
+            {type === 'opencode' ? t('term.runtimeProfile.opencodeNote') : t(`term.runtimeProfile.${runtimeProfile}.desc`)}
+          </span>
+        </div>
+      ) : null}
       <div className={controls.field}>
         <label className={controls.label}>{t('term.folderCwd')}</label>
         <div className={controls.cwdRow}>
