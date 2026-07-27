@@ -247,13 +247,16 @@
 
 .claudeUsage { box-shadow: inset 0 0 0 1px var(--agent-claude-soft); }
 .codexUsage { box-shadow: inset 0 0 0 1px var(--agent-codex-soft); }
+.antigravityUsage { box-shadow: inset 0 0 0 1px var(--agent-antigravity-soft); }
 
 .usagePopover {
   position: absolute;
   top: calc(100% + 7px);
   right: 0;
   min-width: 184px;
+  max-width: 300px;
   padding: 10px 12px;
+  box-sizing: border-box;
   border-radius: 12px;
   border: 1px solid var(--border-strong);
   background: var(--bg-elevated);
@@ -292,6 +295,18 @@
   gap: 12px;
   font-size: 11px;
   color: var(--fg-muted);
+}
+
+.usagePopoverLine > span {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.usagePopoverLine > strong {
+  flex-shrink: 0;
+  white-space: nowrap;
 }
 
 .usagePopoverMain {

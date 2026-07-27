@@ -123,7 +123,7 @@ type ProjectsState = ProjectsFile & {
     args: {
       name: string
       cwd: string
-      firstTab: { type: AgentType; cwd: string; extraArgs?: string[]; runtimeProfile?: AgentRuntimeProfile }
+      firstTab: { type: AgentType; cwd: string; extraArgs?: string[]; initialInput?: string; runtimeProfile?: AgentRuntimeProfile }
     },
   ) => Terminal
   /** Cria um pane viewer (markdown/arquivo) e adiciona ao grid do projeto. */
@@ -198,6 +198,12 @@ type ProjectsState = ProjectsFile & {
     tabId: string,
     sessionId: string | undefined,
   ) => void
+  setSubTabInitialInput: (
+    projectId: string,
+    terminalId: string,
+    tabId: string,
+    initialInput: string | undefined,
+  ) => void
 
   // preferences / cli
   setLanguage: (language: Locale) => void
@@ -257,7 +263,7 @@ function rememberWorkspaceTab(
 function makeDefaultTerminal(args: {
   name: string
   cwd: string
-  firstTab: { type: AgentType; cwd: string; extraArgs?: string[]; runtimeProfile?: AgentRuntimeProfile }
+  firstTab: { type: AgentType; cwd: string; extraArgs?: string[]; initialInput?: string; runtimeProfile?: AgentRuntimeProfile }
 }): Terminal {
   const tabId = nanoid()
   const now = Date.now()
@@ -278,6 +284,7 @@ function makeDefaultTerminal(args: {
         lastUsedAt: now,
         ptyId: null,
         extraArgs: args.firstTab.extraArgs,
+        initialInput: args.firstTab.initialInput,
         runtimeProfile: args.firstTab.runtimeProfile,
       },
     ],
@@ -453,6 +460,7 @@ function normalizePreferences(raw: LegacyPreferences | undefined): Preferences {
     ...DEFAULT_PREFERENCES.resourcePolicy,
     ...(rawResourcePolicy ?? {}),
   }
+  const automaticParkingOptIn = rawResourcePolicy?.automaticParkingOptIn === true
   const memoryBudgetMb = Math.min(
     8192,
     Math.max(768, Math.round(resourcePolicy.memoryBudgetMb)),
@@ -468,8 +476,12 @@ function normalizePreferences(raw: LegacyPreferences | undefined): Preferences {
   const legacyAccountCreated =
     raw?.accountCreated ??
     Boolean(raw?.onboardingDone && raw?.displayName && raw.displayName.trim().length > 0)
+  const rawWindowOpacity = Number(raw?.windowOpacity ?? 1)
   return {
     ...preferences,
+    windowOpacity: Number.isFinite(rawWindowOpacity)
+      ? Math.min(1, Math.max(0.6, rawWindowOpacity))
+      : 1,
     // Backfill: instalações antigas não têm os agentes novos em enabledAgents;
     // preserva os toggles do usuário e habilita os que faltam pelo default.
     enabledAgents: { ...DEFAULT_PREFERENCES.enabledAgents, ...preferences.enabledAgents },
@@ -489,7 +501,13 @@ function normalizePreferences(raw: LegacyPreferences | undefined): Preferences {
     uiZoom: clampUiZoom(preferences.uiZoom),
     spawnConcurrency: clampSpawnConcurrency(preferences.spawnConcurrency),
     resourcePolicy: {
-      mode: resourcePolicy.mode === 'manual' ? 'manual' : 'smart-lru',
+      // Older installs inherited Smart LRU without an explicit choice. Migrate
+      // them to monitor-only so an update never starts terminating PTYs.
+      mode:
+        automaticParkingOptIn && resourcePolicy.mode === 'smart-lru'
+          ? 'smart-lru'
+          : 'manual',
+      automaticParkingOptIn,
       memoryBudgetMb,
       warningThresholdMb,
       recoveryTargetMb,
@@ -2653,6 +2671,9 @@ export const useProjectsStore = create<ProjectsState>((set, get) => {
 
     setSubTabSessionId: (projectId, terminalId, tabId, sessionId) =>
       updateSubTab(projectId, terminalId, tabId, (s) => ({ ...s, sessionId })),
+
+    setSubTabInitialInput: (projectId, terminalId, tabId, initialInput) =>
+      updateSubTab(projectId, terminalId, tabId, (s) => ({ ...s, initialInput })),
 
     /* ------------ preferences / cli ------------ */
 

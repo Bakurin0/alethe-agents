@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react'
 
 import { intlLocale, useT, type Locale, type TFunction } from '../../lib/i18n'
 import { listClaudeSessions, restartPty, type ClaudeSessionMeta } from '../../lib/tauri'
+import { agentCliCommand, type AgentType } from '../../lib/types'
 import { useProjectsStore } from '../../stores/projectsStore'
 import { Modal } from './Modal'
 import styles from './ClaudeHistoryModal.module.css'
@@ -14,7 +15,7 @@ type Props = {
   tabId: string
   ptyId: string | null
   cwd: string
-  agentType: string
+  agentType: AgentType
   extraArgs?: string[]
 }
 
@@ -93,7 +94,7 @@ export function ClaudeHistoryModal({
         id: ptyId,
         cols: 80,
         rows: 24,
-        command: agentType === 'shell' ? undefined : agentType,
+        command: agentCliCommand(agentType),
         cwd,
         extraArgs: newExtraArgs,
       })

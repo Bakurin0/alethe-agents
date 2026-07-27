@@ -76,7 +76,7 @@ import {
 import { useNodeCostStore, selectNodeCostTotals } from '../../stores/nodeCostStore'
 import { useProjectsStore } from '../../stores/projectsStore'
 import { useUiStore } from '../../stores/uiStore'
-import type { AgentType } from '../../lib/types'
+import { agentCliCommand, type AgentType } from '../../lib/types'
 import { AgentIcon, CodexIcon } from '../icons/AgentIcons'
 import { XTermView } from '../XTermView'
 import { AgentModal } from './AgentModal'
@@ -579,7 +579,7 @@ function AgentCanvasInner() {
         ...prev,
         { ptyId, agent, title, cwd: folder, startedAt: Date.now(), exitedCode: null, args },
       ])
-      void spawnPty({ cols: 120, rows: 30, id: ptyId, command: agent, cwd: folder, extraArgs: args })
+      void spawnPty({ cols: 120, rows: 30, id: ptyId, command: agentCliCommand(agent), cwd: folder, extraArgs: args })
         .then(() => {
           // Captura o término mesmo com o terminal fechado — senão o card de um
           // one-shot ficaria "running" pra sempre.

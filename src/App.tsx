@@ -1,9 +1,9 @@
 import { getCurrentWebview } from '@tauri-apps/api/webview'
 import { Bell, X } from 'lucide-react'
-import { lazy, Suspense, type CSSProperties, useEffect } from 'react'
-import { Group as PanelGroup, Panel, Separator } from 'react-resizable-panels'
+import { lazy, Suspense, type CSSProperties, useEffect, useRef } from 'react'
+import { Group as PanelGroup, Panel, Separator, usePanelRef } from 'react-resizable-panels'
 
-import { ghosttyKillAll } from './lib/tauri'
+import { ghosttyKillAll, setWindowOpacity } from './lib/tauri'
 
 import { AgentIcon } from './components/icons/AgentIcons'
 import { ErrorBoundary } from './components/ErrorBoundary'
@@ -47,7 +47,7 @@ import { checkForUpdate } from './lib/updater'
 import { useProjectsStore } from './stores/projectsStore'
 import { type InAppToast, useUiStore } from './stores/uiStore'
 import styles from './App.module.css'
-import logoLoading from './assets/logo-loading.png'
+import { DotmCircular2 } from './components/ui/dotm-circular-2'
 
 const AgentCanvasPOC = lazy(() =>
   import('./components/AgentCanvasPOC').then((module) => ({ default: module.AgentCanvasPOC })),
@@ -69,7 +69,20 @@ const MemoryAnalyticsModal = lazy(() =>
 function LoadingScreen() {
   return (
     <div className={styles.loadingScreen}>
-      <img className={styles.loadingMark} src={logoLoading} alt="Alethe" />
+      <div className={styles.loadingInner}>
+        <span className={styles.loadingMark} role="img" aria-label="Alethe" />
+        <span className={styles.loadingWordmark}>Alethe</span>
+        <DotmCircular2
+          size={22}
+          dotSize={2}
+          cellPadding={1}
+          speed={1.2}
+          bloom
+          color="var(--fg-faint)"
+          ariaLabel="Alethe"
+          className={styles.loadingSpinner}
+        />
+      </div>
     </div>
   )
 }
@@ -131,6 +144,7 @@ export default function App() {
   const hydrated = useProjectsStore((s) => s.hydrated)
   const uiTheme = useProjectsStore((s) => s.preferences.uiTheme)
   const uiZoom = useProjectsStore((s) => s.preferences.uiZoom)
+  const windowOpacity = useProjectsStore((s) => s.preferences.windowOpacity)
   const language = useProjectsStore((s) => s.preferences.language)
   const spawnConcurrency = useProjectsStore((s) => s.preferences.spawnConcurrency)
   const activeView = useUiStore((s) => s.activeView)
@@ -141,6 +155,14 @@ export default function App() {
   const rightSidebarWidth = useProjectsStore((s) => s.preferences.rightSidebarWidth)
   const todoEnabled = useProjectsStore((s) => s.preferences.enabledFeatures.todos)
   const setPreferences = useProjectsStore((s) => s.setPreferences)
+  // Keep panel defaults stable while dragging. Updating defaultSize on every
+  // resize event can make react-resizable-panels rebuild the layout mid-drag.
+  const leftSidebarDefaultRef = useRef(leftSidebarWidth)
+  const rightSidebarDefaultRef = useRef(rightSidebarWidth)
+  const leftPanelRef = usePanelRef()
+  const rightPanelRef = usePanelRef()
+  const leftPanelElementRef = useRef<HTMLDivElement>(null)
+  const rightPanelElementRef = useRef<HTMLDivElement>(null)
 
   useKeybindings()
   useDiscordPresence()
@@ -185,6 +207,49 @@ export default function App() {
         window.dispatchEvent(new CustomEvent('alethe:zoom-changed', { detail: { zoom: uiZoom } }))
       })
   }, [hydrated, uiZoom])
+
+  useEffect(() => {
+    if (!hydrated) return
+    void setWindowOpacity(windowOpacity).catch(() => {
+      /* Browser/testes e plataformas sem suporte: mantém a janela opaca. */
+    })
+  }, [hydrated, windowOpacity])
+
+  useEffect(() => {
+    if (!hydrated) return
+    const element = leftPanelElementRef.current
+    if (element) element.style.transition = 'flex-grow 180ms ease, flex-basis 180ms ease'
+    const frame = window.requestAnimationFrame(() => {
+      if (leftSidebarVisible) leftPanelRef.current?.expand()
+      else leftPanelRef.current?.collapse()
+    })
+    const timer = window.setTimeout(() => {
+      if (element) element.style.transition = ''
+    }, 220)
+    return () => {
+      window.cancelAnimationFrame(frame)
+      window.clearTimeout(timer)
+      if (element) element.style.transition = ''
+    }
+  }, [hydrated, leftPanelRef, leftSidebarVisible])
+
+  useEffect(() => {
+    if (!hydrated || !todoEnabled) return
+    const element = rightPanelElementRef.current
+    if (element) element.style.transition = 'flex-grow 180ms ease, flex-basis 180ms ease'
+    const frame = window.requestAnimationFrame(() => {
+      if (rightSidebarVisible) rightPanelRef.current?.expand()
+      else rightPanelRef.current?.collapse()
+    })
+    const timer = window.setTimeout(() => {
+      if (element) element.style.transition = ''
+    }, 220)
+    return () => {
+      window.cancelAnimationFrame(frame)
+      window.clearTimeout(timer)
+      if (element) element.style.transition = ''
+    }
+  }, [hydrated, rightPanelRef, rightSidebarVisible, todoEnabled])
 
   useEffect(() => {
     if (!hydrated) return
@@ -249,25 +314,29 @@ export default function App() {
       <div className={styles.appShell}>
         <TitleBar />
         <PanelGroup orientation="horizontal" className={styles.shellBody}>
-          {leftSidebarVisible ? (
-            <>
-              <Panel
-                id="alethe-left-sidebar"
-                defaultSize={`${leftSidebarWidth}px`}
-                minSize="220px"
-                maxSize="380px"
-                groupResizeBehavior="preserve-pixel-size"
-                onResize={(size, _id, previous) => {
-                  if (previous && Math.abs(size.inPixels - previous.inPixels) >= 1) {
-                    setPreferences({ leftSidebarWidth: Math.round(size.inPixels) })
-                  }
-                }}
-              >
-                <ProjectSidebar />
-              </Panel>
-              <Separator className={styles.shellSeparator} />
-            </>
-          ) : null}
+          <Panel
+            id="alethe-left-sidebar"
+            panelRef={leftPanelRef}
+            elementRef={leftPanelElementRef}
+            defaultSize={leftSidebarVisible ? `${leftSidebarDefaultRef.current}px` : '0px'}
+            minSize="220px"
+            maxSize="380px"
+            collapsedSize="0px"
+            collapsible
+            groupResizeBehavior="preserve-pixel-size"
+            onResize={(size, _id, previous) => {
+              if (size.inPixels >= 220 && previous && Math.abs(size.inPixels - previous.inPixels) >= 1) {
+                const nextWidth = Math.max(220, Math.min(380, Math.round(size.inPixels)))
+                leftSidebarDefaultRef.current = nextWidth
+                setPreferences({ leftSidebarWidth: nextWidth })
+              }
+            }}
+          >
+            <div className={styles.sidebarContent} data-hidden={!leftSidebarVisible}>
+              <ProjectSidebar />
+            </div>
+          </Panel>
+          <Separator className={`${styles.shellSeparator} ${leftSidebarVisible ? '' : styles.shellSeparatorHidden}`} />
 
           <Panel id="alethe-main" minSize="360px">
             <main className={styles.mainView}>
@@ -285,22 +354,30 @@ export default function App() {
             </main>
           </Panel>
 
-          {todoEnabled && rightSidebarVisible ? (
+          {todoEnabled ? (
             <>
-              <Separator className={styles.shellSeparator} />
+              <Separator className={`${styles.shellSeparator} ${rightSidebarVisible ? '' : styles.shellSeparatorHidden}`} />
               <Panel
                 id="alethe-todo-sidebar"
-                defaultSize={`${rightSidebarWidth}px`}
+                panelRef={rightPanelRef}
+                elementRef={rightPanelElementRef}
+                defaultSize={rightSidebarVisible ? `${rightSidebarDefaultRef.current}px` : '0px'}
                 minSize="260px"
                 maxSize="420px"
+                collapsedSize="0px"
+                collapsible
                 groupResizeBehavior="preserve-pixel-size"
                 onResize={(size, _id, previous) => {
-                  if (previous && Math.abs(size.inPixels - previous.inPixels) >= 1) {
-                    setPreferences({ rightSidebarWidth: Math.round(size.inPixels) })
+                  if (size.inPixels >= 260 && previous && Math.abs(size.inPixels - previous.inPixels) >= 1) {
+                    const nextWidth = Math.max(260, Math.min(420, Math.round(size.inPixels)))
+                    rightSidebarDefaultRef.current = nextWidth
+                    setPreferences({ rightSidebarWidth: nextWidth })
                   }
                 }}
               >
-                <RightSidebar />
+                <div className={styles.sidebarContent} data-hidden={!rightSidebarVisible}>
+                  <RightSidebar />
+                </div>
               </Panel>
             </>
           ) : null}

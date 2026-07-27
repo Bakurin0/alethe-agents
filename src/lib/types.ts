@@ -1,4 +1,11 @@
-export type AgentType = 'shell' | 'claude' | 'codex' | 'opencode' | 'freebuff' | 'mimo'
+export type AgentType = 'shell' | 'claude' | 'codex' | 'opencode' | 'freebuff' | 'mimo' | 'antigravity'
+
+/** Executável real de cada agente. O Antigravity desktop usa `antigravity`,
+ * enquanto o agente de terminal oficial usa `agy`. */
+export function agentCliCommand(agent: AgentType): string | undefined {
+  if (agent === 'shell') return undefined
+  return agent === 'antigravity' ? 'agy' : agent
+}
 
 /** Idiomas suportados pela UI. `en` é o default. */
 export type Locale = 'en' | 'pt-BR'
@@ -65,11 +72,15 @@ export type SubTab = {
   sessionId?: string
   /** Args extras passados pro launcher (ex: --dangerously-skip-permissions). */
   extraArgs?: string[]
+  /** Prompt enviado uma única vez assim que o processo novo fica pronto. */
+  initialInput?: string
   /** Perfil de custo do runtime. Ausente preserva o comportamento completo legado. */
   runtimeProfile?: AgentRuntimeProfile
 }
 
 export type AgentRuntimeProfile = 'full' | 'lean' | 'diagnostic'
+
+/** Flag de "modo irrestrito" por agente (skip permissions / approvals). */
 
 /** Flag de "modo irrestrito" por agente (skip permissions / approvals). */
 export const UNRESTRICTED_FLAG: Record<AgentType, string | null> = {
@@ -80,6 +91,7 @@ export const UNRESTRICTED_FLAG: Record<AgentType, string | null> = {
   // freebuff/mimo não documentam flag de skip-permissions própria.
   freebuff: null,
   mimo: null,
+  antigravity: '--dangerously-skip-permissions',
 }
 
 /**
@@ -202,6 +214,8 @@ export type Preferences = {
   uiTheme: Theme
   /** Zoom global da WebView. 1 = 100%. */
   uiZoom: number
+  /** Opacidade da janela nativa. 1 = totalmente opaca. */
+  windowOpacity: number
   terminalTheme: Theme | null
   enabledAgents: Record<AgentType, boolean>
   onboardingDone: boolean
@@ -219,6 +233,7 @@ export type Preferences = {
   accountCreated: boolean
   /** Se true, abre na Home mesmo se havia projeto ativo na última sessão. */
   alwaysStartOnHome: boolean
+
   /** Credenciais locais do Spotify Developer Dashboard para Now Playing. */
   spotifyClientId: string
   spotifyClientSecret: string
@@ -227,6 +242,7 @@ export type Preferences = {
   /** Itens opcionais exibidos no canto direito da topbar. */
   topbarShowClaudeUsage: boolean
   topbarShowCodexUsage: boolean
+  topbarShowAntigravityUsage: boolean
   topbarShowSync: boolean
   topbarShowProfile: boolean
   topbarShowMemory: boolean
@@ -261,6 +277,8 @@ export type ResourcePolicyMode = 'smart-lru' | 'manual'
 
 export type ResourcePolicyPreferences = {
   mode: ResourcePolicyMode
+  /** True only after the user explicitly enables automatic runtime parking. */
+  automaticParkingOptIn: boolean
   memoryBudgetMb: number
   warningThresholdMb: number
   recoveryTargetMb: number
@@ -301,8 +319,9 @@ export const DEFAULT_PREFERENCES: Preferences = {
   language: 'en',
   uiTheme: 'dark',
   uiZoom: 1,
+  windowOpacity: 1,
   terminalTheme: null,
-  enabledAgents: { shell: true, claude: true, codex: true, opencode: true, freebuff: true, mimo: true },
+  enabledAgents: { shell: true, claude: true, codex: true, antigravity: true, opencode: true, freebuff: true, mimo: true },
   onboardingDone: false,
   workspaceFlat: false,
   fullscreenContainerId: null,
@@ -316,6 +335,7 @@ export const DEFAULT_PREFERENCES: Preferences = {
   discordRichPresenceEnabled: true,
   topbarShowClaudeUsage: true,
   topbarShowCodexUsage: true,
+  topbarShowAntigravityUsage: true,
   topbarShowSync: true,
   topbarShowProfile: true,
   topbarShowMemory: true,
@@ -329,7 +349,8 @@ export const DEFAULT_PREFERENCES: Preferences = {
   dictationEnabled: false,
   spawnConcurrency: 3,
   resourcePolicy: {
-    mode: 'smart-lru',
+    mode: 'manual',
+    automaticParkingOptIn: false,
     memoryBudgetMb: 1536,
     warningThresholdMb: 1229,
     recoveryTargetMb: 1152,

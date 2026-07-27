@@ -9,6 +9,10 @@ export async function saveProjectsFile(content: string): Promise<void> {
   await invoke('save_projects', { content })
 }
 
+export async function setWindowOpacity(opacity: number): Promise<void> {
+  await invoke('set_window_opacity', { opacity })
+}
+
 export type ProfileMeta = {
   id: string
   name: string
@@ -400,6 +404,62 @@ export async function getLastCrashReport(): Promise<CrashReport | null> {
   return invoke<CrashReport | null>('get_last_crash_report')
 }
 
+export type AgentTimeStats = {
+  workingMs: number
+  waitingMs: number
+  focusedMs: number
+  backgroundMs: number
+}
+
+export type ProjectTimeStats = {
+  focusedMs: number
+  activeMs: number
+  idleMs: number
+  agentWallMs: number
+  agentSumMs: number
+  agentBackgroundMs: number
+}
+
+export type ActivityTimeTotals = {
+  appOpenMs: number
+  appFocusedMs: number
+  userActiveMs: number
+  userIdleMs: number
+  agentWallMs: number
+  agentSumMs: number
+  agentBackgroundMs: number
+  parallelMs: number
+  peakConcurrent: number
+}
+
+export type ActivityDay = {
+  date: string
+  count: number
+}
+
+export type ActivitySummary = {
+  totals: ActivityTimeTotals
+  agents: Record<string, AgentTimeStats>
+  projects: Record<string, ProjectTimeStats>
+}
+
+export type ActivityAgentSample = {
+  agent: Exclude<import('./types').AgentType, 'shell'>
+  projectId: string | null
+  terminalId: string | null
+  state: 'working' | 'waiting'
+}
+
+export type ActivitySample = {
+  date: string
+  durationMs: number
+  appFocused: boolean
+  userActive: boolean
+  activeProjectId: string | null
+  activeTerminalId: string | null
+  agents: ActivityAgentSample[]
+}
+
 export async function openDataFolder(): Promise<void> {
   await invoke('open_data_folder')
 }
@@ -540,6 +600,36 @@ export async function getCodexUsage(): Promise<CodexUsage> {
   return invoke<CodexUsage>('get_codex_usage')
 }
 
+export type AntigravityQuotaBucket = {
+  label: string
+  models: string[]
+  used_percent: number
+  remaining_percent: number
+  resets_at: string
+}
+
+export type AntigravityUsage = {
+  status: 'ready' | 'no_cli' | 'no_auth' | 'unavailable'
+  cli_path: string
+  used_percent: number
+  rate_limited: boolean
+  buckets: AntigravityQuotaBucket[]
+}
+
+export async function getAntigravityUsage(): Promise<AntigravityUsage> {
+  return invoke<AntigravityUsage>('get_antigravity_usage')
+}
+
+export type AntigravitySessionSnapshot = {
+  id: string
+  preview: string
+  modified_at_ms: number
+}
+
+export async function snapshotAntigravitySessions(cwd: string): Promise<AntigravitySessionSnapshot[]> {
+  return invoke<AntigravitySessionSnapshot[]>('snapshot_antigravity_sessions', { cwd })
+}
+
 /** Custo por modelo dentro de uma sessão (tokens + USD). */
 export type ModelCost = {
   model: string
@@ -629,69 +719,6 @@ export async function listClaudeSessions(cwd: string): Promise<ClaudeSessionMeta
   return invoke<ClaudeSessionMeta[]>('list_claude_sessions', { cwd })
 }
 
-export type ActivityDay = {
-  /** Data UTC YYYY-MM-DD */
-  date: string
-  /** Mensagens (user + assistant) registradas no dia */
-  count: number
-}
-
-export async function getClaudeActivity(days: number): Promise<ActivityDay[]> {
-  return invoke<ActivityDay[]>('get_claude_activity', { days })
-}
-
-export type ActivityAgentSample = {
-  agent: Exclude<import('./types').AgentType, 'shell'>
-  projectId: string | null
-  terminalId: string | null
-  state: 'working' | 'waiting'
-}
-
-export type ActivitySample = {
-  date: string
-  durationMs: number
-  appFocused: boolean
-  userActive: boolean
-  activeProjectId: string | null
-  activeTerminalId: string | null
-  agents: ActivityAgentSample[]
-}
-
-export type ActivityTimeTotals = {
-  appOpenMs: number
-  appFocusedMs: number
-  userActiveMs: number
-  userIdleMs: number
-  agentWallMs: number
-  agentSumMs: number
-  agentBackgroundMs: number
-  parallelMs: number
-  peakConcurrent: number
-}
-
-export type AgentTimeStats = {
-  workingMs: number
-  waitingMs: number
-  focusedMs: number
-  backgroundMs: number
-}
-
-export type ProjectTimeStats = {
-  focusedMs: number
-  activeMs: number
-  idleMs: number
-  agentWallMs: number
-  agentSumMs: number
-  agentBackgroundMs: number
-  parallelMs: number
-}
-
-export type ActivitySummary = {
-  totals: ActivityTimeTotals
-  agents: Record<string, AgentTimeStats>
-  projects: Record<string, ProjectTimeStats>
-}
-
 export async function recordActivitySamples(samples: ActivitySample[]): Promise<void> {
   await invoke('record_activity_samples', { samples })
 }
@@ -702,4 +729,8 @@ export async function getActivitySummary(dates: string[] = []): Promise<Activity
 
 export async function clearActivityStats(): Promise<void> {
   await invoke('clear_activity_stats')
+}
+
+export async function getClaudeActivity(days = 91): Promise<ActivityDay[]> {
+  return invoke<ActivityDay[]>('get_claude_activity', { days }).catch(() => [])
 }

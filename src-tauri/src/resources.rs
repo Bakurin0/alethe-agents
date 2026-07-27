@@ -26,7 +26,9 @@ pub struct ResourcePolicy {
 impl Default for ResourcePolicy {
     fn default() -> Self {
         Self {
-            mode: "smart-lru".to_string(),
+            // Monitoring is safe by default. Terminating an existing PTY must
+            // only happen after the user explicitly opts in from Preferences.
+            mode: "manual".to_string(),
             memory_budget_mb: 1536.0,
             warning_threshold_mb: 1229.0,
             recovery_target_mb: 1152.0,

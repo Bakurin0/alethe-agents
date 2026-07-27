@@ -1,24 +1,34 @@
 import {
   ArrowRight,
   Bell,
-  Bot,
   CheckCircle2,
+  ChevronDown,
+  CircleDot,
+  Flame,
+  FolderOpen,
   FolderPlus,
+  Github,
   Layers,
-  Clock3,
+  PackageOpen,
+  Send,
   TerminalSquare,
 } from 'lucide-react'
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 
+import { getCachedClaudeActivity } from '../../lib/claudeActivityCache'
 import { pickDirectory } from '../../lib/dialog'
 import { formatHomeDate, formatRelativeTimestamp, getGreeting } from '../../lib/greeting'
 import { useT, type TFunction } from '../../lib/i18n'
 import { getFirstName, getProfileImageUrl, getProfileInitial } from '../../lib/profile'
-import { useProjectsStore } from '../../stores/projectsStore'
+import { openInBrowser } from '../../lib/tauri'
+import { getProjectDefaultCwd, useProjectsStore } from '../../stores/projectsStore'
 import { useUiStore } from '../../stores/uiStore'
-import type { AgentType, Project } from '../../lib/types'
+import { UNRESTRICTED_FLAG, type AgentType, type Project } from '../../lib/types'
 import { AgentIcon } from '../icons/AgentIcons'
+import { AsciiEffect } from '../ui/ascii-effect'
 import { EmptyState } from '../EmptyState/EmptyState'
+import homeBackground from '../../assets/home-bg-right.png'
+import { computeStreak } from './ActivityGraph'
 import { NowPlayingWidget } from './NowPlayingWidget'
 import { UsageStrip } from './UsageStrip'
 import { TimeAnalytics } from './TimeAnalytics'
@@ -26,10 +36,28 @@ import styles from './HomeView.module.css'
 
 const RECENT_PROJECTS_LIMIT = 6
 const NOTIFICATIONS_LIMIT = 5
+const REPOSITORY_URL = 'https://github.com/Kc1t/agent-canva'
+const ISSUES_URL = `${REPOSITORY_URL}/issues`
+const RELEASES_URL = `${REPOSITORY_URL}/releases`
+const QUICK_AGENTS: Array<{ type: AgentType; label: string }> = [
+  { type: 'claude', label: 'Claude' },
+  { type: 'codex', label: 'Codex' },
+  { type: 'antigravity', label: 'Antigravity' },
+  { type: 'opencode', label: 'OpenCode' },
+]
+
+function compactWorkspacePath(path: string): string {
+  const homeCollapsed = path.replace(/^[A-Za-z]:[\\/]Users[\\/][^\\/]+/i, '~')
+  const parts = homeCollapsed.split(/[\\/]/).filter(Boolean)
+  if (parts.length <= 4) return homeCollapsed
+  const separator = homeCollapsed.includes('\\') ? '\\' : '/'
+  return `${homeCollapsed.startsWith('~') ? `~${separator}` : ''}…${separator}${parts.slice(-3).join(separator)}`
+}
 
 const NOTIF_AGENT_CLASS: Record<AgentType, string> = {
   claude: styles.notifClaude,
   codex: styles.notifCodex,
+  antigravity: styles.notifAntigravity,
   shell: styles.notifShell,
   opencode: styles.notifOpencode,
   freebuff: styles.notifFreebuff,
@@ -45,8 +73,11 @@ export function HomeView() {
   const containers = useProjectsStore((s) => s.workspace.containers)
   const openContainerWithAllPanes = useProjectsStore((s) => s.openContainerWithAllPanes)
   const setActiveProjectOnly = useProjectsStore((s) => s.setActiveProjectOnly)
+  const createTerminal = useProjectsStore((s) => s.createTerminal)
   const openModal = useUiStore((s) => s.openModal_)
   const setActiveView = useUiStore((s) => s.setActiveView)
+  const setActiveTerminal = useUiStore((s) => s.setActiveTerminal)
+  const requestPaneFocus = useUiStore((s) => s.requestPaneFocus)
   const notifications = useUiStore((s) => s.notifications)
   const clearNotifications = useUiStore((s) => s.clearNotifications)
 
@@ -86,9 +117,26 @@ export function HomeView() {
   }, [projects, recentProjectIds, lastUsedByProject])
 
   const [now, setNow] = useState(() => new Date())
+  const [activityStreak, setActivityStreak] = useState<number | null>(null)
   useEffect(() => {
     const interval = setInterval(() => setNow(new Date()), 30_000)
     return () => clearInterval(interval)
+  }, [])
+
+  useEffect(() => {
+    let cancelled = false
+    const loadStreak = async () => {
+      try {
+        const days = await getCachedClaudeActivity(91)
+        if (!cancelled) setActivityStreak(computeStreak(days))
+      } catch {
+        if (!cancelled) setActivityStreak(0)
+      }
+    }
+    void loadStreak()
+    return () => {
+      cancelled = true
+    }
   }, [])
 
   const greeting = useMemo(() => getGreeting(now, language), [now, language])
@@ -98,17 +146,59 @@ export function HomeView() {
   const firstNameLower = firstName.toLowerCase()
   const avatarUrl = getProfileImageUrl(preferences)
   const initial = getProfileInitial(displayName)
+  const quickAgents = QUICK_AGENTS.filter((agent) => preferences.enabledAgents[agent.type])
+  const fallbackQuickTarget = recentProjects[0] ?? projects[0] ?? null
+  const [quickProjectId, setQuickProjectId] = useState(() => fallbackQuickTarget?.id ?? '')
+  const quickTarget = projects.find((project) => project.id === quickProjectId) ?? fallbackQuickTarget
+  const [quickAgent, setQuickAgent] = useState<AgentType>('claude')
+  const quickAgentMenuRef = useRef<HTMLDetailsElement>(null)
+  const quickModeMenuRef = useRef<HTMLDetailsElement>(null)
+  const [quickUnrestricted, setQuickUnrestricted] = useState(false)
+  const quickPromptRef = useRef<HTMLInputElement>(null)
+  const [quickCwd, setQuickCwd] = useState('')
+  const quickAgentLabel = QUICK_AGENTS.find((agent) => agent.type === quickAgent)?.label ?? quickAgent
 
-  const startAgentSession = () => {
-    void (async () => {
-      const folder = await pickDirectory()
-      if (!folder) return
-      useUiStore.getState().setAgentCanvasSession({
-        folder,
-        ptyId: `agent-canvas-${Date.now()}`,
-      })
-      setActiveView('agentCanvas')
-    })()
+  useEffect(() => {
+    if (quickAgents.some((agent) => agent.type === quickAgent)) return
+    setQuickAgent(quickAgents[0]?.type ?? 'claude')
+  }, [quickAgent, quickAgents])
+
+  useEffect(() => {
+    if (quickTarget && quickTarget.id !== quickProjectId) setQuickProjectId(quickTarget.id)
+  }, [quickProjectId, quickTarget])
+
+  useEffect(() => {
+    if (!quickCwd && quickTarget) setQuickCwd(getProjectDefaultCwd(quickTarget, projects))
+  }, [projects, quickCwd, quickTarget])
+
+  const browseQuickFolder = async () => {
+    const folder = await pickDirectory({ defaultPath: quickCwd || undefined })
+    if (folder) setQuickCwd(folder)
+  }
+
+  const submitQuickPrompt = (event: React.FormEvent) => {
+    event.preventDefault()
+    const prompt = quickPromptRef.current?.value.trim() ?? ''
+    if (!quickTarget || !prompt) return
+    const cwd = quickCwd.trim() || getProjectDefaultCwd(quickTarget, projects)
+    const flag = quickUnrestricted ? UNRESTRICTED_FLAG[quickAgent] : null
+    const label = QUICK_AGENTS.find((agent) => agent.type === quickAgent)?.label ?? quickAgent
+    const terminal = createTerminal(quickTarget.id, {
+      name: label,
+      cwd,
+      firstTab: {
+        type: quickAgent,
+        cwd,
+        extraArgs: flag ? [flag] : undefined,
+        initialInput: prompt,
+      },
+    })
+    setActiveProjectOnly(quickTarget.id)
+    useProjectsStore.getState().focusWorkspaceTerminal(quickTarget.id, terminal.id)
+    setActiveTerminal(quickTarget.id, terminal.id)
+    requestPaneFocus(terminal.id)
+    if (quickPromptRef.current) quickPromptRef.current.value = ''
+    setActiveView('workspace')
   }
 
   const handleNewTerminal = () => {
@@ -128,81 +218,237 @@ export function HomeView() {
 
   return (
     <section className={styles.home}>
-      <header className={styles.header}>
+      <div className={styles.homeBackdrop} aria-hidden="true">
+        <AsciiEffect
+          imageSrc={homeBackground}
+          alt=""
+          variant="flow"
+          fontSize={8}
+          brightnessBoost={2.25}
+          contrast={1.15}
+          threshold={0.02}
+          flowSpeed={0.16}
+          flowStrength={9}
+          mouseRadius={260}
+          mouseStrength={16}
+          scale={1}
+          fit="cover"
+          colors={['var(--fg-muted)', 'var(--fg)']}
+          backgroundColor="transparent"
+        />
+      </div>
+      <section className={styles.heroStage}>
         <div className={styles.identity}>
-          {avatarUrl ? (
-            <img src={avatarUrl} alt="" className={styles.avatar} draggable={false} />
-          ) : (
-            <div className={styles.avatar}>{initial}</div>
-          )}
-          <div>
+          <div className={styles.identityMedia}>
+            <div
+              className={styles.streakBubble}
+              title={activityStreak === null ? undefined : t('activity.streak', { n: activityStreak })}
+              aria-label={activityStreak === null ? undefined : t('activity.streak', { n: activityStreak })}
+            >
+              <span className={styles.streakFlame} aria-hidden="true">
+                <Flame size={11} />
+              </span>
+              <strong>{activityStreak ?? '–'}</strong>
+            </div>
+            {avatarUrl ? (
+              <img src={avatarUrl} alt="" className={styles.avatar} draggable={false} />
+            ) : (
+              <div className={styles.avatar}>{initial}</div>
+            )}
+            <div className={styles.homePlayerDock}>
+              <NowPlayingWidget enabled />
+            </div>
+          </div>
+          <div className={styles.heroCopy}>
             <h1 className={styles.greeting}>
               {greeting}, {firstNameLower}.
             </h1>
             <div className={styles.date}>{dateStr}</div>
           </div>
         </div>
-        <div className={styles.headerActions}>
-          <button
-            type="button"
-            className={styles.timeJumpButton}
-            onClick={() => document.getElementById('time-analytics')?.scrollIntoView({ behavior: 'smooth', block: 'start' })}
-          >
-            <Clock3 size={14} />
-            {t('time.open')}
-          </button>
-          <NowPlayingWidget enabled />
-        </div>
-      </header>
 
-      <button type="button" className={styles.agentHero} onClick={startAgentSession}>
-        <span className={styles.agentHeroIcon}>
-          <Bot size={20} />
-        </span>
-        <span className={styles.agentHeroBody}>
-          <span className={styles.agentHeroTitle}>{t('home.agentHeroTitle')}</span>
-          <span className={styles.agentHeroSub}>
-            {t('home.agentHeroSub')}
-          </span>
-        </span>
-        <span className={styles.agentHeroCta}>
-          {t('home.agentHeroCta')}
-          <ArrowRight size={15} />
-        </span>
-      </button>
-
-      <section className={styles.section}>
-        <div className={styles.sectionHeader}>
-          {t('home.recentProjects')}
-          {recentProjects.length > 0 ? (
-            <span className={styles.sectionCount}>{recentProjects.length}</span>
-          ) : null}
-        </div>
-        {recentProjects.length > 0 ? (
-          <div className={styles.projectGrid}>
-            {recentProjects.map((project) => (
-              <RecentProjectCard
-                key={project.id}
-                project={project}
-                lastUsedAt={lastUsedByProject.get(project.id) ?? 0}
-                now={now.getTime()}
-                onOpen={() => openProject(project)}
-                t={t}
-              />
-            ))}
+        <form className={styles.quickLaunch} onSubmit={submitQuickPrompt}>
+          <div className={styles.quickTerminalBar} aria-hidden="true">
+            <span className={`${styles.quickTerminalDot} ${styles.quickTerminalClose}`} />
+            <span className={`${styles.quickTerminalDot} ${styles.quickTerminalWait}`} />
+            <span className={`${styles.quickTerminalDot} ${styles.quickTerminalReady}`} />
+            <span className={styles.quickTerminalTitle}>{t('home.quickTerminalTitle')}</span>
           </div>
-        ) : (
-          <EmptyState
-            icon={<FolderPlus size={22} />}
-            title={t('home.projectsEmptyTitle')}
-            description={t('home.projectsEmptyDesc')}
-            primaryAction={{
-              label: t('home.projectsEmptyAction'),
-              onClick: () => openModal('newProject'),
-            }}
-          />
-        )}
+          <label className={styles.quickPromptLine}>
+            <span aria-hidden="true">›</span>
+            <input
+              ref={quickPromptRef}
+              className={styles.quickPrompt}
+              placeholder={t('home.quickPromptPlaceholder')}
+              aria-label={t('home.quickPrompt')}
+              required
+            />
+          </label>
+          <div className={styles.quickToolbar}>
+            <details
+              ref={quickAgentMenuRef}
+              className={styles.quickAgentMenu}
+              onBlur={(event) => {
+                if (!event.currentTarget.contains(event.relatedTarget)) event.currentTarget.open = false
+              }}
+            >
+              <summary title={t('home.quickAgent')} aria-label={t('home.quickAgent')}>
+                <AgentIcon type={quickAgent} size={15} theme={preferences.uiTheme} />
+                <span className={styles.quickControlLabel}>{t('home.quickAgentShort')}:</span>
+                <span>{quickAgentLabel}</span>
+                <ChevronDown size={10} />
+              </summary>
+              <div className={styles.quickAgentOptions}>
+                {quickAgents.map((agent) => (
+                  <button
+                    key={agent.type}
+                    type="button"
+                    className={quickAgent === agent.type ? styles.quickAgentActive : ''}
+                    title={agent.label}
+                    aria-label={agent.label}
+                    onClick={() => {
+                      setQuickAgent(agent.type)
+                      quickAgentMenuRef.current?.removeAttribute('open')
+                    }}
+                  >
+                    <AgentIcon type={agent.type} size={19} theme={preferences.uiTheme} />
+                    <span>{agent.label}</span>
+                    {quickAgent === agent.type ? <CheckCircle2 size={13} /> : null}
+                  </button>
+                ))}
+              </div>
+            </details>
+            <button
+              type="button"
+              className={styles.quickProject}
+              onClick={() => void browseQuickFolder()}
+              title={quickCwd || t('term.chooseFolder')}
+              aria-label={t('term.chooseFolder')}
+            >
+              <FolderOpen size={13} />
+              <span className={styles.quickControlLabel}>{t('home.quickPath')}:</span>
+              <span className={styles.quickPathValue}>{compactWorkspacePath(quickCwd || t('home.quickFolderPlaceholder'))}</span>
+              <ChevronDown size={10} />
+            </button>
+            <details
+              ref={quickModeMenuRef}
+              className={styles.quickMode}
+              onBlur={(event) => {
+                if (!event.currentTarget.contains(event.relatedTarget)) event.currentTarget.open = false
+              }}
+            >
+              <summary aria-label={t('home.quickPermissions')}>
+                <span className={styles.quickModeDot} aria-hidden="true" />
+                <span className={styles.quickControlLabel}>{t('home.quickMode')}:</span>
+                <span>{quickUnrestricted ? t('home.quickUnrestricted') : t('home.quickRestricted')}</span>
+                <ChevronDown size={10} />
+              </summary>
+              <div className={`${styles.quickSelectOptions} ${styles.quickModeOptions}`}>
+                {(['restricted', 'unrestricted'] as const).map((mode) => (
+                  <button
+                    key={mode}
+                    type="button"
+                    className={quickUnrestricted === (mode === 'unrestricted') ? styles.quickSelectActive : ''}
+                    onClick={() => {
+                      setQuickUnrestricted(mode === 'unrestricted')
+                      quickModeMenuRef.current?.removeAttribute('open')
+                    }}
+                  >
+                    <span className={styles.quickModeDot} aria-hidden="true" />
+                    <span>{mode === 'unrestricted' ? t('home.quickUnrestricted') : t('home.quickRestricted')}</span>
+                  </button>
+                ))}
+              </div>
+            </details>
+            <button
+              type="submit"
+              className={styles.quickSend}
+              disabled={!quickTarget || quickAgents.length === 0}
+              title={t('home.quickSend')}
+              aria-label={t('home.quickSend')}
+            >
+              <Send size={14} />
+            </button>
+          </div>
+        </form>
+
+        <div className={styles.heroFooter}>
+          <div className={styles.heroActions}>
+            <button type="button" className={styles.heroSecondaryAction} onClick={handleNewTerminal}>
+              <TerminalSquare size={14} />
+              {t('home.newTerminal')}
+            </button>
+            <button type="button" className={styles.heroSecondaryAction} onClick={() => openModal('newProject')}>
+              <FolderPlus size={14} />
+              {t('home.newProject')}
+            </button>
+          </div>
+        </div>
       </section>
+
+      <div className={styles.overviewGrid}>
+        <section className={styles.section}>
+          <div className={styles.sectionHeader}>
+            {t('home.recentProjects')}
+            {recentProjects.length > 0 ? (
+              <>
+                <span className={styles.sectionCount}>{recentProjects.length}</span>
+                <button type="button" className={styles.sectionAction} onClick={() => setActiveView('workspace')}>
+                  {t('home.viewAll')}
+                </button>
+              </>
+            ) : null}
+          </div>
+          {recentProjects.length > 0 ? (
+            <div className={styles.projectGrid}>
+              {recentProjects.map((project) => (
+                <RecentProjectCard
+                  key={project.id}
+                  project={project}
+                  lastUsedAt={lastUsedByProject.get(project.id) ?? 0}
+                  now={now.getTime()}
+                  onOpen={() => openProject(project)}
+                  t={t}
+                />
+              ))}
+            </div>
+          ) : (
+            <EmptyState
+              icon={<FolderPlus size={22} />}
+              title={t('home.projectsEmptyTitle')}
+              description={t('home.projectsEmptyDesc')}
+              primaryAction={{
+                label: t('home.projectsEmptyAction'),
+                onClick: () => openModal('newProject'),
+              }}
+            />
+          )}
+        </section>
+
+        <section className={styles.section}>
+          <div className={styles.sectionHeader}>{t('home.startSomething')}</div>
+          <div className={styles.actionList}>
+            <ActionCard
+              icon={<TerminalSquare size={14} />}
+              label={t('home.newTerminal')}
+              shortcut="⌘T"
+              onClick={handleNewTerminal}
+            />
+            <ActionCard
+              icon={<FolderPlus size={14} />}
+              label={t('home.newProject')}
+              shortcut="⌘⇧P"
+              onClick={() => openModal('newProject')}
+            />
+            <ActionCard
+              icon={<Layers size={14} />}
+              label={t('home.newGroup')}
+              shortcut="⌘⇧G"
+              onClick={() => openModal('newGroup')}
+            />
+          </div>
+        </section>
+      </div>
 
       <section className={styles.section}>
         <div className={styles.sectionHeader}>{t('home.usageActivity')}</div>
@@ -266,35 +512,19 @@ export function HomeView() {
           )}
         </section>
 
-        <section className={styles.section}>
-          <div className={styles.sectionHeader}>{t('home.startSomething')}</div>
-          <div className={styles.actionList}>
-            <ActionCard
-              icon={<TerminalSquare size={14} />}
-              label={t('home.newTerminal')}
-              shortcut="⌘T"
-              onClick={handleNewTerminal}
-            />
-            <ActionCard
-              icon={<FolderPlus size={14} />}
-              label={t('home.newProject')}
-              shortcut="⌘⇧P"
-              onClick={() => openModal('newProject')}
-            />
-            <ActionCard
-              icon={<Layers size={14} />}
-              label={t('home.newGroup')}
-              shortcut="⌘⇧G"
-              onClick={() => openModal('newGroup')}
-            />
-          </div>
-        </section>
       </div>
 
       <footer className={styles.footer}>
-        <FooterShortcut keys="⌘P" label={t('home.searchShortcut')} onClick={() => openModal('findJump')} />
-        <FooterShortcut keys="⌘K" label={t('home.commandShortcut')} />
-        <FooterShortcut keys="?" label={t('home.helpShortcut')} />
+        <div className={styles.footerLinks}>
+          <FooterLink icon={<Github size={13} />} label={t('home.repository')} onClick={() => void openInBrowser(REPOSITORY_URL)} />
+          <FooterLink icon={<CircleDot size={13} />} label={t('home.issues')} onClick={() => void openInBrowser(ISSUES_URL)} />
+          <FooterLink icon={<PackageOpen size={13} />} label={t('home.releases')} onClick={() => void openInBrowser(RELEASES_URL)} />
+        </div>
+        <div className={styles.footerShortcuts}>
+          <FooterShortcut keys="⌘P" label={t('home.searchShortcut')} onClick={() => openModal('findJump')} />
+          <FooterShortcut keys="⌘K" label={t('home.commandShortcut')} />
+          <FooterShortcut keys="?" label={t('home.helpShortcut')} />
+        </div>
       </footer>
     </section>
   )
@@ -381,6 +611,15 @@ function FooterShortcut({
   return (
     <button type="button" className={styles.footerShortcut} onClick={onClick}>
       <kbd className={styles.kbd}>{keys}</kbd>
+      <span>{label}</span>
+    </button>
+  )
+}
+
+function FooterLink({ icon, label, onClick }: { icon: React.ReactNode; label: string; onClick: () => void }) {
+  return (
+    <button type="button" className={styles.footerLink} onClick={onClick}>
+      {icon}
       <span>{label}</span>
     </button>
   )

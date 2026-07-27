@@ -252,6 +252,29 @@
 .zoomControl button:hover:not(:disabled) { background: var(--panel-hover); border-color: var(--border-strong); }
 .zoomControl button:disabled { opacity: 0.38; }
 
+.opacityControl {
+  width: min(420px, 100%);
+  display: grid;
+  grid-template-columns: minmax(160px, 1fr) 56px 40px;
+  align-items: center;
+  gap: 10px;
+}
+.opacityControl input { width: 100%; accent-color: var(--accent); }
+.opacityControl strong,
+.opacityControl button {
+  height: 40px;
+  display: grid;
+  place-items: center;
+  color: var(--fg);
+  background: var(--bg-sunken);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+}
+.opacityControl strong { font-family: var(--font-mono); font-size: 12px; }
+.opacityControl button:hover:not(:disabled) { background: var(--panel-hover); border-color: var(--border-strong); }
+.opacityControl button:disabled { opacity: 0.38; }
+.experimentalHint { margin: 10px 0 0; color: var(--fg-muted); font-size: 10px; }
+
 .select {
   width: min(360px, 100%);
   height: 42px;

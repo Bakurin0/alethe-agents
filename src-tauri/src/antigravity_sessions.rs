@@ -1,0 +1,121 @@
+use serde::Serialize;
+use std::env;
+use std::fs;
+use std::path::PathBuf;
+use std::time::SystemTime;
+
+#[derive(Serialize, Debug, Clone)]
+pub struct AntigravitySessionSnapshot {
+    pub id: String,
+    pub preview: String,
+    pub modified_at_ms: u128,
+}
+
+pub(crate) fn antigravity_metadata_file() -> Option<PathBuf> {
+    let home = env::var_os("USERPROFILE")
+        .or_else(|| env::var_os("HOME"))
+        .map(PathBuf::from)?;
+    Some(
+        home.join(".gemini")
+            .join("antigravity-cli")
+            .join("cache")
+            .join("conversation_metadata.json"),
+    )
+}
+
+fn file_modified_ms(meta: &fs::Metadata) -> u128 {
+    meta.modified()
+        .ok()
+        .and_then(|m| m.duration_since(SystemTime::UNIX_EPOCH).ok())
+        .map(|d| d.as_millis())
+        .unwrap_or(0)
+}
+
+fn normalize_uri_path(uri: &str) -> String {
+    let mut clean = uri.trim();
+    if clean.starts_with("file:///") {
+        clean = &clean["file:///".len()..];
+    } else if clean.starts_with("file://") {
+        clean = &clean["file://".len()..];
+    }
+    let decoded = clean
+        .replace("%3A", ":")
+        .replace("%3a", ":")
+        .replace("%5C", "\\")
+        .replace("%5c", "\\");
+    let trimmed = decoded.trim_matches('/');
+    if cfg!(windows) {
+        trimmed.replace('/', "\\").to_ascii_lowercase()
+    } else {
+        trimmed.to_string()
+    }
+}
+
+fn normalize_cwd(cwd: &str) -> String {
+    let trimmed = cwd.trim().trim_end_matches(|c: char| c == '\\' || c == '/');
+    if cfg!(windows) {
+        trimmed.replace('/', "\\").to_ascii_lowercase()
+    } else {
+        trimmed.to_string()
+    }
+}
+
+#[tauri::command]
+pub fn snapshot_antigravity_sessions(cwd: String) -> Result<Vec<AntigravitySessionSnapshot>, String> {
+    let Some(meta_path) = antigravity_metadata_file() else {
+        return Ok(Vec::new());
+    };
+
+    if !meta_path.is_file() {
+        return Ok(Vec::new());
+    }
+
+    let metadata = fs::metadata(&meta_path).ok();
+    let default_ms = metadata.as_ref().map(file_modified_ms).unwrap_or(0);
+
+    let contents = fs::read_to_string(&meta_path).map_err(|e| e.to_string())?;
+    let json: serde_json::Value = serde_json::from_str(&contents).map_err(|e| e.to_string())?;
+
+    let target_cwd = normalize_cwd(&cwd);
+    let mut snapshots = Vec::new();
+
+    let conversations = json.get("conversations").and_then(|v| v.as_object());
+    if let Some(map) = conversations {
+        for (id, item) in map {
+            let summary = item.get("summary");
+            let preview = summary
+                .and_then(|s| s.get("Preview"))
+                .and_then(|v| v.as_str())
+                .unwrap_or("")
+                .to_string();
+
+            let uris = summary
+                .and_then(|s| s.get("WorkspaceURIs"))
+                .and_then(|v| v.as_array());
+
+            let mut matches_cwd = target_cwd.is_empty();
+            if let Some(uri_list) = uris {
+                for uri in uri_list {
+                    if let Some(u_str) = uri.as_str() {
+                        let norm = normalize_uri_path(u_str);
+                        if norm == target_cwd || norm.starts_with(&target_cwd) || target_cwd.starts_with(&norm) {
+                            matches_cwd = true;
+                            break;
+                        }
+                    }
+                }
+            }
+
+            if matches_cwd {
+                snapshots.push(AntigravitySessionSnapshot {
+                    id: id.clone(),
+                    preview,
+                    modified_at_ms: default_ms,
+                });
+            }
+        }
+    }
+
+    snapshots.sort_by(|a, b| b.modified_at_ms.cmp(&a.modified_at_ms));
+    Ok(snapshots)
+}

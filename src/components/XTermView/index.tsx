@@ -14,7 +14,7 @@ import { preparePtyRuntimeLaunch } from '../../lib/agentRuntimeAdapter'
 import { recordAgentActivityInput } from '../../lib/activityTracker'
 import { buildAgentLaunch } from '../../lib/sessionLaunch'
 import { claimDiscoveredSession, registerSessionClaim } from '../../lib/sessionDiscovery'
-import { consumeSession, removeSession, saveSession } from '../../lib/sessionResume'
+import { consumeSession, removeSession, savedConversationIdFor, saveSession } from '../../lib/sessionResume'
 import { waitForSessionHint } from '../../lib/sessionWatch'
 import { acquireSpawnSlot, releaseSpawnSlot } from '../../lib/spawnQueue'
 import { readScopedStorage, writeScopedStorage } from '../../lib/storageNamespace'
@@ -31,13 +31,14 @@ import {
   readClipboardText,
   resizePty,
   spawnPty,
+  snapshotAntigravitySessions,
   snapshotClaudeSessions,
   snapshotCodexSessions,
   writeClipboardText,
   writePty,
 } from '../../lib/tauri'
 import { getLocale, translate, useT } from '../../lib/i18n'
-import type { AgentRuntimeProfile, AgentType, Theme } from '../../lib/types'
+import { agentCliCommand, type AgentRuntimeProfile, type AgentType, type Theme } from '../../lib/types'
 import { useProjectsStore } from '../../stores/projectsStore'
 import { useTerminalsStore } from '../../stores/terminalsStore'
 import { useUiStore } from '../../stores/uiStore'
@@ -250,21 +251,35 @@ export type XTermViewProps = {
   command?: AgentType | null
   cwd?: string | null
   extraArgs?: string[]
+  /** Prompt opcional enviado uma única vez após o boot do processo. */
+  initialInput?: string
   /** Identidade persistida da conversa deste pane. */
   sessionId?: string
+  /** Identidade estável da sub-tab, independente das trocas de PTY. */
+  sessionKey?: string
   /** Env extra só deste PTY. */
   env?: Record<string, string>
   runtimeProfile?: AgentRuntimeProfile
   terminalTheme?: Theme
   onSpawned?: (id: string) => void
-  onSessionId?: (id: string) => void
+  onSessionId?: (id: string | undefined) => void
+  onInitialInputSent?: () => void
   onExit?: (code: number | null) => void
   onAgentComplete?: () => void
 }
 
 const PROMPT_HISTORY_KEY = (id: string) => `prompt-history:${id}`
+// Abaixo deste tempo (ms) consideramos que o agent "morreu no nascimento" — típico
+// de sessão de resume inválida ou binário quebrado. Serve de gatilho pro fallback
+// que reabre sessão nova em vez de deixar o pane cinza.
+const EARLY_EXIT_MS = 4000
 const PASTE_CHUNK_SIZE = 1024
 const PASTE_CHUNK_DELAY_MS = 8
+// Nunca entregue um burst inteiro de saída ao xterm em um único frame. TUIs
+// como o OpenCode ecoam colagens grandes e podem gerar centenas de KB de saída;
+// um terminal.write() gigante bloqueia o WebView e faz a aplicação parecer
+// travada. A fila continua preservando todos os bytes, só distribui o trabalho.
+const TERMINAL_WRITE_FRAME_BUDGET = 64 * 1024
 const LINK_MENU_WIDTH = 272
 const LINK_MENU_MAX_HEIGHT = 276
 const LINK_MENU_MARGIN = 10
@@ -309,12 +324,15 @@ export function XTermView({
   command,
   cwd,
   extraArgs,
+  initialInput,
   sessionId,
+  sessionKey,
   env,
   runtimeProfile = 'full',
   terminalTheme = 'dark',
   onSpawned,
   onSessionId,
+  onInitialInputSent,
   onExit,
   onAgentComplete,
 }: XTermViewProps) {
@@ -333,11 +351,13 @@ export function XTermView({
 
   const onSpawnedRef = useRef(onSpawned)
   const onSessionIdRef = useRef(onSessionId)
+  const onInitialInputSentRef = useRef(onInitialInputSent)
   const onExitRef = useRef(onExit)
   const onAgentCompleteRef = useRef(onAgentComplete)
   useEffect(() => {
     onSpawnedRef.current = onSpawned
     onSessionIdRef.current = onSessionId
+    onInitialInputSentRef.current = onInitialInputSent
     onExitRef.current = onExit
     onAgentCompleteRef.current = onAgentComplete
   })
@@ -346,6 +366,12 @@ export function XTermView({
   const historyCursorRef = useRef(-1)
   const currentLineRef = useRef('')
 
+  // Estado do fallback de early-exit (sessão de resume órfã → reabrir sessão nova).
+  const spawnedAtRef = useRef(0)
+  const usedResumeRef = useRef(false)
+  const earlyExitRetriedRef = useRef(false)
+  const forceFreshRef = useRef(false)
+
   const [commandNotFound, setCommandNotFound] = useState<string | null>(null)
   const [retryKey, setRetryKey] = useState(0)
   const [bootPhase, setBootPhase] = useState<
@@ -353,6 +379,7 @@ export function XTermView({
   >('preparing')
   const [linkActions, setLinkActions] = useState<LinkActionState | null>(null)
   const [dropActive, setDropActive] = useState(false)
+  const sessionPersistenceKey = sessionKey ?? ptyId
 
   const hideLinkActions = useCallback(() => {
     setLinkActions(null)
@@ -530,13 +557,15 @@ export function XTermView({
     let unlistenDragDrop: (() => void) | null = null
     let resizeTimer: number | null = null
     let writeFrame: number | null = null
-    let pendingWrite = ''
+    let pendingWrites: string[] = []
+    let pendingWriteLength = 0
     let lastCols = 0
     let lastRows = 0
     let forceNextResize = false
     let completionMonitor: AgentCompletionMonitor | null = null
     let linkProviderDisposable: { dispose: () => void } | null = null
     let linkScrollDisposable: { dispose: () => void } | null = null
+    let writeRecoveryPending = false
 
     const resourcePolicy = useProjectsStore.getState().preferences.resourcePolicy
     const terminal = new Terminal({
@@ -615,6 +644,7 @@ export function XTermView({
               if (rect.width < 50 || rect.height < 30) return
               fitAddon.fit()
               terminal.refresh(0, Math.max(0, terminal.rows - 1))
+              terminal.focus()
             } catch {
               /* container invisível / em teardown — ignora */
             }
@@ -633,16 +663,33 @@ export function XTermView({
 
     const flushPendingWrite = () => {
       writeFrame = null
-      if (!pendingWrite) return
-      const chunk = pendingWrite
-      pendingWrite = ''
-      terminal.write(chunk)
-      clampHorizontalScroll()
+      if (pendingWriteLength === 0) return
+
+      let budget = TERMINAL_WRITE_FRAME_BUDGET
+      let output = ''
+      while (budget > 0 && pendingWrites.length > 0) {
+        const head = pendingWrites[0]
+        const take = Math.min(budget, head.length)
+        output += head.slice(0, take)
+        budget -= take
+        pendingWriteLength -= take
+        if (take === head.length) pendingWrites.shift()
+        else pendingWrites[0] = head.slice(take)
+      }
+
+      if (output) {
+        terminal.write(output)
+        clampHorizontalScroll()
+      }
+      if (pendingWriteLength > 0) {
+        writeFrame = window.requestAnimationFrame(flushPendingWrite)
+      }
     }
 
     const queueTerminalWrite = (chunk: string) => {
       if (!chunk) return
-      pendingWrite += chunk
+      pendingWrites.push(chunk)
+      pendingWriteLength += chunk.length
       if (writeFrame !== null) return
       writeFrame = window.requestAnimationFrame(flushPendingWrite)
     }
@@ -668,13 +715,21 @@ export function XTermView({
     container.addEventListener('wheel', onWheel, { passive: false, capture: true })
 
     const pasteText = (raw: string) => {
-      if (!raw) return
-      const id = ptyIdRef.current
-      if (!id) return
-      const text = normalizePastedText(raw)
-      useTerminalsStore.getState().recordIo(id)
-      recordPromptInput(text)
-      void writePtyChunked(id, text, terminal.modes.bracketedPasteMode)
+      // Colar NUNCA pode quebrar o pane: qualquer erro (normalização, PTY morto,
+      // invoke falhando) é engolido e só logado. Sem terminal vivo, ignora.
+      try {
+        if (!raw) return
+        const id = ptyIdRef.current
+        if (!id) return
+        const text = normalizePastedText(raw)
+        useTerminalsStore.getState().recordIo(id)
+        recordPromptInput(text)
+        void writePtyChunked(id, text, terminal.modes.bracketedPasteMode).catch((err) => {
+          console.warn('[pty-paste] falha ao escrever colagem no PTY (ignorado):', err)
+        })
+      } catch (err) {
+        console.warn('[pty-paste] colagem ignorada (erro):', err)
+      }
     }
 
     // Arrastar arquivo do SO pro terminal: o onDragDropEvent do Tauri é global,
@@ -769,6 +824,7 @@ export function XTermView({
     })
 
     const focusTerminal = () => terminal.focus()
+    container.addEventListener('pointerdown', focusTerminal, true)
     container.addEventListener('click', focusTerminal)
 
     const onPaste = (event: ClipboardEvent) => {
@@ -870,6 +926,9 @@ export function XTermView({
       unlistenData = dataUnlisten
 
       const exitUnlisten = await listenPtyExit(existingId, (payload) => {
+        console.info(
+          `[pty-launch] ${command ?? 'shell'} EXIT (attach) id=${existingId} code=${payload.code ?? '—'} reason=${payload.reason ?? '—'}`,
+        )
         if (payload.reason === 'restarted') {
           useTerminalsStore.getState().markExited(existingId)
           return
@@ -883,7 +942,7 @@ export function XTermView({
         useTerminalsStore.getState().markExited(existingId)
         completionMonitor?.dispose()
         completionMonitor = null
-        removeSession(ptyId)
+        removeSession(sessionPersistenceKey)
         onExitRef.current?.(payload.code)
       })
       if (disposed) {
@@ -906,10 +965,20 @@ export function XTermView({
       if (trackedPtyId) recordAgentActivityInput(trackedPtyId, data)
       if (container.scrollWidth > container.clientWidth + 2) scheduleResize(true)
       clampHorizontalScroll()
-      void writePty(id, data)
+      void writePty(id, data).catch((error) => {
+        console.warn(`[pty-input] falha ao escrever em ${id}; solicitando recuperação`, error)
+        if (disposed || writeRecoveryPending) return
+        writeRecoveryPending = true
+        window.dispatchEvent(
+          new CustomEvent('alethe:terminal-restart-request', { detail: { ptyId: id } }),
+        )
+        window.setTimeout(() => {
+          writeRecoveryPending = false
+        }, 5_000)
+      })
     })
 
-    const RESUMABLE_AGENTS = ['claude', 'codex', 'opencode']
+    const RESUMABLE_AGENTS = ['claude', 'codex', 'opencode', 'antigravity']
 
     async function start() {
       try {
@@ -945,9 +1014,12 @@ export function XTermView({
         if (command && command !== 'shell') {
           if (cliPathOverride) {
             launcherOverride = cliPathOverride
+            console.info(`[pty-launch] ${command} usando override: ${cliPathOverride}`)
           } else {
             const auto = await findCliLauncher(command)
+            console.info(`[pty-launch] ${command} findCliLauncher → ${auto ?? 'null (NÃO ENCONTRADO)'}`)
             if (!auto) {
+              console.warn(`[pty-launch] ${command} não resolvido — mostrando overlay "not found" e ficando offline`)
               setCommandNotFound(command)
               useTerminalsStore.getState().setStatus(ptyId, 'offline')
               return
@@ -957,29 +1029,36 @@ export function XTermView({
 
         // projects.json é a fonte principal. O marcador de crash no localStorage
         // serve apenas de fallback para arquivos antigos que ainda não tinham ID.
-        const savedSession = command && RESUMABLE_AGENTS.includes(command) ? consumeSession(ptyId) : null
-        const savedConversationId = command === 'claude'
-          ? savedSession?.claudeSessionId
-          : command === 'codex'
-            ? savedSession?.codexSessionId
-            : undefined
+        const savedSession = command && RESUMABLE_AGENTS.includes(command)
+          ? consumeSession(sessionPersistenceKey)
+          : null
+        const savedConversationId = savedConversationIdFor(savedSession, command, cwd)
         let resumeId = sessionId ?? savedConversationId
-        // Claude: valida que a conversa ainda existe no cwd antes de passar
-        // --resume. Se o id ficou órfão (conversa apagada, cwd diferente de onde
-        // nasceu, ou o --session-id forçado nunca virou transcript), o CLI aborta
-        // com "No conversation found" — mesmo havendo conversas reais ali (que o
-        // /resume interativo mostraria). Em vez de quebrar ou começar em branco,
-        // RECUPERAMOS a sessão mais recente daquele cwd (snapshot vem ordenado
-        // recent-first). O id recuperado é persistido logo abaixo, então se
-        // auto-cura pras próximas aberturas. Só agimos quando o snapshot SUCEDE;
-        // erro/timeout mantém o resume original (evita falso negativo).
-        // Ressalva: com 2+ panes Claude no MESMO cwd, ambos podem cair na mesma
-        // conversa mais recente — aceitável pro caso comum (1 Claude por pasta).
-        if (command === 'claude' && resumeId && cwd) {
+        // Fallback: se a tentativa anterior morreu no nascimento usando resume,
+        // reabre ignorando o id órfão para nascer uma sessão limpa.
+        if (forceFreshRef.current) {
+          console.warn(`[pty-launch] ${command} reabrindo SEM resume (fallback de early-exit)`)
+          resumeId = undefined
+        }
+        // Valida a conversa antes de passar o argumento de resume. IDs persistidos
+        // podem ficar órfãos após limpeza de histórico ou sincronização entre PCs;
+        // nesse caso removemos o vínculo e iniciamos uma conversa limpa.
+        if (
+          (command === 'claude' || command === 'codex' || command === 'antigravity')
+          && resumeId
+          && cwd
+        ) {
           try {
-            const existing = await snapshotClaudeSessions(cwd)
-            if (!existing.some((s) => s.id === resumeId)) {
-              resumeId = existing[0]?.id
+            const existing = command === 'claude'
+              ? await snapshotClaudeSessions(cwd)
+              : command === 'codex'
+                ? await snapshotCodexSessions(cwd)
+                : await snapshotAntigravitySessions(cwd)
+            if (!existing.some((session) => session.id === resumeId)) {
+              console.warn(`[pty-launch] ${command} ignorando sessão órfã ${resumeId}`)
+              resumeId = undefined
+              removeSession(sessionPersistenceKey)
+              onSessionIdRef.current?.(undefined)
             }
           } catch {
             /* mantém o resume — não arrisca falso negativo */
@@ -993,15 +1072,24 @@ export function XTermView({
           ? buildAgentLaunch(command, preparedRuntime.args, resumeId)
           : { args: preparedRuntime.args, sessionId: undefined, createdSession: false }
         const spawnArgs = launch.args.length > 0 ? launch.args : undefined
+        if (command && command !== 'shell') {
+          console.info(
+            `[pty-launch] ${command} args=${JSON.stringify(spawnArgs ?? [])} resumeId=${resumeId ?? '—'} launcherOverride=${launcherOverride ?? '(auto/PATH)'}`,
+          )
+        }
         if (launch.sessionId && launch.sessionId !== sessionId) {
           onSessionIdRef.current?.(launch.sessionId)
         }
-        if (command && cwd) registerSessionClaim(command, cwd, launch.sessionId, ptyId)
+        if (command && cwd) registerSessionClaim(command, cwd, launch.sessionId)
 
-        // Snapshot leve das sessões Codex existentes antes do spawn para
-        // identificar e persistir o ID novo sem usar `resume --last`.
-        const codexSessionsBeforePromise = (command === 'codex' && cwd && !launch.sessionId)
-          ? snapshotCodexSessions(cwd).catch(() => [])
+        // Snapshot leve antes do spawn para identificar e persistir o ID novo
+        // de agentes que não permitem escolher o ID no nascimento.
+        const discoveredSessionsBeforePromise = cwd && !launch.sessionId
+          ? command === 'codex'
+            ? snapshotCodexSessions(cwd).catch(() => [])
+            : command === 'antigravity'
+              ? snapshotAntigravitySessions(cwd).catch(() => [])
+              : null
           : null
 
         // Serializa spawns globalmente — sem isso, abrir grupo com N×M terminais
@@ -1020,7 +1108,7 @@ export function XTermView({
             cols: terminal.cols,
             rows: terminal.rows,
             id: ptyId,
-            command: command ?? undefined,
+            command: command ? agentCliCommand(command) : undefined,
             cwd: cwd ?? undefined,
             extraArgs: spawnArgs,
             launcherOverride,
@@ -1029,11 +1117,17 @@ export function XTermView({
         } finally {
           releaseSpawnSlot()
         }
+        console.info(`[pty-launch] ${command ?? 'shell'} spawn OK id=${response.id}`)
+        spawnedAtRef.current = Date.now()
+        usedResumeRef.current = Boolean(resumeId)
         if (disposed) return
         setBootPhase('attaching')
         ptyIdRef.current = response.id
         useTerminalsStore.getState().registerPty(response.id)
         onSpawnedRef.current?.(response.id)
+        if (command && cwd && launch.sessionId) {
+          registerSessionClaim(command, cwd, launch.sessionId, response.id)
+        }
 
         if (command === 'claude' || command === 'codex' || command === 'opencode') {
           completionMonitor = new AgentCompletionMonitor({
@@ -1050,36 +1144,43 @@ export function XTermView({
         // Marca sessão como ativa — se o app fechar abruptamente, o próximo
         // spawn vai consumir essa entrada e injetar o resume adequado da CLI.
         if (command && RESUMABLE_AGENTS.includes(command)) {
-          saveSession(ptyId, {
+          saveSession(sessionPersistenceKey, {
             sessionId: response.id,
             claudeSessionId: command === 'claude' ? launch.sessionId : undefined,
             codexSessionId: command === 'codex' ? launch.sessionId : undefined,
+            antigravitySessionId: command === 'antigravity' ? launch.sessionId : undefined,
             cwd: cwd ?? '',
             agent: command,
             timestamp: Date.now(),
           })
 
-          // Codex precisa do ID especifico; `resume --last` junta terminais
-          // diferentes na mesma conversa quando existem 2+ Codex abertos.
-          if (command === 'codex' && cwd && codexSessionsBeforePromise) {
-            const detectCodexSession = async () => {
-              const before = new Set((await codexSessionsBeforePromise).map((s) => s.id))
+          // Codex e Antigravity precisam do ID específico para não misturar
+          // conversas de panes diferentes no próximo boot.
+          if ((command === 'codex' || command === 'antigravity') && cwd && discoveredSessionsBeforePromise) {
+            const detectCreatedSession = async () => {
+              const before = new Set((await discoveredSessionsBeforePromise).map((s) => s.id))
               // Janela ~30s (10×3s): o Codex às vezes leva a escrever o arquivo de
               // sessão (init do app-server, cwd frio), e sem detectar o id o boot
               // seguinte começa do zero. Para assim que acha; sem custo se detectar rápido.
               for (let attempt = 0; attempt < 10; attempt++) {
-                // Acorda no hint do watcher (session://new) ou no teto de 3s.
-                await Promise.race([
-                  new Promise((r) => setTimeout(r, 3000)),
-                  waitForSessionHint('codex'),
-                ])
+                if (command === 'codex') {
+                  await Promise.race([
+                    new Promise((resolve) => setTimeout(resolve, 3000)),
+                    waitForSessionHint('codex'),
+                  ])
+                } else {
+                  await new Promise((resolve) => setTimeout(resolve, 3000))
+                }
                 if (disposed) return
-                const sessions = await snapshotCodexSessions(cwd).catch(() => [])
-                const newSession = claimDiscoveredSession('codex', cwd, before, sessions, ptyId)
+                const sessions = command === 'codex'
+                  ? await snapshotCodexSessions(cwd).catch(() => [])
+                  : await snapshotAntigravitySessions(cwd).catch(() => [])
+                const newSession = claimDiscoveredSession(command, cwd, before, sessions, response.id)
                 if (newSession) {
-                  saveSession(ptyId, {
+                  saveSession(sessionPersistenceKey, {
                     sessionId: response.id,
-                    codexSessionId: newSession.id,
+                    codexSessionId: command === 'codex' ? newSession.id : undefined,
+                    antigravitySessionId: command === 'antigravity' ? newSession.id : undefined,
                     cwd: cwd ?? '',
                     agent: command,
                     timestamp: Date.now(),
@@ -1089,7 +1190,7 @@ export function XTermView({
                 }
               }
             }
-            void detectCodexSession()
+            void detectCreatedSession()
           }
         }
 
@@ -1112,6 +1213,9 @@ export function XTermView({
         unlistenData = dataUnlisten
 
         const exitUnlisten = await listenPtyExit(response.id, (payload) => {
+          console.info(
+            `[pty-launch] ${command ?? 'shell'} EXIT id=${response.id} code=${payload.code ?? '—'} reason=${payload.reason ?? '—'}`,
+          )
           if (payload.reason === 'restarted') {
             useTerminalsStore.getState().markExited(response.id)
             return
@@ -1122,11 +1226,48 @@ export function XTermView({
             completionMonitor = null
             return
           }
+          const isAgent =
+            command === 'claude' || command === 'codex' || command === 'opencode' || command === 'antigravity'
+          const elapsed = Date.now() - spawnedAtRef.current
+          // Fallback 1: agent morreu no nascimento COM resume → sessão órfã.
+          // Limpa e reabre uma vez com sessão nova, em vez de deixar o pane cinza.
+          if (
+            isAgent &&
+            elapsed < EARLY_EXIT_MS &&
+            usedResumeRef.current &&
+            !earlyExitRetriedRef.current
+          ) {
+            earlyExitRetriedRef.current = true
+            forceFreshRef.current = true
+            console.warn(
+              `[pty-launch] ${command} saiu em ${elapsed}ms com resume — reabrindo sessão nova (fallback)`,
+            )
+            useTerminalsStore.getState().markExited(response.id)
+            completionMonitor?.dispose()
+            completionMonitor = null
+            removeSession(sessionPersistenceKey)
+            terminal.write(
+              '\r\n\x1b[33m[alethe] sessão anterior indisponível — reabrindo sessão nova…\x1b[0m\r\n',
+            )
+            setRetryKey((v) => v + 1)
+            return
+          }
+          // Fallback 2: agent morreu no nascimento SEM resume (binário/instalação
+          // quebrada). Não relança em loop; deixa um aviso visível em vez de cinza.
+          if (isAgent && elapsed < EARLY_EXIT_MS) {
+            console.warn(
+              `[pty-launch] ${command} saiu em ${elapsed}ms (code ${payload.code ?? '—'}) — sem retry`,
+            )
+            terminal.write(
+              `\r\n\x1b[31m[alethe] ${command} encerrou imediatamente (code ${payload.code ?? '—'}).\x1b[0m\r\n` +
+                '\x1b[90mVerifique a instalação do CLI ou configure o caminho nas preferências.\x1b[0m\r\n',
+            )
+          }
           useTerminalsStore.getState().markExited(response.id)
           completionMonitor?.dispose()
           completionMonitor = null
           // Clean exit → não resume na próxima vez
-          removeSession(ptyId)
+          removeSession(sessionPersistenceKey)
           onExitRef.current?.(payload.code)
         })
         if (disposed) {
@@ -1135,9 +1276,33 @@ export function XTermView({
         }
         unlistenExit = exitUnlisten
 
+        const prompt = initialInput?.trim()
+        if (prompt) {
+          const sendInitialInput = async () => {
+            const earliestSendAt = Date.now() + 1_500
+            const deadline = Date.now() + 15_000
+            while (!disposed && Date.now() < deadline) {
+              await new Promise((resolve) => window.setTimeout(resolve, 250))
+              const runtime = useTerminalsStore.getState().byPtyId[response.id]
+              const quietFor = runtime ? Date.now() - runtime.lastIoAt : 0
+              if (Date.now() >= earliestSendAt && runtime?.alive && quietFor >= 700) break
+            }
+            if (disposed) return
+            try {
+              await writePtyChunked(response.id, prompt, true)
+              await writePty(response.id, '\r')
+              onInitialInputSentRef.current?.()
+            } catch (error) {
+              console.warn('[pty-launch] não foi possível enviar o prompt inicial:', error)
+            }
+          }
+          void sendInitialInput()
+        }
+
         scheduleResize()
         if (!disposed) setBootPhase('ready')
       } catch (err) {
+        console.error(`[pty-launch] ${command ?? 'shell'} FALHOU ao iniciar PTY:`, err)
         terminal.writeln(`Failed to start PTY: ${String(err)}`)
         if (!disposed) setBootPhase('ready')
       }
@@ -1148,6 +1313,7 @@ export function XTermView({
       disposed = true
       spawnQueueAbort.abort()
       container.removeEventListener('wheel', onWheel, true)
+      container.removeEventListener('pointerdown', focusTerminal, true)
       container.removeEventListener('click', focusTerminal)
       container.removeEventListener('paste', onPaste)
       window.removeEventListener('alethe:zoom-changed', scheduleObservedResize)
@@ -1155,7 +1321,8 @@ export function XTermView({
       ro.disconnect()
       if (resizeTimer !== null) window.clearTimeout(resizeTimer)
       if (writeFrame !== null) window.cancelAnimationFrame(writeFrame)
-      pendingWrite = ''
+      pendingWrites = []
+      pendingWriteLength = 0
       window.clearTimeout(initialFitTimer)
       unlistenData?.()
       unlistenExit?.()
@@ -1171,9 +1338,11 @@ export function XTermView({
       releaseWebglContext?.()
       releaseWebglContext = null
     }
-    // ptyId/retryKey são as chaves de identidade. Outros props lidos via refs.
+    // A identidade estável da sub-tab evita remontar assim que o spawn troca o
+    // ptyId temporário pelo ID real; isso também deixa a descoberta assíncrona
+    // da conversa terminar e persistir o ID antes de um reload.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [ptyId, retryKey])
+  }, [sessionPersistenceKey, retryKey])
 
   useEffect(() => {
     const terminal = terminalRef.current

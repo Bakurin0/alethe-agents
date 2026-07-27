@@ -12,12 +12,29 @@
 }
 
 .item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
   text-align: left;
   padding: 6px 10px;
   font-size: 13px;
   color: var(--fg);
   border-radius: var(--radius-sm);
   cursor: pointer;
+}
+
+.itemIcon {
+  width: 15px;
+  height: 15px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex: 0 0 15px;
+  color: var(--fg-muted);
+}
+
+.danger .itemIcon {
+  color: inherit;
 }
 .item:hover {
   background: var(--panel-hover);

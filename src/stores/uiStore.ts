@@ -1,5 +1,5 @@
 import { create } from 'zustand'
-import type { ClaudeUsage, CodexUsage, MemoryStats, RuntimeSnapshot } from '../lib/tauri'
+import type { AntigravityUsage, ClaudeUsage, CodexUsage, MemoryStats, RuntimeSnapshot } from '../lib/tauri'
 import type { AgentType } from '../lib/types'
 import type { UpdateInfo } from '../lib/updater'
 
@@ -63,6 +63,7 @@ type UiState = {
   memoryHistory: MemorySample[]
   claudeUsage: ClaudeUsage | null
   codexUsage: CodexUsage | null
+  antigravityUsage: AntigravityUsage | null
   /** ID do terminal em focus mode (overlay fullscreen blur). null = sem focus. */
   focusedTerminalId: string | null
   /** Pulso pra requisitar foco num pane específico (sidebar click). */
@@ -95,6 +96,7 @@ type UiState = {
   clearMemoryHistory: () => void
   setClaudeUsage: (value: ClaudeUsage | null) => void
   setCodexUsage: (value: CodexUsage | null) => void
+  setAntigravityUsage: (value: AntigravityUsage | null) => void
   setFocusedTerminal: (id: string | null) => void
   requestPaneFocus: (terminalId: string) => void
   setActiveTerminal: (projectId: string, terminalId: string) => void
@@ -128,6 +130,7 @@ export const useUiStore = create<UiState>((set) => ({
   memoryHistory: [],
   claudeUsage: null,
   codexUsage: null,
+  antigravityUsage: null,
   focusedTerminalId: null,
   focusRequest: null,
   activeTerminal: null,
@@ -155,6 +158,7 @@ export const useUiStore = create<UiState>((set) => ({
   clearMemoryHistory: () => set({ memoryHistory: [] }),
   setClaudeUsage: (value) => set({ claudeUsage: value }),
   setCodexUsage: (value) => set({ codexUsage: value }),
+  setAntigravityUsage: (value) => set({ antigravityUsage: value }),
   setFocusedTerminal: (id) => set({ focusedTerminalId: id }),
   requestPaneFocus: (terminalId) => set({ focusRequest: { terminalId, ts: Date.now() } }),
   setActiveTerminal: (projectId, terminalId) => set({ activeTerminal: { projectId, terminalId } }),
@@ -179,10 +183,10 @@ export const useUiStore = create<UiState>((set) => ({
         createdAt: Date.now(),
         agent,
       }
-      return {
-        toasts: silent ? s.toasts : [entry, ...s.toasts].slice(0, MAX_TOASTS),
-        notifications: [entry, ...s.notifications].slice(0, MAX_NOTIFICATIONS),
-      }
+      const notifications = [entry, ...s.notifications].slice(0, MAX_NOTIFICATIONS)
+      if (silent) return { notifications }
+      const toasts = [...s.toasts, entry].slice(-MAX_TOASTS)
+      return { toasts, notifications }
     }),
   dismissToast: (id) =>
     set((s) => ({ toasts: s.toasts.filter((toast) => toast.id !== id) })),

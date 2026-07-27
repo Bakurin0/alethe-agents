@@ -21,7 +21,12 @@ const SAMPLE_INTERVAL_MS = 5_000
 function currentPolicy(): ResourcePolicyInput {
   const policy = useProjectsStore.getState().preferences.resourcePolicy
   return {
-    mode: policy.mode,
+    // Hydrated stores created before automaticParkingOptIn existed can remain
+    // alive across HMR. Treat them as monitor-only immediately as well.
+    mode:
+      policy.automaticParkingOptIn === true && policy.mode === 'smart-lru'
+        ? 'smart-lru'
+        : 'manual',
     memoryBudgetMb: policy.memoryBudgetMb,
     warningThresholdMb: policy.warningThresholdMb,
     recoveryTargetMb: policy.recoveryTargetMb,

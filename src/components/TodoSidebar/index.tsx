@@ -19,7 +19,6 @@ import { TODO_TITLE_MAX_LENGTH } from '../../lib/todos'
 import type { TodoItem } from '../../lib/types'
 import { useProjectsStore } from '../../stores/projectsStore'
 import { useUiStore } from '../../stores/uiStore'
-import { TerminalInspector } from '../TerminalInspector'
 import styles from './TodoSidebar.module.css'
 
 export function TodoSidebar() {
@@ -260,8 +259,6 @@ export function TodoSidebar() {
         </div>
       </header>
 
-      <TerminalInspector />
-
       <form
         className={styles.addForm}
         onSubmit={(event) => {
@@ -277,13 +274,16 @@ export function TodoSidebar() {
           placeholder={t('todo.addPlaceholder')}
           aria-label={t('todo.addPlaceholder')}
         />
-        <input
-          className={`${styles.addInput} ${styles.addTagInput}`}
-          value={tagDraft}
-          onChange={(event) => setTagDraft(event.target.value)}
-          placeholder={t('todo.tagsPlaceholder')}
-          aria-label={t('todo.tagsPlaceholder')}
-        />
+        <div className={styles.tagInputWrap}>
+          <Tag size={13} aria-hidden="true" />
+          <input
+            className={`${styles.addInput} ${styles.addTagInput}`}
+            value={tagDraft}
+            onChange={(event) => setTagDraft(event.target.value)}
+            placeholder={t('todo.tagsPlaceholder')}
+            aria-label={t('todo.tagsPlaceholder')}
+          />
+        </div>
         <button
           type="submit"
           className={styles.addButton}

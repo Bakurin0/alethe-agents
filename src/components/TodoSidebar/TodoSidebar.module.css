@@ -5,7 +5,7 @@
   display: flex;
   flex-direction: column;
   overflow: hidden;
-  background: var(--bg-sunken);
+  background: var(--bg);
 }
 
 .header {
@@ -76,6 +76,24 @@
   border-bottom: 1px solid var(--border);
 }
 
+.tagInputWrap {
+  min-width: 0;
+  height: 26px;
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  padding: 0 7px;
+  color: var(--fg-faint);
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+}
+
+.tagInputWrap:focus-within {
+  border-color: var(--border-strong);
+  box-shadow: 0 0 0 2px var(--accent-ring);
+}
+
 .addInput,
 .editInput {
   min-width: 0;
@@ -93,8 +111,18 @@
 }
 
 .addTagInput {
+  flex: 1;
+  min-width: 0;
+  padding: 0;
+  border: 0;
+  background: transparent;
   height: 26px;
   font-size: 11px;
+}
+
+.addTagInput:focus {
+  border: 0;
+  box-shadow: none;
 }
 
 .addInput:focus,

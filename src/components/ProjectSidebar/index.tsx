@@ -10,34 +10,46 @@ import {
 import {
   ChevronDown,
   ChevronRight,
+  FileText,
   Folder,
+  FolderOpen,
   FolderPlus,
-  Grid3x3,
   GitBranch,
+  Grid3x3,
   Home,
   Layout,
   LayoutGrid,
   MoreHorizontal,
-  FileText,
+  MoveRight,
   PanelTopOpen,
   Pause,
+  Pencil,
   Plus,
+  Power,
+  Search,
   Sidebar as SidebarIcon,
+  SlidersHorizontal,
+  Trash2,
   type LucideIcon,
 } from 'lucide-react'
 import { useEffect, useMemo, useState } from 'react'
 import { useShallow } from 'zustand/react/shallow'
 
+import { preparePtyRuntimeLaunch } from '../../lib/agentRuntimeAdapter'
+import { useT } from '../../lib/i18n'
+import { buildAgentLaunch } from '../../lib/sessionLaunch'
+import { agentCliCommand, type AgentType, type Group, type LayoutMode, type Project, type Terminal } from '../../lib/types'
+import { getPtyCwd, gitStatus, openInFileExplorer, openInVscode, restartPty } from '../../lib/tauri'
 import {
   selectActiveContainer,
   selectActiveProject,
   useProjectsStore,
 } from '../../stores/projectsStore'
+import { useTerminalsStore } from '../../stores/terminalsStore'
 import { useUiStore } from '../../stores/uiStore'
-import { useT } from '../../lib/i18n'
-import type { AgentType, Group, LayoutMode, Project, Terminal } from '../../lib/types'
 import { EmptyState } from '../EmptyState/EmptyState'
 import { Favicon } from '../Favicon'
+import { DotmCircular2 } from '../ui/dotm-circular-2'
 import { FileExplorer } from './FileExplorer'
 import { GitControl } from './GitControl'
 import { AgentIcon } from '../icons/AgentIcons'
@@ -95,6 +107,7 @@ export function ProjectSidebar() {
     reorderUngrouped: s.reorderUngrouped,
     reorderGroups: s.reorderGroups,
     togglePane: s.togglePane,
+    setLaneVisible: s.setLaneVisible,
     setSubTabCompletionUnread: s.setSubTabCompletionUnread,
   })))
 
@@ -104,6 +117,7 @@ export function ProjectSidebar() {
   const setActiveView = useUiStore((s) => s.setActiveView)
   const activeTerminalRef = useUiStore((s) => s.activeTerminal)
   const setActiveTerminal = useUiStore((s) => s.setActiveTerminal)
+  const setFocusedTerminal = useUiStore((s) => s.setFocusedTerminal)
   const openMarkdownSidebar = useUiStore((s) => s.openMarkdownSidebar)
   const setPreferences = useProjectsStore((s) => s.setPreferences)
   const [menu, setMenu] = useState<ContextMenuState>(null)
@@ -231,6 +245,7 @@ export function ProjectSidebar() {
     {
       kind: 'item',
       label: t('ui.workspace.openIndividually'),
+      icon: <FolderOpen size={14} />,
       onClick: () => {
         actions.openProjectWorkspace(project.id)
         setActiveView('workspace')
@@ -239,6 +254,7 @@ export function ProjectSidebar() {
     {
       kind: 'item',
       label: t('ui.workspace.addToCurrent'),
+      icon: <Plus size={14} />,
       onClick: () => {
         actions.addProjectToWorkspace(project.id)
         setActiveView('workspace')
@@ -248,11 +264,13 @@ export function ProjectSidebar() {
     {
       kind: 'item',
       label: t('ui.sidebar.editNameColor'),
+      icon: <Pencil size={14} />,
       onClick: () => openModal('editProject', { projectId: project.id }),
     },
     {
       kind: 'item',
       label: t('ui.sidebar.quickRename'),
+      icon: <Pencil size={14} />,
       onClick: () => {
         const name = window.prompt(t('ui.sidebar.newNamePrompt'), project.name)?.trim()
         if (name) actions.renameProject(project.id, name)
@@ -261,16 +279,19 @@ export function ProjectSidebar() {
     {
       kind: 'item',
       label: t('ui.sidebar.newTerminalHere'),
+      icon: <Plus size={14} />,
       onClick: () => openModal('newTerminal', { projectId: project.id }),
     },
     {
       kind: 'item',
       label: t('ui.sidebar.designLayout'),
+      icon: <Layout size={14} />,
       onClick: () => openModal('layoutDesigner', { kind: 'project', id: project.id }),
     },
     {
       kind: 'item',
       label: project.groupId ? t('ui.sidebar.removeFromGroup') : t('ui.sidebar.moveToGroup'),
+      icon: <MoveRight size={14} />,
       onClick: () => {
         if (project.groupId) {
           actions.moveProjectToGroup(project.id, null)
@@ -291,6 +312,7 @@ export function ProjectSidebar() {
       label: project.terminals.length > 0 && project.terminals.every((term) => term.disabled)
         ? t('ui.sidebar.reactivateProject')
         : t('ui.sidebar.disableProject'),
+      icon: <Power size={14} />,
       onClick: () => {
         const allDisabled = project.terminals.length > 0 && project.terminals.every((term) => term.disabled)
         actions.setProjectDisabled(project.id, !allDisabled)
@@ -300,6 +322,7 @@ export function ProjectSidebar() {
     {
       kind: 'item',
       label: t('ui.sidebar.deleteProject'),
+      icon: <Trash2 size={14} />,
       danger: true,
       onClick: () => {
         if (
@@ -418,9 +441,131 @@ export function ProjectSidebar() {
     },
   ]
 
+  const activeTerminalTab = (term: Terminal) =>
+    term.tabs.find((tab) => tab.id === term.activeTabId) ?? term.tabs[0]
+
+  const resolveTerminalCwd = async (term: Terminal): Promise<string | null> => {
+    const activeTab = activeTerminalTab(term)
+    const saved = activeTab?.cwd?.trim() || term.cwd?.trim()
+    if (saved) return saved
+    if (!activeTab?.ptyId) return null
+    return getPtyCwd(activeTab.ptyId).catch(() => null)
+  }
+
+  const openTerminalPath = async (
+    term: Terminal,
+    action: (path: string) => Promise<void>,
+    label: string,
+  ) => {
+    const path = await resolveTerminalCwd(term)
+    if (!path) {
+      window.alert(t('ui.terminal.noCwdAvailable', { label }))
+      return
+    }
+    try {
+      await action(path)
+    } catch (err) {
+      window.alert(t('ui.terminal.openFailed', { label, error: String(err) }))
+    }
+  }
+
+  const restartTerminal = async (term: Terminal) => {
+    const activeTab = activeTerminalTab(term)
+    if (!activeTab?.ptyId || term.disabled) return
+    const runtime = preparePtyRuntimeLaunch(
+      activeTab.type,
+      activeTab.runtimeProfile,
+      activeTab.extraArgs ?? [],
+    )
+    const launch = buildAgentLaunch(activeTab.type, runtime.args, activeTab.sessionId)
+    useTerminalsStore.getState().beginRestart(activeTab.ptyId)
+    try {
+      await restartPty({
+        id: activeTab.ptyId,
+        cols: 80,
+        rows: 24,
+        command: agentCliCommand(activeTab.type),
+        cwd: activeTab.cwd || undefined,
+        extraArgs: launch.args,
+        env: runtime.env,
+      })
+      window.dispatchEvent(
+        new CustomEvent('alethe:terminal-resize-request', { detail: { ptyId: activeTab.ptyId } }),
+      )
+    } catch (err) {
+      window.alert(t('ui.terminal.openFailed', { label: t('ui.terminal.restart'), error: String(err) }))
+    }
+  }
+
+  const confirmAndDeleteTerminal = (projectId: string, term: Terminal) => {
+    if (window.confirm(t('ui.sidebar.confirmDeleteTerminal', { name: term.name }))) {
+      actions.deleteTerminal(projectId, term.id)
+    }
+  }
+
   const terminalMenu = (projectId: string, term: Terminal): MenuItem[] => {
     const inSplit = openPaneSets[projectId]?.has(term.id) ?? false
+    const activeTab = activeTerminalTab(term)
+    const isTerminalPane = !term.kind || term.kind === 'terminal'
+    const effectiveLaneVisible = term.tabs.length > 1 ? true : term.laneVisible === true
     return [
+      {
+        kind: 'item',
+        label: t('terminalInspector.reveal'),
+        icon: <PanelTopOpen size={14} />,
+        onClick: () => {
+          setActiveTerminal(projectId, term.id)
+          actions.focusWorkspaceTerminal(projectId, term.id)
+          requestPaneFocus(term.id)
+          setActiveView('workspace')
+        },
+      },
+      ...(activeTab?.ptyId && isTerminalPane && !term.disabled
+        ? [{
+            kind: 'item' as const,
+            label: t('ui.terminal.restart'),
+            icon: <Power size={14} />,
+            onClick: () => void restartTerminal(term),
+          }]
+        : []),
+      ...(isTerminalPane
+        ? [
+            {
+              kind: 'item' as const,
+              label: t('ui.terminal.openInExplorer'),
+              icon: <FolderOpen size={14} />,
+              onClick: () => void openTerminalPath(term, openInFileExplorer, 'Explorer'),
+            },
+            {
+              kind: 'item' as const,
+              label: t('ui.terminal.openInVscode'),
+              icon: <FolderOpen size={14} />,
+              onClick: () => void openTerminalPath(term, openInVscode, 'VS Code'),
+            },
+            {
+              kind: 'item' as const,
+              label: t('ui.terminal.focusMode'),
+              icon: <PanelTopOpen size={14} />,
+              onClick: () => {
+                setActiveTerminal(projectId, term.id)
+                actions.focusWorkspaceTerminal(projectId, term.id)
+                setFocusedTerminal(term.id)
+                setActiveView('workspace')
+              },
+            },
+          ]
+        : []),
+      ...(isTerminalPane && activeTab && term.tabs.length <= 1
+        ? [
+            {
+              kind: 'item' as const,
+              label: effectiveLaneVisible ? t('ui.terminal.hideTabsLane') : t('ui.terminal.showTabsLane'),
+              onClick: () =>
+                actions.setLaneVisible(projectId, term.id, effectiveLaneVisible ? false : true),
+            },
+          ]
+        : []),
+      { kind: 'separator' },
       {
         kind: 'item',
         label: t('ui.workspace.openIndividually'),
@@ -441,6 +586,7 @@ export function ProjectSidebar() {
       {
         kind: 'item',
         label: t('ui.sidebar.rename'),
+        icon: <Pencil size={14} />,
         onClick: () => {
           const name = window.prompt(t('ui.sidebar.newNamePrompt'), term.name)?.trim()
           if (name) actions.renameTerminal(projectId, term.id, name)
@@ -449,6 +595,7 @@ export function ProjectSidebar() {
       {
         kind: 'item',
         label: inSplit ? t('ui.sidebar.hideFromSplit') : t('ui.sidebar.showInSplit'),
+        icon: <Layout size={14} />,
         onClick: () => actions.togglePane(projectId, term.id),
       },
       ...(term.kind === 'markdown' && term.filePath
@@ -456,6 +603,7 @@ export function ProjectSidebar() {
             {
               kind: 'item' as const,
               label: t('rightSidebar.openMarkdown'),
+              icon: <FileText size={14} />,
               onClick: () => {
                 openMarkdownSidebar(term.filePath!, term.name)
                 setPreferences({ rightSidebarVisible: true })
@@ -466,23 +614,22 @@ export function ProjectSidebar() {
       {
         kind: 'item',
         label: term.disabled ? t('ui.sidebar.reactivate') : t('ui.sidebar.disable'),
+        icon: <Power size={14} />,
         onClick: () => actions.setTerminalDisabled(projectId, term.id, !term.disabled),
       },
       {
         kind: 'item',
         label: t('ui.sidebar.killTerminal'),
+        icon: <Power size={14} />,
         onClick: () => actions.killTerminal(projectId, term.id),
       },
       { kind: 'separator' },
       {
         kind: 'item',
         label: t('ui.sidebar.deleteTerminal'),
+        icon: <Trash2 size={14} />,
         danger: true,
-        onClick: () => {
-          if (window.confirm(t('ui.sidebar.confirmDeleteTerminal', { name: term.name }))) {
-            actions.deleteTerminal(projectId, term.id)
-          }
-        },
+        onClick: () => confirmAndDeleteTerminal(projectId, term),
       },
     ]
   }
@@ -526,6 +673,11 @@ export function ProjectSidebar() {
         setMenu({ x: e.clientX, y: e.clientY, items: terminalMenu(p.id, t) })
       }
       onAddTerminal={() => openModal('newTerminal', { projectId: p.id })}
+      onQuickOpen={() => activateProject(p, 'open')}
+      onToggleDisabled={() => {
+        const allDisabled = p.terminals.length > 0 && p.terminals.every((term) => term.disabled)
+        actions.setProjectDisabled(p.id, !allDisabled)
+      }}
     />
   )
 
@@ -639,91 +791,106 @@ export function ProjectSidebar() {
         ) : null}
       </div>
 
-      {sidebarTab === 'projects' ? <header className={styles.header}>
-        <span className={styles.title}>{t('ui.sidebar.projects')}</span>
-        <div className={styles.headerActions}>
-          <button
-            type="button"
-            className={styles.iconBtn}
-            onClick={() =>
-              activeProjectId && openModal('addContent', { projectId: activeProjectId })
-            }
-            disabled={!activeProjectId}
-            title={t('addContent.shortcutTitle', { shortcut: 'Ctrl+Shift+A' })}
-            aria-label={t('addContent.title')}
-          >
-            <PanelTopOpen size={14} />
-          </button>
-          <button
-            type="button"
-            className={styles.iconBtn}
-            onClick={() => openModal('newGroup')}
-            title={t('ui.sidebar.newGroupTitle', { shortcut: 'Ctrl+Shift+G' })}
-            aria-label={t('ui.sidebar.newGroup')}
-          >
-            <FolderPlus size={14} />
-          </button>
-          <button
-            type="button"
-            className={styles.iconBtn}
-            onClick={() => openModal('newProject')}
-            title={t('ui.sidebar.newProjectTitle', { shortcut: 'Ctrl+Shift+P' })}
-            aria-label={t('ui.sidebar.newProject')}
-          >
-            <Plus size={14} />
-          </button>
-        </div>
-      </header> : null}
+      <div className={styles.quickNavList}>
+        <button
+          type="button"
+          className={styles.quickNavItem}
+          onClick={() => openModal('findJump')}
+          title="Search"
+        >
+          <Search size={15} className={styles.quickNavIcon} />
+          <span>Search</span>
+        </button>
+      </div>
 
-      {sidebarTab === 'files' ? <section className={styles.explorerPanel}>
-        <div className={styles.explorerHeader}>
-          <span className={styles.explorerLabel}>{t('ui.sidebar.explorer')}</span>
-          <MoreHorizontal size={14} />
-        </div>
-        {selectedTerminal && selectedSubTab ? (
-          <FileExplorer
-            cwd={selectedSubTab.cwd || selectedTerminal.cwd}
-            ptyId={selectedSubTab.ptyId}
-            terminalName={selectedTerminal.name}
-          />
-        ) : (
-          <div className={styles.explorerEmpty}>
-            <EmptyState
-              compact
-              icon={<FolderPlus size={18} />}
-              title={t('ui.sidebar.emptyTitle')}
-              description={t('ui.sidebar.emptyDesc')}
-              primaryAction={{
-                label: t('ui.sidebar.emptyAction'),
-                onClick: () => openModal('newProject'),
-              }}
-            />
+      {sidebarTab === 'projects' ? (
+        <header className={styles.header}>
+          <span className={styles.title}>{t('ui.sidebar.projects')}</span>
+          <div className={styles.headerActions}>
+            <button
+              type="button"
+              className={styles.iconBtn}
+              onClick={() => openModal('topbarSettings')}
+              title={t('ui.titlebar.customize')}
+              aria-label={t('ui.titlebar.customize')}
+            >
+              <SlidersHorizontal size={13} />
+            </button>
+            <button
+              type="button"
+              className={styles.iconBtn}
+              onClick={() => openModal('newGroup')}
+              title={t('ui.sidebar.newGroupTitle', { shortcut: 'Ctrl+Shift+G' })}
+              aria-label={t('ui.sidebar.newGroup')}
+            >
+              <FolderPlus size={14} />
+            </button>
+            <button
+              type="button"
+              className={styles.iconBtn}
+              onClick={() => openModal('newProject')}
+              title={t('ui.sidebar.newProjectTitle', { shortcut: 'Ctrl+Shift+P' })}
+              aria-label={t('ui.sidebar.newProject')}
+            >
+              <Plus size={14} />
+            </button>
           </div>
-        )}
-      </section> : null}
+        </header>
+      ) : null}
 
-      {sidebarTab === 'git' ? <section className={styles.explorerPanel}>
-        <div className={styles.explorerHeader}>
-          <span className={styles.explorerLabel}>{t('ui.sidebar.sourceControl')}</span>
-        </div>
-        {selectedTerminal && selectedSubTab ? (
-          <GitControl
-            cwd={selectedSubTab.cwd || selectedTerminal.cwd}
-            ptyId={selectedSubTab.ptyId}
-            terminalName={selectedTerminal.name}
-          />
-        ) : (
-          <div className={styles.explorerEmpty}>
-            <EmptyState
-              compact
-              icon={<GitBranch size={18} />}
-              title={t('git.empty.noTerminal')}
-              description={t('git.empty.noTerminalDesc')}
-              primaryAction={{ label: t('ui.sidebar.emptyAction'), onClick: () => openModal('newProject') }}
-            />
+      {sidebarTab === 'files' ? (
+        <section className={styles.explorerPanel}>
+          <div className={styles.explorerHeader}>
+            <span className={styles.explorerLabel}>{t('ui.sidebar.explorer')}</span>
+            <MoreHorizontal size={14} />
           </div>
-        )}
-      </section> : null}
+          {selectedTerminal && selectedSubTab ? (
+            <FileExplorer
+              cwd={selectedSubTab.cwd || selectedTerminal.cwd}
+              ptyId={selectedSubTab.ptyId}
+              terminalName={selectedTerminal.name}
+            />
+          ) : (
+            <div className={styles.explorerEmpty}>
+              <EmptyState
+                compact
+                icon={<FolderPlus size={18} />}
+                title={t('ui.sidebar.emptyTitle')}
+                description={t('ui.sidebar.emptyDesc')}
+                primaryAction={{
+                  label: t('ui.sidebar.emptyAction'),
+                  onClick: () => openModal('newProject'),
+                }}
+              />
+            </div>
+          )}
+        </section>
+      ) : null}
+
+      {sidebarTab === 'git' ? (
+        <section className={styles.explorerPanel}>
+          <div className={styles.explorerHeader}>
+            <span className={styles.explorerLabel}>{t('ui.sidebar.sourceControl')}</span>
+          </div>
+          {selectedTerminal && selectedSubTab ? (
+            <GitControl
+              cwd={selectedSubTab.cwd || selectedTerminal.cwd}
+              ptyId={selectedSubTab.ptyId}
+              terminalName={selectedTerminal.name}
+            />
+          ) : (
+            <div className={styles.explorerEmpty}>
+              <EmptyState
+                compact
+                icon={<GitBranch size={18} />}
+                title={t('git.empty.noTerminal')}
+                description={t('git.empty.noTerminalDesc')}
+                primaryAction={{ label: t('ui.sidebar.emptyAction'), onClick: () => openModal('newProject') }}
+              />
+            </div>
+          )}
+        </section>
+      ) : null}
 
       {sidebarTab === 'projects' ? (
         <DndContext sensors={sensors} onDragEnd={onDragEnd}>
@@ -757,7 +924,6 @@ export function ProjectSidebar() {
       {menu ? (
         <ContextMenu x={menu.x} y={menu.y} items={menu.items} onClose={() => setMenu(null)} />
       ) : null}
-
       <WorkspaceLayoutFooter />
       <LayoutFooter />
       <SidebarNowPlaying />
@@ -766,31 +932,6 @@ export function ProjectSidebar() {
     </aside>
   )
 }
-
-function WorkspaceLayoutFooter({ forceVisible = false }: { forceVisible?: boolean }) {
-  const t = useT()
-  const containerCount = useProjectsStore((s) => s.workspace.containers.length)
-  const hasCustom = useProjectsStore((s) => Boolean(s.preferences.workspaceGridLayout))
-  const openModal = useUiStore((s) => s.openModal_)
-  if (!forceVisible && containerCount < 2) return null
-  return (
-    <div className={styles.layoutFooter}>
-      <span className={styles.layoutLabel}>Workspace</span>
-      <button
-        type="button"
-        className={`${styles.layoutBtn} ${hasCustom ? styles.layoutBtnActive : ''}`}
-        onClick={() => openModal('layoutDesigner', { kind: 'workspace' })}
-        title={t('ui.sidebar.designWorkspaceLayout')}
-        aria-label={t('ui.sidebar.designLayoutShort')}
-        style={{ width: 'auto', padding: '0 10px', fontSize: 11, gap: 6 }}
-      >
-        <Grid3x3 size={12} />
-        <span>{hasCustom ? t('ui.sidebar.editGrid') : t('ui.sidebar.drawGrid')}</span>
-      </button>
-    </div>
-  )
-}
-
 function LayoutFooter() {
   const t = useT()
   const project = useProjectsStore(selectActiveProject)
@@ -822,27 +963,139 @@ function LayoutFooter() {
   )
 }
 
+function WorkspaceLayoutFooter({ forceVisible = false }: { forceVisible?: boolean }) {
+  const t = useT()
+  const containerCount = useProjectsStore((s) => s.workspace.containers.length)
+  const hasCustom = useProjectsStore((s) => Boolean(s.preferences.workspaceGridLayout))
+  const openModal = useUiStore((s) => s.openModal_)
+  if (!forceVisible && containerCount < 2) return null
+  return (
+    <div className={styles.layoutFooter}>
+      <span className={styles.layoutLabel}>Workspace</span>
+      <button
+        type="button"
+        className={`${styles.layoutBtn} ${hasCustom ? styles.layoutBtnActive : ''}`}
+        onClick={() => openModal('layoutDesigner', { kind: 'workspace' })}
+        title={t('ui.sidebar.designWorkspaceLayout')}
+        aria-label={t('ui.sidebar.designLayoutShort')}
+        style={{ width: 'auto', padding: '0 10px', fontSize: 11, gap: 6 }}
+      >
+        <Grid3x3 size={12} />
+        <span>{hasCustom ? t('ui.sidebar.editGrid') : t('ui.sidebar.drawGrid')}</span>
+      </button>
+    </div>
+  )
+}
+
+function UngroupedSection({
+  projects,
+  renderProject,
+}: {
+  projects: Project[]
+  renderProject: (p: Project) => React.ReactNode
+}) {
+  const t = useT()
+  const { setNodeRef, isOver } = useDroppable({ id: 'group:ungrouped' })
+  return (
+    <div
+      ref={setNodeRef}
+      className={`${styles.ungroupedSection} ${isOver ? styles.groupDropTarget : ''}`}
+    >
+      <div className={styles.ungroupedHeader}>{t('ui.sidebar.ungrouped')}</div>
+      <div className={styles.ungroupedBody}>{projects.map((p) => renderProject(p))}</div>
+    </div>
+  )
+}
+
 /* ------------ Shared ------------ */
 
-function GroupBadge({ iconUrl, color }: { iconUrl?: string; color: string }) {
-  return iconUrl ? (
-    <img src={iconUrl} alt="" className={styles.groupIcon} />
-  ) : (
-    <span className={styles.groupBullet} style={{ background: color }} />
-  )
+function GroupBadge({ name, iconUrl, color }: { name: string; iconUrl?: string; color: string }) {
+  return <Monogram name={name} iconUrl={iconUrl} color={color} size={18} />
 }
 
-function ProjectBadge({ iconUrl, color }: { iconUrl?: string; color?: string }) {
-  return iconUrl ? (
-    <img src={iconUrl} alt="" className={styles.projectIcon} />
-  ) : (
+/** Iniciais (1–2 letras) pro monograma do projeto/grupo. */
+function initialsOf(name: string): string {
+  const parts = name.trim().split(/[\s\-_./\\]+/).filter(Boolean)
+  if (parts.length === 0) return '?'
+  if (parts.length === 1) return parts[0].slice(0, 2).toLowerCase()
+  return (parts[0][0] + parts[1][0]).toLowerCase()
+}
+
+/** cwd representativo do projeto = primeiro terminal com cwd (aba ativa preferida). */
+function projectRepresentativeCwd(project: Project): string | undefined {
+  for (const term of project.terminals) {
+    const tab = term.tabs.find((x) => x.id === term.activeTabId) ?? term.tabs[0]
+    const cwd = tab?.cwd || term.cwd
+    if (cwd) return cwd
+  }
+  return undefined
+}
+
+// cache por cwd + dedup de chamadas concorrentes (git_status é caro)
+const branchCache = new Map<string, string | null>()
+const branchInflight = new Map<string, Promise<void>>()
+
+/** Lê o branch do repo no cwd via gitStatus (já existente). Defensivo: null se não for repo. */
+function useProjectBranch(cwd?: string): string | null {
+  const [branch, setBranch] = useState<string | null>(() => (cwd ? branchCache.get(cwd) ?? null : null))
+  useEffect(() => {
+    let alive = true
+    if (!cwd) {
+      setBranch(null)
+      return
+    }
+    if (branchCache.has(cwd)) {
+      setBranch(branchCache.get(cwd) ?? null)
+      return
+    }
+    if (!branchInflight.has(cwd)) {
+      const p = gitStatus(cwd)
+        .then((st) => {
+          branchCache.set(cwd, st.detached ? null : st.branch || null)
+        })
+        .catch(() => {
+          branchCache.set(cwd, null)
+        })
+        .finally(() => {
+          branchInflight.delete(cwd)
+        })
+      branchInflight.set(cwd, p)
+    }
+    void branchInflight.get(cwd)?.then(() => {
+      if (alive) setBranch(branchCache.get(cwd) ?? null)
+    })
+    return () => {
+      alive = false
+    }
+  }, [cwd])
+  return branch
+}
+
+/** Monograma colorido: iniciais sobre a cor do projeto/grupo; iconUrl custom sobrepõe. */
+function Monogram({
+  name,
+  iconUrl,
+  color,
+  size = 20,
+}: {
+  name: string
+  iconUrl?: string
+  color?: string
+  size?: number
+}) {
+  if (iconUrl) {
+    return <img src={iconUrl} alt="" className={styles.projectIcon} style={{ width: size, height: size }} />
+  }
+  return (
     <span
-      className={styles.projectChip}
-      style={color ? { background: color } : undefined}
-    />
+      className={styles.monogram}
+      style={{ width: size, height: size, background: color || 'var(--panel-hover)', fontSize: Math.round(size * 0.46) }}
+      aria-hidden
+    >
+      {initialsOf(name)}
+    </span>
   )
 }
-
 /* ------------ Group ------------ */
 
 type GroupNodeProps = {
@@ -908,7 +1161,7 @@ function GroupNode({
         title={t('ui.sidebar.openAllGroupProjects')}
       >
         <ChevronRight size={12} className={styles.groupChevron} />
-        <GroupBadge iconUrl={group.iconUrl} color={group.color} />
+        <GroupBadge name={group.name} iconUrl={group.iconUrl} color={group.color} />
         <span className={styles.groupName}>{group.name}</span>
         {group.suspended && <Pause size={10} className={styles.groupSuspendedIcon} />}
         <span className={styles.groupCount}>
@@ -952,7 +1205,7 @@ function GroupNode({
         >
           <ChevronDown size={11} />
         </button>
-        <GroupBadge iconUrl={group.iconUrl} color={group.color} />
+        <GroupBadge name={group.name} iconUrl={group.iconUrl} color={group.color} />
         <span className={styles.groupTagName}>{group.name}</span>
         {group.suspended && <Pause size={10} className={styles.groupSuspendedIcon} />}
         <button
@@ -996,25 +1249,6 @@ function collectDescendants(rootId: string, allGroups: Group[]): Set<string> {
   return result
 }
 
-function UngroupedSection({
-  projects,
-  renderProject,
-}: {
-  projects: Project[]
-  renderProject: (p: Project) => React.ReactNode
-}) {
-  const t = useT()
-  const { setNodeRef, isOver } = useDroppable({ id: 'group:ungrouped' })
-  return (
-    <div
-      ref={setNodeRef}
-      className={`${styles.ungroupedSection} ${isOver ? styles.groupDropTarget : ''}`}
-    >
-      <div className={styles.ungroupedHeader}>{t('ui.sidebar.ungrouped')}</div>
-      <div className={styles.ungroupedBody}>{projects.map((p) => renderProject(p))}</div>
-    </div>
-  )
-}
 
 /* ------------ Project ------------ */
 
@@ -1029,6 +1263,8 @@ type ProjectNodeProps = {
   onProjectMenu: (e: React.MouseEvent) => void
   onTerminalMenu: (t: Terminal, e: React.MouseEvent) => void
   onAddTerminal: () => void
+  onQuickOpen: () => void
+  onToggleDisabled: () => void
 }
 
 function ProjectNode({
@@ -1042,6 +1278,8 @@ function ProjectNode({
   onProjectMenu,
   onTerminalMenu,
   onAddTerminal,
+  onQuickOpen,
+  onToggleDisabled,
 }: ProjectNodeProps) {
   const t = useT()
   const { setNodeRef: dropRef, isOver } = useDroppable({ id: `proj:${project.id}` })
@@ -1052,14 +1290,29 @@ function ProjectNode({
   }
 
   const allDisabled = project.terminals.length > 0 && project.terminals.every((term) => term.disabled)
+  const branch = useProjectBranch(projectRepresentativeCwd(project))
+  const runningCount = useTerminalsStore((state) =>
+    project.terminals.reduce(
+      (n, term) =>
+        n +
+        (term.tabs.some((tab) => tab.ptyId && state.byPtyId[tab.ptyId]?.status === 'working') ? 1 : 0),
+      0,
+    ),
+  )
+  const totalCount = project.terminals.length
+  const focusedTerminalId = useUiStore((s) =>
+    s.activeTerminal?.projectId === project.id ? s.activeTerminal?.terminalId : undefined,
+  )
+  const countLabel = runningCount > 0 ? `${runningCount}/${totalCount}` : String(totalCount)
+  const countTitle = t('ui.sidebar.agentsRunningOf', { running: runningCount, total: totalCount })
 
-  return (
-    <div className={`${styles.projectNode} ${allDisabled ? styles.projectDisabled : ''}`} ref={setRefs}>
+  if (isActive) {
+    return (
       <div
-        className={`${styles.projectRow} ${isActive ? styles.projectActive : ''} ${
-          isOver ? styles.projectDropTarget : ''
+        ref={setRefs}
+        className={`${styles.activeCard} ${isOver ? styles.projectDropTarget : ''} ${
+          allDisabled ? styles.projectDisabled : ''
         }`}
-        onClick={onActivate}
         onContextMenu={(e) => {
           e.preventDefault()
           e.stopPropagation()
@@ -1068,52 +1321,133 @@ function ProjectNode({
         {...draggable.attributes}
         {...draggable.listeners}
       >
-        <button
-          type="button"
-          className={styles.chevron}
-          onClick={(e) => {
-            e.stopPropagation()
-            onToggleCollapsed()
-          }}
-          aria-label={project.collapsed ? t('ui.sidebar.expand') : t('ui.sidebar.collapse')}
-        >
-          {project.collapsed ? <ChevronRight size={12} /> : <ChevronDown size={12} />}
-        </button>
-        <ProjectBadge iconUrl={project.iconUrl} color={project.color} />
+        <div className={styles.activeCardHeader} onClick={onToggleCollapsed}>
+          <Monogram name={project.name} iconUrl={project.iconUrl} color={project.color} size={20} />
+          <span className={styles.activeCardTitle} title={project.name}>
+            {project.name}
+          </span>
+          <span className={styles.badgePrimary}>{t('ui.sidebar.primary')}</span>
+          <button
+            type="button"
+            className={styles.iconBtn}
+            onClick={(e) => {
+              e.stopPropagation()
+              onQuickOpen()
+            }}
+            title={t('ui.workspace.openIndividually')}
+          >
+            <FolderOpen size={12} />
+          </button>
+          <button
+            type="button"
+            className={styles.iconBtn}
+            onClick={(e) => {
+              e.stopPropagation()
+              onAddTerminal()
+            }}
+            title={t('ui.sidebar.newTerminal')}
+          >
+            <Plus size={12} />
+          </button>
+          <button
+            type="button"
+            className={styles.rowMenuBtn}
+            onClick={(e) => {
+              e.stopPropagation()
+              onProjectMenu(e)
+            }}
+            title={t('ui.sidebar.moreActions')}
+            aria-label={t('ui.sidebar.moreActions')}
+          >
+            <MoreHorizontal size={14} />
+          </button>
+        </div>
+
+        {!project.collapsed && project.terminals.length > 0 ? (
+          <div className={styles.activeCardAgentsList}>
+            {project.terminals.map((term) => (
+              <TerminalNode
+                key={term.id}
+                project={project}
+                terminal={term}
+                selected={openPanes?.has(term.id) ?? false}
+                focused={focusedTerminalId === term.id}
+                onClick={() => onTerminalClick(term)}
+                onDoubleClick={() => onTerminalDoubleClick(term)}
+                onMenu={(e) => onTerminalMenu(term, e)}
+              />
+            ))}
+          </div>
+        ) : null}
+      </div>
+    )
+  }
+
+  return (
+    <div
+      ref={setRefs}
+      className={`${styles.inactiveProjectNode} ${allDisabled ? styles.projectDisabled : ''} ${
+        isOver ? styles.projectDropTarget : ''
+      }`}
+      onClick={onActivate}
+      onContextMenu={(e) => {
+        e.preventDefault()
+        e.stopPropagation()
+        onProjectMenu(e)
+      }}
+      {...draggable.attributes}
+      {...draggable.listeners}
+    >
+      <span className={styles.stateGutter}>
+        {runningCount > 0 ? (
+          <DotmCircular2
+            size={14}
+            dotSize={2}
+            cellPadding={1}
+            speed={1.2}
+            bloom
+            ariaLabel={t('ui.terminal.working')}
+            className={styles.rosterLoading}
+          />
+        ) : (
+          <span
+            className={`${styles.inactiveDot} ${
+              project.terminals.some((term) => !term.disabled) ? styles.inactiveDotActive : ''
+            }`}
+            onClick={(e) => {
+              e.stopPropagation()
+              onToggleDisabled()
+            }}
+          />
+        )}
+      </span>
+      <Monogram name={project.name} iconUrl={project.iconUrl} color={project.color} size={18} />
+      <div className={styles.inactiveMain}>
         <span className={styles.projectName} title={project.name}>
           {project.name}
         </span>
-        {allDisabled && <Pause size={10} className={styles.projectPauseIcon} />}
-        <span className={styles.count}>{project.terminals.length}</span>
-        <button
-          type="button"
-          className={styles.iconBtn}
-          onClick={(e) => {
-            e.stopPropagation()
-            onAddTerminal()
-          }}
-          title={t('ui.sidebar.newTerminal')}
-          aria-label={t('ui.sidebar.newTerminal')}
-        >
-          <Plus size={12} />
-        </button>
+        {branch ? (
+          <span className={styles.inactiveBranch} title={branch}>
+            {branch}
+          </span>
+        ) : null}
       </div>
-
-      {!project.collapsed && project.terminals.length > 0 ? (
-        <div className={styles.terminals}>
-          {project.terminals.map((term) => (
-            <TerminalNode
-              key={term.id}
-              project={project}
-              terminal={term}
-              selected={openPanes?.has(term.id) ?? false}
-              onClick={() => onTerminalClick(term)}
-              onDoubleClick={() => onTerminalDoubleClick(term)}
-              onMenu={(e) => onTerminalMenu(term, e)}
-            />
-          ))}
-        </div>
-      ) : null}
+      {allDisabled && <Pause size={10} className={styles.projectPauseIcon} />}
+      <span className={styles.count} title={countTitle}>
+        {countLabel}
+      </span>
+      <button
+        type="button"
+        className={styles.rowMenuBtn}
+        onClick={(e) => {
+          e.stopPropagation()
+          onProjectMenu(e)
+        }}
+        title={t('ui.sidebar.moreActions')}
+        aria-label={t('ui.sidebar.moreActions')}
+      >
+        <MoreHorizontal size={14} />
+      </button>
     </div>
   )
 }
@@ -1124,12 +1458,13 @@ type TerminalNodeProps = {
   project: Project
   terminal: Terminal
   selected: boolean
+  focused?: boolean
   onClick: () => void
   onDoubleClick: () => void
   onMenu: (e: React.MouseEvent) => void
 }
 
-function TerminalNode({ project, terminal, selected, onClick, onDoubleClick, onMenu }: TerminalNodeProps) {
+function TerminalNode({ project, terminal, selected, focused, onClick, onDoubleClick, onMenu }: TerminalNodeProps) {
   const t = useT()
   const terminalTheme = useProjectsStore(
     (s) => s.preferences.terminalTheme ?? s.preferences.uiTheme,
@@ -1145,15 +1480,18 @@ function TerminalNode({ project, terminal, selected, onClick, onDoubleClick, onM
       ? [activeTab.type, ...uniqueTypes.filter((type) => type !== activeTab.type)]
       : uniqueTypes
   const hasUnreadCompletion = terminal.tabs.some((tab) => tab.completionUnread)
+  const isWorking = useTerminalsStore((state) =>
+    terminal.tabs.some((tab) => tab.ptyId && state.byPtyId[tab.ptyId]?.status === 'working'),
+  )
 
   return (
     <div
       ref={setNodeRef}
       {...attributes}
       {...listeners}
-      className={`${styles.terminalRow} ${!selected ? styles.terminalHidden : ''} ${
-        terminal.disabled ? styles.terminalDisabled : ''
-      } ${isDragging ? styles.dragging : ''}`}
+      className={`${styles.terminalRow} ${focused ? styles.terminalFocused : ''} ${
+        !selected ? styles.terminalHidden : ''
+      } ${terminal.disabled ? styles.terminalDisabled : ''} ${isDragging ? styles.dragging : ''}`}
       onClick={() => onClick()}
       onDoubleClick={(event) => {
         event.stopPropagation()
@@ -1166,6 +1504,25 @@ function TerminalNode({ project, terminal, selected, onClick, onDoubleClick, onM
       }}
       title={terminal.url || terminal.filePath || terminal.cwd || terminal.name}
     >
+      <span className={styles.terminalState}>
+        {isWorking ? (
+          <DotmCircular2
+            size={14}
+            dotSize={2}
+            cellPadding={1}
+            speed={1.2}
+            bloom
+            ariaLabel={t('ui.terminal.working')}
+            className={styles.terminalLoading}
+          />
+        ) : hasUnreadCompletion ? (
+          <span className={styles.doneBadge} title={t('ui.terminal.responseReady')}>
+            !
+          </span>
+        ) : (
+          <span className={styles.terminalIdle} />
+        )}
+      </span>
       <span className={styles.agentStack}>
         {terminal.kind === 'web' ? (
           <span className={styles.agentIcon}>
@@ -1188,14 +1545,26 @@ function TerminalNode({ project, terminal, selected, onClick, onDoubleClick, onM
         )}
       </span>
       <span className={styles.terminalName}>{terminal.name}</span>
-      {hasUnreadCompletion ? (
-        <span className={styles.doneBadge} title={t('ui.terminal.responseReady')}>
-          !
-        </span>
-      ) : null}
+      {focused ? <span className={styles.focusTag}>{t('ui.sidebar.focus')}</span> : null}
       {terminal.tabs.length > 1 ? (
         <span className={styles.tabCount}>{terminal.tabs.length}</span>
       ) : null}
+      <button
+        type="button"
+        className={styles.terminalMenuBtn}
+        onPointerDown={(event) => {
+          event.stopPropagation()
+        }}
+        onClick={(event) => {
+          event.preventDefault()
+          event.stopPropagation()
+          onMenu(event)
+        }}
+        title={t('ui.terminal.moreActions')}
+        aria-label={t('ui.terminal.moreActions')}
+      >
+        <MoreHorizontal size={13} />
+      </button>
     </div>
   )
 }

@@ -1,9 +1,10 @@
-import { useEffect, useRef } from 'react'
+import { useEffect, useLayoutEffect, useRef, useState, type ReactNode } from 'react'
+import { createPortal } from 'react-dom'
 
 import styles from './ContextMenu.module.css'
 
 export type MenuItem =
-  | { kind: 'item'; label: string; onClick: () => void; danger?: boolean }
+  | { kind: 'item'; label: string; onClick: () => void; danger?: boolean; icon?: ReactNode }
   | { kind: 'separator' }
 
 type Props = {
@@ -15,6 +16,7 @@ type Props = {
 
 export function ContextMenu({ x, y, items, onClose }: Props) {
   const ref = useRef<HTMLDivElement>(null)
+  const [position, setPosition] = useState({ x, y })
 
   useEffect(() => {
     const onDown = (e: MouseEvent) => {
@@ -31,15 +33,22 @@ export function ContextMenu({ x, y, items, onClose }: Props) {
     }
   }, [onClose])
 
-  // se vai sair da tela, cola na borda
-  const maxX = window.innerWidth - 200
-  const maxY = window.innerHeight - items.length * 32 - 8
+  useLayoutEffect(() => {
+    const menu = ref.current
+    if (!menu) return
+    const margin = 8
+    const rect = menu.getBoundingClientRect()
+    setPosition({
+      x: Math.max(margin, Math.min(x, window.innerWidth - rect.width - margin)),
+      y: Math.max(margin, Math.min(y, window.innerHeight - rect.height - margin)),
+    })
+  }, [items, x, y])
 
-  return (
+  return createPortal(
     <div
       ref={ref}
       className={styles.menu}
-      style={{ left: Math.min(x, maxX), top: Math.min(y, maxY) }}
+      style={{ left: position.x, top: position.y }}
       role="menu"
     >
       {items.map((item, i) =>
@@ -56,10 +65,12 @@ export function ContextMenu({ x, y, items, onClose }: Props) {
               onClose()
             }}
           >
+            {item.icon ? <span className={styles.itemIcon}>{item.icon}</span> : null}
             {item.label}
           </button>
         ),
       )}
-    </div>
+    </div>,
+    document.body,
   )
 }
