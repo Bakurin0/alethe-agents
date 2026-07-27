@@ -68,8 +68,9 @@ Detalhes em [`../docs/BUILD_WINDOWS.md`](../docs/BUILD_WINDOWS.md).
    `src/lib/i18n/messages/pt-BR.ts`. O `pt-BR.ts` é tipado contra as chaves de `en.ts`, então
    `npm run build` **falha** se faltar tradução.
 5. **Changelog obrigatório para features.** Toda adição, alteração ou remoção de feature deve
-   atualizar [`../docs/CHANGELOG.md`](../docs/CHANGELOG.md) na mesma tarefa, sob a seção
-   **Não lançado**, com uma descrição curta, objetiva e voltada ao usuário.
+   atualizar [`docs/CHANGELOG.md`](docs/CHANGELOG.md) na mesma tarefa, sob a seção
+   **`[Não lançado]`** (topo do arquivo), com uma descrição curta, objetiva e voltada ao
+   usuário. Nunca pule esse passo — o changelog é a fonte das notas de release.
 
 ## 6. Arquitetura rápida
 
