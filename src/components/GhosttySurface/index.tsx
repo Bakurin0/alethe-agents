@@ -1,19 +1,14 @@
 import { useEffect, useRef } from 'react'
 
 import {
-  ghosttyKill,
+  ghosttySetFocus,
   ghosttySetHidden,
   ghosttySpawn,
+  ghosttySurfaceExited,
   ghosttySyncFrame,
   type WebRect,
 } from '../../lib/tauri'
 import { webRectsEqual } from '../../lib/webRect'
-
-// Kills pendentes (deferidos) por surfaceId. O StrictMode (dev) desmonta e
-// remonta o componente imediatamente; se matássemos a surface no unmount, o
-// shell reiniciaria a cada render. Em vez disso, adiamos o kill — se o mesmo
-// surfaceId remontar logo, cancelamos. Só mata de verdade num unmount real.
-const pendingKills = new Map<string, ReturnType<typeof setTimeout>>()
 
 export type GhosttySurfaceProps = {
   /** ID estável da surface — usamos o id da sub-tab (mesmo papel do ptyId). */
@@ -22,7 +17,16 @@ export type GhosttySurfaceProps = {
   cwd?: string
   /** Linha de comando a executar (agente). undefined = shell de login. */
   command?: string
+  /**
+   * True quando esta é a sub-tab ativa do pane. Quando false, a surface
+   * continua VIVA (shell/agente rodando) mas escondida — é assim que trocar de
+   * tab preserva o estado (espelha o PTY persistente do xterm). Só a surface
+   * ativa é montada+visível; matar de verdade é no unmount (fechar o pane).
+   */
+  active?: boolean
   onSpawned?: (id: string) => void
+  /** Chamado quando o processo do terminal (shell/agente) sai — o pane fecha. */
+  onExit?: () => void
 }
 
 /**
@@ -35,10 +39,13 @@ export type GhosttySurfaceProps = {
  * plataformas os comandos retornariam erro, então nem chegamos aqui.
  *
  * O `command`/`cwd` são lidos na criação da surface (o backend Ghostty spawna o
- * processo no nascimento da surface). Trocar de sub-tab usa um `surfaceId`/key
- * diferente, então remonta — não precisamos reagir a mudanças deles em runtime.
+ * processo no nascimento da surface). Trocar de sub-tab NÃO remonta: todas as
+ * surfaces do pane ficam montadas e só a `active` fica visível+focada (as
+ * outras seguem vivas mas escondidas). É o que preserva o estado ao voltar —
+ * espelha o PTY persistente do xterm. A surface só é morta no unmount real
+ * (fechar o pane / fechar a sub-tab).
  */
-export function GhosttySurface({ surfaceId, cwd, command, onSpawned }: GhosttySurfaceProps) {
+export function GhosttySurface({ surfaceId, cwd, command, active = true, onSpawned, onExit }: GhosttySurfaceProps) {
   const placeholderRef = useRef<HTMLDivElement | null>(null)
   const lastRectRef = useRef<WebRect | null>(null)
   const rafRef = useRef<number | null>(null)
@@ -51,9 +58,24 @@ export function GhosttySurface({ surfaceId, cwd, command, onSpawned }: GhosttySu
   // de ciclo de vida NÃO depender dele — senão a cada re-render do TerminalPane
   // a surface seria morta e recriada (e o terminal piscaria/reiniciaria).
   const onSpawnedRef = useRef(onSpawned)
+  const onExitRef = useRef(onExit)
   useEffect(() => {
     onSpawnedRef.current = onSpawned
+    onExitRef.current = onExit
   })
+
+  // Valor de `active` lido dentro dos efeitos (que não dependem dele p/ não
+  // recriar observers). O efeito dedicado abaixo dispara a reavaliação.
+  const activeRef = useRef(active)
+  // Reavaliação de hidden registrada pelo efeito de visibilidade; chamada
+  // quando `active` muda para aplicar hidden/foco/re-sync sem recriar observers.
+  const reevaluateVisibilityRef = useRef<(() => void) | null>(null)
+  // scheduleFrame vive no efeito de ciclo de vida; exposto p/ o efeito de
+  // visibilidade forçar um re-sync do frame ao reativar a tab.
+  const scheduleFrameRef = useRef<(() => void) | null>(null)
+  // Posicionamento SÍNCRONO (sem rAF) — usado quando o rAF pode não disparar
+  // (WebView oculta atrás de modal no boot). Garante o 1º sync_frame.
+  const pushFrameNowRef = useRef<(() => void) | null>(null)
 
   useEffect(() => {
     const node = placeholderRef.current
@@ -67,6 +89,9 @@ export function GhosttySurface({ surfaceId, cwd, command, onSpawned }: GhosttySu
       rafRef.current = null
       if (disposed) return
       const r = node.getBoundingClientRect()
+      // Placeholder sem tamanho (layout ainda não assentou) → rect degenerado.
+      // Não empurramos: o ResizeObserver reagenda quando ganhar tamanho real.
+      if (r.width < 1 || r.height < 1) return
       const rect: WebRect = { x: r.left, y: r.top, width: r.width, height: r.height }
       if (webRectsEqual(lastRectRef.current, rect)) return
       lastRectRef.current = rect
@@ -77,14 +102,21 @@ export function GhosttySurface({ surfaceId, cwd, command, onSpawned }: GhosttySu
       if (rafRef.current !== null) return
       rafRef.current = window.requestAnimationFrame(pushFrame)
     }
+    scheduleFrameRef.current = scheduleFrame
 
-    // Se havia um kill deferido pra este surfaceId (remontagem do StrictMode),
-    // cancela — a surface ainda está viva e vamos reusá-la.
-    const pending = pendingKills.get(surfaceId)
-    if (pending !== undefined) {
-      clearTimeout(pending)
-      pendingKills.delete(surfaceId)
+    // Posiciona AGORA, sem esperar rAF. Enquanto um modal cobre a tela no boot, a
+    // WebView pode não pintar, e um requestAnimationFrame pendente nunca dispara —
+    // deixando rafRef travado e a surface no frame de nascimento (janela inteira,
+    // cobrindo a UI). O caminho direto garante o 1º posicionamento independente
+    // do pintor. Usado pós-spawn e ao reexibir a tab.
+    const pushFrameNow = () => {
+      if (rafRef.current !== null) {
+        cancelAnimationFrame(rafRef.current)
+        rafRef.current = null
+      }
+      pushFrame()
     }
+    pushFrameNowRef.current = pushFrameNow
 
     const start = async () => {
       try {
@@ -93,7 +125,10 @@ export function GhosttySurface({ surfaceId, cwd, command, onSpawned }: GhosttySu
         if (disposed) return
         spawnedRef.current = true
         onSpawnedRef.current?.(res.id)
-        scheduleFrame()
+        // Posiciona já (síncrono) + um reforço no próximo tick, caso o layout do
+        // placeholder ainda não tenha assentado no exato instante do spawn.
+        pushFrameNow()
+        window.setTimeout(() => pushFrameNow(), 50)
       } catch (err) {
         console.error('ghostty_spawn falhou', err)
       }
@@ -113,14 +148,16 @@ export function GhosttySurface({ surfaceId, cwd, command, onSpawned }: GhosttySu
       ro.disconnect()
       window.removeEventListener('resize', scheduleFrame)
       window.removeEventListener('scroll', scheduleFrame, true)
+      scheduleFrameRef.current = null
+      pushFrameNowRef.current = null
       if (rafRef.current !== null) cancelAnimationFrame(rafRef.current)
-      // Kill DEFERIDO: se for só um ciclo do StrictMode, o próximo mount cancela
-      // isto antes de disparar. Num unmount real, o timeout mata a surface.
-      const timer = setTimeout(() => {
-        pendingKills.delete(surfaceId)
-        void ghosttyKill(surfaceId)
-      }, 250)
-      pendingKills.set(surfaceId, timer)
+      // NÃO matamos a surface no unmount. O componente desmonta ao trocar de aba
+      // /projeto (o pane sai de vista), e matar aqui reiniciaria o shell/agente —
+      // exatamente o bug "o terminal reseta ao voltar". A surface segue viva no
+      // backend; só é morta por ação explícita de fechar (cleanupPtys →
+      // ghosttyKill) ou pela limpeza de órfãs no boot (ghosttyKillAll). Enquanto
+      // some da tela, escondemos a NSView para não vazar sobre a aba nova.
+      void ghosttySetHidden(surfaceId, true)
     }
   }, [surfaceId])
 
@@ -138,17 +175,33 @@ export function GhosttySurface({ surfaceId, cwd, command, onSpawned }: GhosttySu
 
     let intersecting = true
     let lastHidden: boolean | null = null
+    let lastFocused: boolean | null = null
 
     const anyModalOpen = () =>
       document.querySelector('[role="dialog"][data-state="open"]') !== null
 
     const applyHidden = () => {
-      const hidden = !intersecting || anyModalOpen()
+      // Tab inativa também esconde: a surface segue viva, só sai da tela.
+      const hidden = !activeRef.current || !intersecting || anyModalOpen()
       // O IPC vai à main thread do macOS; só dispara quando o estado muda.
-      if (hidden === lastHidden) return
-      lastHidden = hidden
-      void ghosttySetHidden(surfaceId, hidden)
+      if (hidden !== lastHidden) {
+        // Ao reaparecer, garante um re-sync do frame (o layout pode ter mudado
+        // enquanto a tab estava oculta — ex.: resize da janela). O placeholder
+        // fica sempre com tamanho real (position:absolute), então o rect é válido.
+        // Síncrono: se um modal estava por cima, o rAF pode não ter disparado.
+        if (!hidden) pushFrameNowRef.current?.()
+        lastHidden = hidden
+        void ghosttySetHidden(surfaceId, hidden)
+      }
+      // Foco de teclado acompanha o estado visível: só a surface ativa e à
+      // vista recebe foco; escondida perde (senão roubaria o teclado da ativa).
+      const focused = !hidden
+      if (focused !== lastFocused) {
+        lastFocused = focused
+        void ghosttySetFocus(surfaceId, focused)
+      }
     }
+    reevaluateVisibilityRef.current = applyHidden
 
     const io = new IntersectionObserver(
       (entries) => {
@@ -166,9 +219,61 @@ export function GhosttySurface({ surfaceId, cwd, command, onSpawned }: GhosttySu
     return () => {
       io.disconnect()
       mo.disconnect()
+      reevaluateVisibilityRef.current = null
     }
   }, [surfaceId])
 
-  // O placeholder ocupa todo o espaço do terminalArea; a NSView é alinhada a ele.
-  return <div ref={placeholderRef} style={{ width: '100%', height: '100%' }} data-ghostty-surface={surfaceId} />
+  // Troca de sub-tab ativa/inativa: atualiza o ref e reavalia hidden/foco.
+  // NÃO recria os observers (deps [surfaceId]) — só empurra o novo estado.
+  useEffect(() => {
+    activeRef.current = active
+    reevaluateVisibilityRef.current?.()
+  }, [active])
+
+  // Detecção de saída do processo: o Ghostty (backend EXEC) não emite evento de
+  // exit pro app — só mostra "Press any key to close" na própria surface. Fazemos
+  // polling leve do estado do processo e, ao sair, disparamos onExit (o pane
+  // fecha e o layout reajusta). Espelha o listenPtyExit do xterm.
+  useEffect(() => {
+    let stopped = false
+    const iv = window.setInterval(async () => {
+      if (stopped) return
+      // Só depois do spawn confirmado: antes disso a surface não está no mapa do
+      // backend e o comando reportaria "saiu" (ausente), fechando o pane novo.
+      if (!spawnedRef.current) return
+      try {
+        const exited = await ghosttySurfaceExited(surfaceId)
+        if (exited && !stopped) {
+          stopped = true
+          window.clearInterval(iv)
+          onExitRef.current?.()
+        }
+      } catch {
+        /* erro transitório — tenta de novo */
+      }
+    }, 700)
+    return () => {
+      stopped = true
+      window.clearInterval(iv)
+    }
+  }, [surfaceId])
+
+  // Cada surface do pane é posicionada ABSOLUTA (inset:0) para EMPILHAR todas na
+  // mesma área do terminalArea (que é flex) — se fossem filhos flex normais, N
+  // tabs dividiriam o espaço em vez de sobrepor. A tab inativa continua ocupando
+  // a área (rect real, não 0×0 — o que manteria o sync funcionando), apenas
+  // invisível via `visibility:hidden` + a NSView escondida por ghosttySetHidden.
+  // Assim o placeholder SEMPRE tem tamanho, e o pushFrame sempre posiciona certo.
+  return (
+    <div
+      ref={placeholderRef}
+      style={{
+        position: 'absolute',
+        inset: 0,
+        visibility: active ? 'visible' : 'hidden',
+        pointerEvents: active ? 'auto' : 'none',
+      }}
+      data-ghostty-surface={surfaceId}
+    />
+  )
 }

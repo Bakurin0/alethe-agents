@@ -52,6 +52,10 @@ void alethe_ghostty_surface_set_content_scale(alethe_surface_t surface,
 void alethe_ghostty_surface_set_focus(alethe_surface_t surface, bool focused);
 void alethe_ghostty_surface_draw(alethe_surface_t surface);
 
+// true quando o processo do terminal já terminou (shell/agente saiu). O app
+// consulta por polling para fechar o pane e reajustar o layout.
+bool alethe_ghostty_surface_process_exited(alethe_surface_t surface);
+
 // Libera a surface.
 void alethe_ghostty_surface_free(alethe_surface_t surface);
 

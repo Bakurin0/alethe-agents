@@ -154,12 +154,19 @@ static void shim_write_clipboard_cb(void *userdata,
     [pb setString:s forType:NSPasteboardTypeString];
 }
 
+// O userdata da surface é a AletheGhosttyView dona dela (setado em cfg.userdata
+// no surface_new). Este helper (definido após a classe) resolve view -> surface.
+// Antes, cfg.userdata era NULL e o guard abaixo abortava TODO paste (Cmd+V
+// silenciosamente morto) — o Ghostty pedia o clipboard e ninguém respondia.
+static ghostty_surface_t alethe_surface_for_userdata(void *userdata);
+
 static bool shim_read_clipboard_cb(void *userdata,
                                    ghostty_clipboard_e clipboard,
                                    void *request) {
     (void)clipboard;
-    if (userdata == NULL || request == NULL) return false;
-    ghostty_surface_t surface = (ghostty_surface_t)userdata;
+    if (request == NULL) return false;
+    ghostty_surface_t surface = alethe_surface_for_userdata(userdata);
+    if (surface == NULL) return false;
     NSString *s = [[NSPasteboard generalPasteboard] stringForType:NSPasteboardTypeString];
     const char *c = s ? [s UTF8String] : "";
     ghostty_surface_complete_clipboard_request(surface, c, request, false);
@@ -171,8 +178,9 @@ static void shim_confirm_read_clipboard_cb(void *userdata,
                                            void *request,
                                            ghostty_clipboard_request_e req) {
     (void)req;
-    if (userdata == NULL || str == NULL || request == NULL) return;
-    ghostty_surface_t surface = (ghostty_surface_t)userdata;
+    if (str == NULL || request == NULL) return;
+    ghostty_surface_t surface = alethe_surface_for_userdata(userdata);
+    if (surface == NULL) return;
     ghostty_surface_complete_clipboard_request(surface, str, request, true);
 }
 
@@ -257,6 +265,38 @@ static ghostty_input_mods_e alethe_mods(NSEventModifierFlags f) {
     return [NSString stringWithCharacters:buf length:n];
 }
 
+// Atalhos com Cmd (Cmd+V = paste, etc.) chegam primeiro como
+// performKeyEquivalent — sem este override, o menu/WebView do Tauri os consome
+// e o terminal nunca vê o paste. Espelha o app oficial do Ghostty
+// (SurfaceView_AppKit.swift): se a view está focada e o Ghostty reconhece o
+// evento como keybinding, processa via keyDown e consome. Ctrl+letra NÃO passa
+// por aqui (chega naturalmente no keyDown), preservando os atalhos do app.
+- (BOOL)performKeyEquivalent:(NSEvent *)event {
+    if (event.type != NSEventTypeKeyDown) return NO;
+    if (!self.surface) return NO;
+    if (self.window.firstResponder != self) return NO;
+    if (!(event.modifierFlags & NSEventModifierFlagCommand)) return NO;
+
+    ghostty_input_key_s key;
+    memset(&key, 0, sizeof(key));
+    key.action = GHOSTTY_ACTION_PRESS;
+    key.mods = alethe_mods(event.modifierFlags);
+    key.keycode = event.keyCode;
+    NSString *bare = [event charactersByApplyingModifiers:0];
+    if (bare.length == 0) bare = event.charactersIgnoringModifiers;
+    if (bare.length > 0) key.unshifted_codepoint = [bare characterAtIndex:0];
+    NSEventModifierFlags consumed =
+        event.modifierFlags & ~(NSEventModifierFlagControl | NSEventModifierFlagCommand);
+    key.consumed_mods = alethe_mods(consumed);
+    NSString *chars = event.characters;
+    key.text = chars.length > 0 ? [chars UTF8String] : NULL;
+
+    ghostty_binding_flags_e flags = 0;
+    if (!ghostty_surface_key_is_binding(self.surface, key, &flags)) return NO;
+    [self keyDown:event];
+    return YES;
+}
+
 - (void)keyDown:(NSEvent *)event {
     if (!self.surface) return;
 
@@ -265,7 +305,15 @@ static ghostty_input_mods_e alethe_mods(NSEventModifierFlags f) {
     key.action = event.isARepeat ? GHOSTTY_ACTION_REPEAT : GHOSTTY_ACTION_PRESS;
     key.mods = alethe_mods(event.modifierFlags);
     key.keycode = event.keyCode;
-    NSString *bare = event.charactersIgnoringModifiers;
+    // unshifted_codepoint = a tecla física SEM modificadores (o Ghostty usa isto
+    // pra casar atalhos: Ctrl+R -> precisa ver 'r', U+0072). Cuidado: sob Ctrl,
+    // -charactersIgnoringModifiers retorna o CARACTERE DE CONTROLE (Ctrl+R ->
+    // U+0012), não a letra — "IgnoringModifiers" ignora Shift/Option, NÃO Ctrl.
+    // Isso quebrava TODO Ctrl+letra (reverse-search, etc.). Usamos
+    // -charactersByApplyingModifiers:0, que devolve a tecla base ('r'), com
+    // fallback pro comportamento antigo se vier vazio (teclas não-imprimíveis).
+    NSString *bare = [event charactersByApplyingModifiers:0];
+    if (bare.length == 0) bare = event.charactersIgnoringModifiers;
     if (bare.length > 0) key.unshifted_codepoint = [bare characterAtIndex:0];
     NSEventModifierFlags consumed =
         event.modifierFlags & ~(NSEventModifierFlagControl | NSEventModifierFlagCommand);
@@ -278,9 +326,22 @@ static ghostty_input_mods_e alethe_mods(NSEventModifierFlags f) {
     bool composing = false;      // true = acento morto pendente
 
     if (ctrlOrCmd) {
-        // Atalho (Ctrl+C etc.): tecla crua, sem texto. (Ctrl+C precisa do
-        // keycode+unshifted, não de texto.)
+        // Ctrl+letra (Ctrl+R, Ctrl+A, Ctrl+L…): o KeyEncoder do Ghostty gera a
+        // sequência de controle (Ctrl+R -> 0x12) A PARTIR do `text`, que deve ser
+        // a LETRA com o Control removido — NÃO NULL e NÃO o char de controle cru.
+        // Isto espelha `NSEvent.ghosttyCharacters` do app oficial do Ghostty
+        // (macos/Sources/Ghostty/NSEvent+Extension.swift): quando o caractere é
+        // um único char de controle (< 0x20), envia characters(byApplyingModifiers:
+        // sem .control). Antes mandávamos NULL, e por isso Ctrl+R não funcionava.
+        // Cmd (SUPER) continua sem texto: é atalho de app, não entra no terminal.
         utf8 = NULL;
+        NSString *chars = event.characters;
+        if (chars.length == 1 && [chars characterAtIndex:0] < 0x20) {
+            NSEventModifierFlags noCtrl =
+                event.modifierFlags & ~NSEventModifierFlagControl;
+            NSString *decoded = [event charactersByApplyingModifiers:noCtrl];
+            if (decoded.length > 0) utf8 = [decoded UTF8String];
+        }
     } else {
         BOOL dead = NO;
         NSString *composed = [self alethe_composeForEvent:event deadPending:&dead];
@@ -394,7 +455,9 @@ static ghostty_input_mods_e alethe_mods(NSEventModifierFlags f) {
     key.action = GHOSTTY_ACTION_RELEASE;
     key.mods = alethe_mods(event.modifierFlags);
     key.keycode = event.keyCode;
-    NSString *bare = event.charactersIgnoringModifiers;
+    // Mesma correção do keyDown: tecla base sem Ctrl (ver comentário lá).
+    NSString *bare = [event charactersByApplyingModifiers:0];
+    if (bare.length == 0) bare = event.charactersIgnoringModifiers;
     if (bare.length > 0) key.unshifted_codepoint = [bare characterAtIndex:0];
     ghostty_surface_key(self.surface, key);
 }
@@ -460,6 +523,50 @@ bool alethe_ghostty_ensure_app(void) {
     return g_app != NULL;
 }
 
+// Monitor local de eventos para atalhos Cmd+X quando o terminal está focado.
+// Na janela do Tauri, a WKWebView (irmã da nossa view, anterior na hierarquia)
+// e o menu do app capturam key-equivalents ANTES da varredura chegar à nossa
+// view — o performKeyEquivalent: dela nunca roda e Cmd+V morre no WebView. O
+// monitor local roda antes de todo o despacho (sendEvent/menu/webview): se o
+// first responder é um terminal Ghostty e o evento é um keybinding do Ghostty
+// (Cmd+V = paste, Cmd+C = copy…), roteia pro keyDown do terminal e consome.
+static id g_cmd_key_monitor = nil;
+
+static void alethe_install_cmd_monitor(void) {
+    if (g_cmd_key_monitor != nil) return;
+    g_cmd_key_monitor = [NSEvent
+        addLocalMonitorForEventsMatchingMask:NSEventMaskKeyDown
+                                     handler:^NSEvent *(NSEvent *event) {
+        if (!(event.modifierFlags & NSEventModifierFlagCommand)) return event;
+        NSWindow *win = event.window ?: NSApp.keyWindow;
+        NSResponder *fr = win.firstResponder;
+        if (![fr isKindOfClass:[AletheGhosttyView class]]) return event;
+        AletheGhosttyView *v = (AletheGhosttyView *)fr;
+        if (!v.surface) return event;
+
+        ghostty_input_key_s key;
+        memset(&key, 0, sizeof(key));
+        key.action = GHOSTTY_ACTION_PRESS;
+        key.mods = alethe_mods(event.modifierFlags);
+        key.keycode = event.keyCode;
+        NSString *bare = [event charactersByApplyingModifiers:0];
+        if (bare.length == 0) bare = event.charactersIgnoringModifiers;
+        if (bare.length > 0) key.unshifted_codepoint = [bare characterAtIndex:0];
+        NSEventModifierFlags consumed = event.modifierFlags &
+            ~(NSEventModifierFlagControl | NSEventModifierFlagCommand);
+        key.consumed_mods = alethe_mods(consumed);
+        NSString *chars = event.characters;
+        key.text = chars.length > 0 ? [chars UTF8String] : NULL;
+
+        ghostty_binding_flags_e flags = 0;
+        if (!ghostty_surface_key_is_binding(v.surface, key, &flags)) {
+            return event; // não é atalho do terminal: segue o fluxo normal do app
+        }
+        [v keyDown:event];
+        return nil; // consumido pelo terminal
+    }];
+}
+
 alethe_surface_t alethe_ghostty_surface_new(void *superview,
                                             const char *cwd,
                                             const char *command,
@@ -473,11 +580,14 @@ alethe_surface_t alethe_ghostty_surface_new(void *superview,
     AletheGhosttyView *view = [[AletheGhosttyView alloc] initWithFrame:parent.bounds];
     view.wantsLayer = YES;
     [parent addSubview:view];
+    alethe_install_cmd_monitor();
 
     ghostty_surface_config_s cfg = ghostty_surface_config_new();
     cfg.platform_tag = GHOSTTY_PLATFORM_MACOS;
     cfg.platform.macos.nsview = (__bridge void *)view;
-    cfg.userdata = NULL;
+    // userdata = a view dona: os callbacks de clipboard usam isto pra achar a
+    // surface e completar o paste (Cmd+V). NULL aqui = paste morto.
+    cfg.userdata = (__bridge void *)view;
     cfg.backend = GHOSTTY_SURFACE_IO_BACKEND_EXEC;
     cfg.context = GHOSTTY_SURFACE_CONTEXT_WINDOW;
     cfg.scale_factor = scale_factor > 0 ? scale_factor : 2.0;
@@ -498,6 +608,14 @@ alethe_surface_t alethe_ghostty_surface_new(void *superview,
     // receberia input — exatamente o bug "digito e nada aparece". O foco passa a
     // vir do clique (mouseDown) ou de um focus explícito do app.
     return (alethe_surface_t)surface;
+}
+
+// Resolve o userdata da surface (a AletheGhosttyView dona) de volta pra
+// surface. Usado pelos callbacks de clipboard — ver forward declaration.
+static ghostty_surface_t alethe_surface_for_userdata(void *userdata) {
+    if (userdata == NULL) return NULL;
+    AletheGhosttyView *v = (__bridge AletheGhosttyView *)userdata;
+    return v.surface;
 }
 
 // Recupera a AletheGhosttyView associada a uma surface (busca no registro).
@@ -546,6 +664,14 @@ void alethe_ghostty_surface_set_focus(alethe_surface_t surface, bool focused) {
 void alethe_ghostty_surface_draw(alethe_surface_t surface) {
     if (surface == NULL) return;
     alethe_draw_surface((ghostty_surface_t)surface);
+}
+
+// true quando o processo do terminal (shell/agente) já terminou — o Ghostty
+// mostra "Press any key to close", mas cabe ao app fechar o pane. Consultado por
+// polling do frontend (ghostty_surface_exited) para reajustar o layout.
+bool alethe_ghostty_surface_process_exited(alethe_surface_t surface) {
+    if (surface == NULL) return false;
+    return ghostty_surface_process_exited((ghostty_surface_t)surface);
 }
 
 unsigned long long alethe_ghostty_draw_count(void) {

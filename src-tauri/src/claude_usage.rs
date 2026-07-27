@@ -62,19 +62,48 @@ fn discover_token() -> Option<String> {
         }
     }
 
-    // 3. Windows Credential Manager via keyring (fallback)
+    // 3. Keyring (Windows Credential Manager / macOS Keychain).
+    //    No macOS o Claude Code grava a entrada com account = username local,
+    //    e o segredo é o JSON completo do credentials (não o token cru).
     let service = "Claude Code-credentials";
-    for username in &["default", "user", "claude", ""] {
+    let mut usernames: Vec<String> = Vec::new();
+    if let Ok(user) = std::env::var("USER").or_else(|_| std::env::var("USERNAME")) {
+        if !user.is_empty() {
+            usernames.push(user);
+        }
+    }
+    for u in ["default", "user", "claude", ""] {
+        usernames.push(u.to_string());
+    }
+    for username in &usernames {
         if let Ok(entry) = keyring::Entry::new(service, username) {
             if let Ok(secret) = entry.get_password() {
-                if !secret.is_empty() {
-                    return Some(secret);
+                if secret.is_empty() {
+                    continue;
                 }
+                return Some(extract_token_from_secret(&secret));
             }
         }
     }
 
     None
+}
+
+/// O segredo do keyring pode ser o token cru ou o JSON do credentials
+/// ({"claudeAiOauth":{"accessToken":...}}), como no macOS Keychain.
+fn extract_token_from_secret(secret: &str) -> String {
+    if let Ok(json) = serde_json::from_str::<serde_json::Value>(secret) {
+        if let Some(tok) = json
+            .get("claudeAiOauth")
+            .and_then(|o| o.get("accessToken"))
+            .and_then(|v| v.as_str())
+        {
+            if !tok.is_empty() {
+                return tok.to_string();
+            }
+        }
+    }
+    secret.to_string()
 }
 
 #[tauri::command]

@@ -31,6 +31,7 @@ mod resource_manager;
 mod session_watcher;
 mod spotify;
 mod stats;
+mod window_style;
 #[cfg(windows)]
 mod windows_webview;
 mod worktrees;
@@ -85,6 +86,20 @@ use tauri::Manager;
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     let _ = dotenvy::dotenv();
+    // `npm run app` (dev) injeta EDITOR=vi e GIT_EDITOR=true no ambiente do
+    // processo. Shells spawnados pelos terminais herdariam isso e o zsh ligaria
+    // o vi-mode (Ctrl+R vira "redisplay", Ctrl+A/E viram self-insert — bug real
+    // depurado no macOS). Removemos APENAS quando é claramente o artefato do
+    // npm (rodando sob npm run + valores exatos que o npm injeta); o ambiente
+    // do usuário em produção passa intocado, em todas as plataformas.
+    if std::env::var_os("npm_lifecycle_event").is_some() {
+        if std::env::var("EDITOR").as_deref() == Ok("vi") {
+            std::env::remove_var("EDITOR");
+        }
+        if std::env::var("GIT_EDITOR").as_deref() == Ok("true") {
+            std::env::remove_var("GIT_EDITOR");
+        }
+    }
     // Instala o panic hook cedo (antes do builder). O diretório de logs só é
     // resolvido no .setup(); panics anteriores a isso caem só no stderr.
     logging::install_panic_hook();
@@ -131,6 +146,10 @@ pub fn run() {
                 let _ = window.set_title("(DEV) Alethe");
             }
             logging::set_logs_dir(app.handle());
+            // Cantos arredondados no macOS (no-op nas outras plataformas). A
+            // janela roda sem decorações nativas, então reaplicamos o
+            // arredondamento no nível do AppKit.
+            window_style::apply_rounded_corners(app.handle());
             // Detecta saída suja anterior (crash/OOM/kill) e sobe o heartbeat.
             crash_watch::start(app.handle().clone());
             resources::start(

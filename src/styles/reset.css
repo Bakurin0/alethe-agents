@@ -21,6 +21,15 @@ body {
   overflow: hidden;
 }
 
+/* macOS: a janela roda sem decorações e o backend (window_style.rs) recorta o
+   contentView com cornerRadius. Para os cantos recortados aparecerem, o DOM não
+   pode pintar um retângulo opaco por baixo — html/body ficam transparentes e o
+   --bg passa a viver no container raiz do app (.appRoot), que é arredondado. */
+[data-platform='macos'],
+[data-platform='macos'] body {
+  background: transparent;
+}
+
 button {
   font: inherit;
   color: inherit;
