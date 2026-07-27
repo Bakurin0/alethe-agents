@@ -77,7 +77,7 @@ bumpFile(CARGO, /version\s*=\s*"(\d+\.\d+\.\d+)"/)
 // Cargo.lock: só o bloco do próprio crate (name = "alethe").
 const toAdd = [PKG, TAURI, CARGO]
 if (existsSync(LOCK)) {
-  bumpFile(LOCK, /name = "alethe"\nversion = "(\d+\.\d+\.\d+)"/, LOCK)
+  bumpFile(LOCK, /name = "alethe"\r?\nversion = "(\d+\.\d+\.\d+)"/, LOCK)
   toAdd.push(LOCK)
 }
 
