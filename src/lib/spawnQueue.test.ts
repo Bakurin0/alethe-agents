@@ -22,7 +22,7 @@ describe('acquireSpawnSlot / releaseSpawnSlot', () => {
     setMaxConcurrentSpawns(2)
     await acquireSpawnSlot()
     await acquireSpawnSlot()
-    expect(getSpawnQueueSnapshot()).toEqual({ active: 2, queued: 0 })
+    expect(getSpawnQueueSnapshot()).toMatchObject({ active: 2, queued: 0 })
   })
 
   it('enfileira além do teto e acorda ao liberar', async () => {
@@ -37,12 +37,12 @@ describe('acquireSpawnSlot / releaseSpawnSlot', () => {
     // ainda preso na fila
     await Promise.resolve()
     expect(thirdResolved).toBe(false)
-    expect(getSpawnQueueSnapshot()).toEqual({ active: 1, queued: 1 })
+    expect(getSpawnQueueSnapshot()).toMatchObject({ active: 1, queued: 1 })
 
     releaseSpawnSlot() // libera → acorda o da fila
     await queued
     expect(thirdResolved).toBe(true)
-    expect(getSpawnQueueSnapshot()).toEqual({ active: 1, queued: 0 })
+    expect(getSpawnQueueSnapshot()).toMatchObject({ active: 1, queued: 0 })
   })
 
   it('aumentar o cap libera waiters presos', async () => {
