@@ -86,7 +86,7 @@ export const UNRESTRICTED_FLAG: Record<AgentType, string | null> = {
  * Tipo de pane. Ausente = 'terminal' (back-compat, sem migração).
  * Viewers usam `tabs: []`; arquivos usam `filePath` e páginas web usam `url`.
  */
-export type PaneKind = 'terminal' | 'markdown' | 'file' | 'image' | 'web'
+export type PaneKind = 'terminal' | 'markdown' | 'file' | 'image' | 'web' | 'graphify'
 
 export type Terminal = {
   id: string
@@ -104,6 +104,27 @@ export type Terminal = {
   filePath?: string
   /** URL http(s) normalizada quando kind === 'web'. */
   url?: string
+  /** RFC-003 — id da worktree onde este pane vive (habilita o botão "Integrar"). */
+  worktreeAgentId?: string
+}
+
+/**
+ * Registro de worktree "órfã" — uma pasta/registro que sobrou de uma limpeza
+ * que não terminou (deleção física falhou, ou `git worktree prune` falhou
+ * depois da deleção física ter dado certo). Rastreado em `Project.orphanWorktrees`
+ * pra sobreviver a reloads e ser retentado/exibido pela UI.
+ */
+export type OrphanWorktree = {
+  path: string
+  mode: 'gitWorktree' | 'localCopy'
+  /** Deleção física da pasta falhou/ficou parcial — tenta de novo antes de prune. */
+  requiresRawDeletion?: boolean
+  /** Pasta já foi apagada fisicamente; só falta `git worktree prune` no repo pai. */
+  pruneOnly?: boolean
+  /** Tentativas de limpeza sem avanço real. >=3 mostra alerta de remoção manual. */
+  cleanAttempts?: number
+  /** Motivo do lock administrativo (`git worktree lock`), se for esse o bloqueio atual. */
+  adminLockReason?: string
 }
 
 export type Project = {
@@ -120,6 +141,18 @@ export type Project = {
   gridLayout?: GridLayout
   collapsed: boolean
   createdAt: number
+  // --- RFC-009 / RFC-003 — Multi-Agent settings ---
+  worktreeMode?: 'gitWorktree' | 'localCopy'
+  validationCommands?: string[]
+  gsdWatcherEnabled?: boolean
+  /** RFC-007 — CLI que resolve conflitos de merge (provider-agnóstico). Default 'claude'. */
+  conflictAgentProvider?: AgentType
+  /** RFC-004 — injeta o MCP do Graphify (--mcp-config) nos agentes deste projeto. */
+  graphifyEnabled?: boolean
+  /** RFC-003 — todo terminal de agente novo nasce numa worktree própria. */
+  autoWorktree?: boolean
+  /** Worktrees com limpeza inacabada (deleção física ou `prune` falhados). */
+  orphanWorktrees?: OrphanWorktree[]
 }
 
 export type Group = {
@@ -255,6 +288,11 @@ export type Preferences = {
    * Default false até a feature sair do estágio experimental.
    */
   nativeTerminalMacos?: boolean
+  /**
+   * v3 — perfil de heap do Node.js para agentes (Claude, Codex, OpenCode).
+   * Injeta --max-old-space-size e UV_THREADPOOL_SIZE no ambiente do PTY.
+   */
+  nodeHeapProfile?: 'conservative' | 'balanced' | 'performance'
 }
 
 export type ResourcePolicyMode = 'smart-lru' | 'manual'
@@ -337,6 +375,7 @@ export const DEFAULT_PREFERENCES: Preferences = {
     hiddenShellIdleMinutes: 30,
     spawnGraceSeconds: 120,
   },
+  nodeHeapProfile: 'balanced',
 }
 
 export const EMPTY_PROJECTS_FILE: ProjectsFile = {

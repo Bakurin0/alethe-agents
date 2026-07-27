@@ -31,6 +31,7 @@
   color: var(--fg-muted);
   cursor: pointer;
   background: transparent;
+  transition: transform 140ms cubic-bezier(0.16, 1, 0.3, 1), background-color 140ms ease, color 140ms ease, border-color 140ms ease, box-shadow 140ms ease;
 }
 
 .sidebarTab span {
@@ -39,11 +40,13 @@
 .sidebarTab:hover {
   background: var(--panel-hover);
   color: var(--fg);
+  transform: scale(1.10);
 }
 .sidebarTabActive {
-  border-color: var(--border);
+  border-color: var(--border-strong, var(--border));
   background: var(--panel);
   color: var(--fg);
+  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.25);
 }
 
 .header {
@@ -243,10 +246,14 @@
   color: var(--fg-muted);
   border-radius: 3px;
   cursor: pointer;
+  transition: transform 160ms cubic-bezier(0.16, 1, 0.3, 1);
 }
 .groupChevronBtn:hover {
   background: var(--panel-hover);
   color: var(--fg);
+}
+.groupChevronBtn svg {
+  transition: transform 160ms cubic-bezier(0.16, 1, 0.3, 1);
 }
 
 /* Indicador de Grupo: bullet redondo (●) ou ícone de imagem. */

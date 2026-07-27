@@ -1,12 +1,13 @@
 import { Clock, RefreshCw } from 'lucide-react'
-import { useState, type ReactNode } from 'react'
+import { useEffect, useState, type ReactNode } from 'react'
 import { getCachedClaudeUsage } from '../../lib/claudeUsageCache'
 import { getCachedCodexUsage } from '../../lib/codexUsageCache'
+import { fmtTokens, fmtUsd } from '../../lib/costFormat'
 import { translate, getLocale, useT } from '../../lib/i18n'
-import type { ClaudeUsage, CodexUsage } from '../../lib/tauri'
+import { getOpenCodeUsageSummary, type ClaudeUsage, type CodexUsage, type OpenCodeUsageSummary } from '../../lib/tauri'
+import { useProjectsStore } from '../../stores/projectsStore'
 import { useUiStore } from '../../stores/uiStore'
-import { ClaudeIcon, CodexIcon } from '../icons/AgentIcons'
-import { ActivityGraph } from './ActivityGraph'
+import { ClaudeIcon, CodexIcon, OpenCodeIcon } from '../icons/AgentIcons'
 import styles from './HomeView.module.css'
 
 function formatDiff(diff: number): string {
@@ -366,15 +367,104 @@ function CodexCard({ usage }: { usage: CodexUsage | null }) {
   )
 }
 
-export function UsageStrip({ showActivity = true }: { showActivity?: boolean }) {
+const OPENCODE_WINDOW_HOURS = 24
+
+/** OpenCode é BYOK/multi-provider — não existe "% de quota de plano" como
+ * Claude/Codex. O card mostra custo/tokens acumulado nas últimas 24h em vez
+ * de uma barra de utilização (não inventar um número que não existe). */
+function OpenCodeCard() {
+  const t = useT()
+  const theme = useProjectsStore((s) => s.preferences.uiTheme)
+  const [summary, setSummary] = useState<OpenCodeUsageSummary | null>(null)
+  const [loading, setLoading] = useState(true)
+  const accent = 'var(--agent-opencode)'
+
+  const load = async () => {
+    try {
+      setSummary(await getOpenCodeUsageSummary(OPENCODE_WINDOW_HOURS))
+    } catch {
+      setSummary(null)
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  useEffect(() => {
+    void load()
+  }, [])
+
+  const head = (
+    <CardHead
+      badgeClass={styles.badgeOpenCode}
+      icon={<OpenCodeIcon size={16} theme={theme} />}
+      name="opencode"
+      accent={accent}
+      hasData={!!summary && summary.session_count > 0}
+      onRefresh={load}
+    />
+  )
+
+  if (loading) {
+    return (
+      <div className={styles.usageCard}>
+        {head}
+        <div className={styles.usageEmpty}>
+          <span className={styles.usageEmptyTitle}>{t('widget.loading')}</span>
+        </div>
+      </div>
+    )
+  }
+
+  if (!summary || summary.session_count === 0) {
+    return (
+      <div className={styles.usageCard}>
+        {head}
+        <div className={styles.usageEmpty}>
+          <span className={styles.usageEmptyTitle}>{t('widget.opencodeNoUsage')}</span>
+          <span className={styles.usageEmptyHint}>{t('widget.opencodeNoUsageHint')}</span>
+        </div>
+      </div>
+    )
+  }
+
+  const topModel = summary.by_model[0]?.model ?? null
+  const totalTokens = summary.input_tokens + summary.output_tokens
+
+  return (
+    <div className={styles.usageCard}>
+      {head}
+      <div className={styles.hero}>
+        <div className={styles.heroNumWrap}>
+          <span className={styles.heroNum}>{fmtUsd(summary.cost_usd)}</span>
+        </div>
+      </div>
+      <div className={styles.heroSub}>{t('widget.opencodeLast24h')}</div>
+      <div className={styles.cardBody}>
+        <div className={styles.statGrid}>
+          <StatCell label={t('widget.opencodeTokens')} value={fmtTokens(totalTokens)} />
+          <StatCell label={t('widget.opencodeSessions')} value={String(summary.session_count)} />
+          <StatCell label={t('widget.opencodeTopModel')} value={topModel ?? '—'} />
+          <StatCell label={t('widget.opencodeModelCount')} value={String(summary.by_model.length)} />
+        </div>
+      </div>
+      <CardFoot
+        accent={accent}
+        left={t('widget.opencodeByok')}
+        right={fmtUsd(summary.cost_usd)}
+      />
+    </div>
+  )
+}
+
+export function UsageStrip() {
   const claudeUsage = useUiStore((s) => s.claudeUsage)
   const codexUsage = useUiStore((s) => s.codexUsage)
 
   return (
-    <div className={`${styles.usageStrip} ${showActivity ? '' : styles.usageStripTwo}`}>
+    <div className={styles.usageStripThree}>
       <ClaudeCard usage={claudeUsage} />
       <CodexCard usage={codexUsage} />
-      {showActivity ? <ActivityGraph /> : null}
+      <OpenCodeCard />
     </div>
   )
 }

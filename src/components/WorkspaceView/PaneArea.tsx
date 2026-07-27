@@ -6,6 +6,7 @@ import type { GridLayout, LayoutMode, Terminal } from '../../lib/types'
 import { MarkdownPane } from '../MarkdownPane'
 import { TerminalPane } from '../TerminalPane'
 import { WebPane } from '../WebPane'
+import { GraphifyView } from '../GraphifyView'
 import styles from './WorkspaceView.module.css'
 
 /** Renderiza o pane certo conforme o tipo (terminal ou viewer de arquivo). */
@@ -18,6 +19,9 @@ function Pane({
   terminal: Terminal
   paneDragEnabled?: boolean
 }) {
+  if (terminal.kind === 'graphify') {
+    return <GraphifyView repo={terminal.cwd} projectId={projectId} terminalId={terminal.id} />
+  }
   if (terminal.kind === 'markdown' || terminal.kind === 'file') {
     return <MarkdownPane projectId={projectId} terminal={terminal} />
   }

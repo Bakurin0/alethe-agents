@@ -9,7 +9,7 @@
   /* bg vem inline (cor do tema do xterm) pra a área de padding casar
      com o fundo do terminal — sem isso o padding mostraria o chrome. */
   background: var(--bg-sunken);
-  padding: 6px 6px 6px 10px;
+  padding: 4px 6px 2px 8px;
   overflow: hidden;
   contain: size layout paint;
 }

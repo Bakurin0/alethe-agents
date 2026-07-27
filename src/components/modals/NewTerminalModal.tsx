@@ -25,7 +25,6 @@ export function NewTerminalModal() {
   const open = useUiStore((s) => s.openModal === 'newTerminal')
   const context = useUiStore((s) => s.modalContext) as { projectId?: string } | null
   const closeModal = useUiStore((s) => s.closeModal)
-  const createTerminal = useProjectsStore((s) => s.createTerminal)
   const project = useProjectsStore((s) =>
     context?.projectId ? s.projects.find((p) => p.id === context.projectId) ?? null : null,
   )
@@ -70,7 +69,9 @@ export function NewTerminalModal() {
     const finalCwd = cwd.trim() || inheritedCwd
     const flag = UNRESTRICTED_FLAG[type]
     const extraArgs = unrestricted[type] && flag ? [flag] : undefined
-    createTerminal(context.projectId, {
+    // RFC-003 — com autoWorktree ligado no projeto, agentes nascem numa
+    // worktree isolada (async; falha cai no terminal normal).
+    void useProjectsStore.getState().createAgentTerminal(context.projectId, {
       name: finalName,
       cwd: finalCwd,
       firstTab: { type, cwd: finalCwd, extraArgs, runtimeProfile },
@@ -183,7 +184,9 @@ export function NewTerminalModal() {
               </button>
             ))}
           </div>
-          <span className={controls.hint}>{t(`term.runtimeProfile.${runtimeProfile}.desc`)}</span>
+          <span className={controls.hint}>
+            {type === 'opencode' ? t('term.runtimeProfile.opencodeNote') : t(`term.runtimeProfile.${runtimeProfile}.desc`)}
+          </span>
         </div>
       ) : null}
 

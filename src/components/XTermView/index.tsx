@@ -1,6 +1,9 @@
+import { CanvasAddon } from '@xterm/addon-canvas'
 import { FitAddon } from '@xterm/addon-fit'
 import { SearchAddon } from '@xterm/addon-search'
+import { Unicode11Addon } from '@xterm/addon-unicode11'
 import { WebglAddon } from '@xterm/addon-webgl'
+import { SerializeAddon } from '@xterm/addon-serialize'
 import { Terminal } from '@xterm/xterm'
 import type { ILink } from '@xterm/xterm'
 import { getCurrentWebview } from '@tauri-apps/api/webview'
@@ -13,13 +16,15 @@ import { AgentCompletionMonitor } from '../../lib/agentCompletionMonitor'
 import { preparePtyRuntimeLaunch } from '../../lib/agentRuntimeAdapter'
 import { recordAgentActivityInput } from '../../lib/activityTracker'
 import { buildAgentLaunch } from '../../lib/sessionLaunch'
-import { claimDiscoveredSession, registerSessionClaim } from '../../lib/sessionDiscovery'
+import { claimDiscoveredSession, claimMostRecentSession, registerSessionClaim } from '../../lib/sessionDiscovery'
 import { consumeSession, removeSession, saveSession } from '../../lib/sessionResume'
 import { waitForSessionHint } from '../../lib/sessionWatch'
+import { acquireMountSlot } from '../../lib/mountQueue'
 import { acquireSpawnSlot, releaseSpawnSlot } from '../../lib/spawnQueue'
 import { readScopedStorage, writeScopedStorage } from '../../lib/storageNamespace'
 import { acquireWebglContext } from '../../lib/webglPool'
 import {
+  agentHooksEndpoint,
   attachPty,
   findCliLauncher,
   killPty,
@@ -31,10 +36,17 @@ import {
   readClipboardText,
   resizePty,
   spawnPty,
+  graphifyEnsureGraph,
+  graphifyMcpConfigPath,
+  graphifyOpenCodeConfigWrite,
+  graphifyCodexConfigWrite,
   snapshotClaudeSessions,
   snapshotCodexSessions,
+  snapshotOpenCodeSessions,
   writeClipboardText,
   writePty,
+  setPtyReadState,
+  setPtyPriority,
 } from '../../lib/tauri'
 import { getLocale, translate, useT } from '../../lib/i18n'
 import type { AgentRuntimeProfile, AgentType, Theme } from '../../lib/types'
@@ -255,6 +267,11 @@ export type XTermViewProps = {
   /** Env extra só deste PTY. */
   env?: Record<string, string>
   runtimeProfile?: AgentRuntimeProfile
+  /**
+   * RFC-004 — raiz do repo quando o projeto tem Graphify habilitado. Presente:
+   * o spawn injeta `--mcp-config` (Claude) e garante o bootstrap do grafo.
+   */
+  graphifyRepo?: string | null
   terminalTheme?: Theme
   onSpawned?: (id: string) => void
   onSessionId?: (id: string) => void
@@ -303,6 +320,30 @@ async function writePtyChunked(
   if (close) await writePty(id, close)
 }
 
+function getPoolLimit(memoryAvailableMb?: number): number {
+  // Reactive: subscribe caller passes memoryStats, so this re-evaluates on change.
+  const memMb = memoryAvailableMb ?? useUiStore.getState().memoryStats?.system_available_mb ?? 16384
+  if (memMb <= 8 * 1024) return 2
+  if (memMb <= 16 * 1024) return 4
+  return 8
+}
+
+function canHibernate(ptyId: string): boolean {
+  const runtime = useTerminalsStore.getState().byPtyId[ptyId]
+  if (!runtime) return true
+
+  // Agente está produzindo output ativamente → não hibernar
+  if (runtime.status === 'working') return false
+
+  // Terminal está focado → não hibernar
+  if (useUiStore.getState().focusedTerminalId === ptyId) return false
+
+  // Grace period de 30s desde o último foco
+  if (runtime.lastFocusedAt && Date.now() - runtime.lastFocusedAt < 30_000) return false
+
+  return true
+}
+
 export function XTermView({
   ptyId,
   projectId,
@@ -312,6 +353,7 @@ export function XTermView({
   sessionId,
   env,
   runtimeProfile = 'full',
+  graphifyRepo,
   terminalTheme = 'dark',
   onSpawned,
   onSessionId,
@@ -319,6 +361,24 @@ export function XTermView({
   onAgentComplete,
 }: XTermViewProps) {
   const t = useT()
+
+  const memoryStats = useUiStore((s) => s.memoryStats)
+  const isActiveInPool = useTerminalsStore((s) => {
+    const alivePtys = Object.values(s.byPtyId)
+      .filter((p) => p.alive)
+      .sort((a, b) => (b.lastFocusedAt ?? 0) - (a.lastFocusedAt ?? 0))
+    const index = alivePtys.findIndex((p) => p.ptyId === ptyId)
+    if (index === -1) return true
+    return index < getPoolLimit(memoryStats?.system_available_mb)
+  })
+
+  const poolState = useTerminalsStore((s) => s.byPtyId[ptyId]?.poolState ?? 'ACTIVE')
+  // Só HIBERNATED/FAILED devem desmontar/remontar o terminal. Usar `poolState`
+  // cru nas deps do efeito principal recriava o xterm a CADA transição
+  // (HIBERNATING, RESTORING, ACTIVE…), causando dispose/recreate em cascata,
+  // re-spawn de PTY vivo e terminal zumbi sem teclado.
+  const isDormant = poolState === 'HIBERNATED' || poolState === 'FAILED'
+
   const containerRef = useRef<HTMLDivElement | null>(null)
   const terminalRef = useRef<Terminal | null>(null)
   const ptyIdRef = useRef<string | null>(null)
@@ -342,6 +402,50 @@ export function XTermView({
     onAgentCompleteRef.current = onAgentComplete
   })
 
+  // Pool State & Hibernation Coordinator
+  useEffect(() => {
+    // Terminal com foco DOM real NUNCA hiberna (ADR: terminal em uso é
+    // intocável). O check por id (`canHibernate`) compara focusedTerminalId
+    // (id do PANE) com ptyId e nunca bate — este é o guard confiável, feito
+    // aqui porque o coordinator roda dentro do componente e tem o container.
+    const hasDomFocus = containerRef.current?.contains(document.activeElement) ?? false
+    if (!isActiveInPool && !hasDomFocus && canHibernate(ptyId)) {
+      if (poolState === 'ACTIVE') {
+        useTerminalsStore.getState().setPoolState(ptyId, 'HIBERNATING')
+        const term = terminalRef.current
+        if (term) {
+          try {
+            const serializeAddon = new SerializeAddon()
+            term.loadAddon(serializeAddon)
+            const ansiBuffer = serializeAddon.serialize()
+            const snapshot = {
+              ansiBuffer,
+              scrollTop: term.buffer.active.viewportY,
+              options: {
+                cursorBlink: term.options.cursorBlink,
+                fontSize: term.options.fontSize,
+                fontFamily: term.options.fontFamily,
+              },
+              cursor: { col: term.buffer.active.cursorX, row: term.buffer.active.cursorY },
+              selection: term.hasSelection() ? term.getSelection() : undefined,
+            }
+            useTerminalsStore.getState().setSnapshot(ptyId, snapshot)
+          } catch (e) {
+            console.error('[XTermView] Erro ao criar snapshot do terminal:', e)
+          }
+        }
+        void setPtyPriority(ptyId, false).catch((err) =>
+          console.error('[XTermView] Falha ao rebaixar prioridade:', err)
+        )
+        useTerminalsStore.getState().setPoolState(ptyId, 'HIBERNATED')
+      }
+    } else {
+      if (poolState === 'HIBERNATED' || poolState === 'FAILED') {
+        useTerminalsStore.getState().setPoolState(ptyId, 'RESTORING')
+      }
+    }
+  }, [isActiveInPool, poolState, ptyId])
+
   const promptHistoryRef = useRef<string[]>([])
   const historyCursorRef = useRef(-1)
   const currentLineRef = useRef('')
@@ -353,6 +457,41 @@ export function XTermView({
   >('preparing')
   const [linkActions, setLinkActions] = useState<LinkActionState | null>(null)
   const [dropActive, setDropActive] = useState(false)
+  const [canMount, setCanMount] = useState(false)
+
+  // Enfileira o setup pesado do xterm.js (new Terminal + terminal.open +
+  // addon WebGL/Canvas) quando vários terminais montam juntos (abrir um
+  // container inteiro) — sem isso, todo mundo faz esse trabalho síncrono no
+  // mesmo commit do React e trava o frontend até todos terminarem.
+  useEffect(() => {
+    if (isDormant) {
+      setCanMount(false)
+      return
+    }
+    let cancelled = false
+    let release: (() => void) | null = null
+    void acquireMountSlot().then((rel) => {
+      if (cancelled) {
+        rel()
+        return
+      }
+      release = rel
+      setCanMount(true)
+      // Libera a vaga só depois que o efeito síncrono de montagem (abaixo)
+      // já rodou nesta task — deixa o próximo terminal da fila começar
+      // numa task separada, cedendo o thread pro navegador entre um e outro.
+      window.setTimeout(() => {
+        release?.()
+        release = null
+      }, 0)
+    })
+    return () => {
+      cancelled = true
+      release?.()
+      release = null
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isDormant, ptyId, retryKey])
 
   const hideLinkActions = useCallback(() => {
     setLinkActions(null)
@@ -521,7 +660,7 @@ export function XTermView({
 
   useEffect(() => {
     const container = containerRef.current
-    if (!container) return
+    if (!container || isDormant || !canMount) return
 
     let disposed = false
     const spawnQueueAbort = new AbortController()
@@ -531,12 +670,21 @@ export function XTermView({
     let resizeTimer: number | null = null
     let writeFrame: number | null = null
     let pendingWrite = ''
+
+    let pendingWriteBytes = 0
+    let backpressurePaused = false
+    const HIGH_WATERMARK = 128 * 1024
+    const LOW_WATERMARK = 16 * 1024
+    let flushTimer: number | null = null
+    let isFlushing = false
+    let lastFrameRenderTimeMs = 16
     let lastCols = 0
     let lastRows = 0
     let forceNextResize = false
     let completionMonitor: AgentCompletionMonitor | null = null
     let linkProviderDisposable: { dispose: () => void } | null = null
     let linkScrollDisposable: { dispose: () => void } | null = null
+    let releaseWebglContext: (() => void) | null = null
 
     const resourcePolicy = useProjectsStore.getState().preferences.resourcePolicy
     const terminal = new Terminal({
@@ -556,8 +704,20 @@ export function XTermView({
     const searchAddon = new SearchAddon()
     terminal.loadAddon(fitAddon)
     terminal.loadAddon(searchAddon)
+    terminal.loadAddon(new Unicode11Addon())
+    try {
+      terminal.unicode.activeVersion = '11'
+    } catch (e) {
+      console.warn('[XTermView] Não foi possível ativar Unicode 11:', e)
+    }
+    for (const ident of [4, 10, 11, 12]) {
+      terminal.parser.registerOscHandler(ident, (data) => data.includes('?'))
+    }
     terminal.open(container)
     terminalRef.current = terminal
+    if (command === 'opencode') {
+      terminal.write('\x1b[?7l')
+    }
     const clampHorizontalScroll = () => {
       container.scrollLeft = 0
       const xterm = container.querySelector<HTMLElement>('.xterm')
@@ -591,9 +751,27 @@ export function XTermView({
 
     // Renderer WebGL (GPU) — o renderer DOM padrão trava a digitação,
     // principalmente com zoom da WebView ≠ 100%. Fallback: DOM renderer.
-    let webglAddon: WebglAddon | null = null
-    let releaseWebglContext: (() => void) | null = acquireWebglContext()
-    if (releaseWebglContext) {
+    // Skip para OpenCode — WebGL corrompe o atlas ao scrollar por muitas linhas.
+    if (command === 'opencode') {
+      try {
+        terminal.loadAddon(new CanvasAddon())
+      } catch (canvasErr) {
+        console.error('[XTermView] Canvas addon falhou para opencode:', canvasErr)
+      }
+    } else {
+      let webglAddon: WebglAddon | null = null
+      releaseWebglContext = acquireWebglContext()
+      if (!releaseWebglContext) {
+        // Pool de contextos WebGL esgotado (orçamento de 4) — sem isso o
+        // terminal ficava preso no renderer DOM padrão (o pior: trava
+        // digitação e "recarrega" visualmente a cada resize). Canvas é bem
+        // mais leve que WebGL mas ainda longe do DOM renderer.
+        try {
+          terminal.loadAddon(new CanvasAddon())
+        } catch (canvasErr) {
+          console.error('[XTermView] Canvas fallback (pool WebGL esgotado) falhou:', canvasErr)
+        }
+      } else {
       try {
         webglAddon = new WebglAddon()
         webglAddon.onContextLoss(() => {
@@ -604,6 +782,12 @@ export function XTermView({
           webglAddon = null
           releaseWebglContext?.()
           releaseWebglContext = null
+          // Canvas como fallback — o renderer DOM trava a digitação (ver acima).
+          try {
+            terminal.loadAddon(new CanvasAddon())
+          } catch (canvasErr) {
+            console.error('[XTermView] Canvas fallback falhou:', canvasErr)
+          }
           // Um syncScrollArea assíncrono já agendado pode ler `dimensions` de um
           // renderer morto e lançar ("Cannot read properties of undefined
           // (reading 'dimensions')"), o que cascateia e derruba a render. Força um
@@ -621,30 +805,99 @@ export function XTermView({
           })
         })
         terminal.loadAddon(webglAddon)
-      } catch {
+      } catch (e) {
+        console.warn('[XTermView] WebGL não suportado:', e)
         webglAddon?.dispose()
         webglAddon = null
         releaseWebglContext()
         releaseWebglContext = null
+        // Canvas como fallback — o renderer DOM trava a digitação (ver acima).
+        try {
+          terminal.loadAddon(new CanvasAddon())
+        } catch (canvasErr) {
+          console.error('[XTermView] Canvas fallback falhou:', canvasErr)
+        }
+      }
       }
     }
 
+    useTerminalsStore.getState().focusPty(ptyId)
+    const onContainerFocusIn = () => {
+      useTerminalsStore.getState().focusPty(ptyId)
+    }
+    container.addEventListener('focusin', onContainerFocusIn)
     terminal.focus()
 
-    const flushPendingWrite = () => {
-      writeFrame = null
-      if (!pendingWrite) return
-      const chunk = pendingWrite
-      pendingWrite = ''
-      terminal.write(chunk)
-      clampHorizontalScroll()
+    const scheduleFlush = () => {
+      if (isFlushing || writeFrame !== null || flushTimer !== null || disposed) return
+
+      let delayMs = 16
+      if (lastFrameRenderTimeMs >= 25) {
+        delayMs = 32
+      } else if (lastFrameRenderTimeMs < 4) {
+        delayMs = 8
+      }
+
+      flushTimer = window.setTimeout(flushPendingWrite, delayMs)
     }
 
+    const flushPendingWrite = () => {
+      flushTimer = null
+      if (!pendingWrite || isFlushing || disposed) return
+
+      isFlushing = true
+      const chunk = pendingWrite
+      const chunkSize = chunk.length
+      pendingWrite = ''
+
+      const startTime = performance.now()
+      terminal.write(chunk, () => {
+        isFlushing = false
+        // Dispose no meio do write: não agenda mais nada nem mexe em PTY.
+        if (disposed) return
+        lastFrameRenderTimeMs = performance.now() - startTime
+        clampHorizontalScroll()
+
+        pendingWriteBytes = Math.max(0, pendingWriteBytes - chunkSize)
+
+        if (backpressurePaused && pendingWriteBytes <= LOW_WATERMARK) {
+          backpressurePaused = false
+          const currentId = ptyIdRef.current
+          if (currentId) {
+            void setPtyReadState(currentId, true).catch((e) =>
+              console.error('[XTermView] Erro ao reatar leitura PTY:', e)
+            )
+          }
+        }
+
+        if (pendingWrite) {
+          scheduleFlush()
+        }
+      })
+    }
+
+    const QUERY_RESPONSE_REGEX = /\x1b\[(?:\d+;\d+R|\?\d+;\d+\$y|\?\d+;\d+c)/g
+
     const queueTerminalWrite = (chunk: string) => {
-      if (!chunk) return
-      pendingWrite += chunk
-      if (writeFrame !== null) return
-      writeFrame = window.requestAnimationFrame(flushPendingWrite)
+      if (!chunk || disposed) return
+      // Filtra vazamentos de respostas a queries de terminal (ex.: CPR, DECRQM, DA1)
+      // que foram ecoadas de volta pelo PTY antes de entrar em modo raw.
+      const cleaned = chunk.replace(QUERY_RESPONSE_REGEX, '')
+      if (!cleaned) return
+      pendingWrite += cleaned
+      pendingWriteBytes += cleaned.length
+
+      if (!backpressurePaused && pendingWriteBytes >= HIGH_WATERMARK) {
+        backpressurePaused = true
+        const currentId = ptyIdRef.current
+        if (currentId) {
+          void setPtyReadState(currentId, false).catch((e) =>
+            console.error('[XTermView] Erro ao pausar leitura PTY:', e)
+          )
+        }
+      }
+
+      scheduleFlush()
     }
 
     const getTerminalLineHeight = () => {
@@ -709,8 +962,21 @@ export function XTermView({
         /* onDragDropEvent exige runtime Tauri; em browser puro/testes falha. */
       })
 
+    // Digitar/enviar input mantém `lastFocusedAt` fresco (throttle 5s) — sem
+    // isso o grace period de 30s do pool expira COM o usuário usando o terminal
+    // (focusin só dispara ao re-focar, não a cada tecla) e ele hibernava em uso.
+    let lastFocusPing = 0
+    const pingFocus = () => {
+      const now = Date.now()
+      if (now - lastFocusPing < 5000) return
+      lastFocusPing = now
+      useTerminalsStore.getState().focusPty(ptyId)
+    }
+    terminal.onData(pingFocus)
+
     terminal.attachCustomKeyEventHandler((event) => {
       if (event.type !== 'keydown') return true
+      pingFocus()
       const ctrl = event.ctrlKey || event.metaKey
       if (!ctrl || event.altKey) return true
 
@@ -751,6 +1017,11 @@ export function XTermView({
       }
 
       if (key === 'v') {
+        // OpenCode: não bloquear — deixa o xterm.js repassar pro PTY
+        // (OpenCode tem suporte nativo a colar imagens).
+        if (command === 'opencode') {
+          return true
+        }
         event.preventDefault()
         void readClipboardText()
           .catch(() => navigator.clipboard?.readText() ?? '')
@@ -772,6 +1043,16 @@ export function XTermView({
     container.addEventListener('click', focusTerminal)
 
     const onPaste = (event: ClipboardEvent) => {
+      // OpenCode: se há imagem no clipboard, não bloquear — o xterm.js repassa
+      // pro PTY e o OpenCode processa a imagem colada nativamente.
+      if (command === 'opencode') {
+        const items = event.clipboardData?.items
+        if (items) {
+          for (const item of items) {
+            if (item.type.startsWith('image/')) return
+          }
+        }
+      }
       const raw = event.clipboardData?.getData('text/plain') ?? ''
       event.preventDefault()
       event.stopPropagation()
@@ -803,6 +1084,11 @@ export function XTermView({
         /* refresh pode falhar durante teardown/layout invisível */
       }
       clampHorizontalScroll()
+      try {
+        terminal.scrollToBottom()
+      } catch {
+        /* ignore se unmounted */
+      }
       const force = forceNextResize
       forceNextResize = false
       if (!force && terminal.cols === lastCols && terminal.rows === lastRows) return
@@ -816,7 +1102,8 @@ export function XTermView({
       if (disposed) return
       forceNextResize ||= force
       if (resizeTimer !== null) window.clearTimeout(resizeTimer)
-      resizeTimer = window.setTimeout(runResize, 80)
+      const debounceMs = 80
+      resizeTimer = window.setTimeout(runResize, debounceMs)
     }
     const scheduleObservedResize = () => scheduleResize()
     const onResizeRequest = (event: Event) => {
@@ -830,10 +1117,13 @@ export function XTermView({
     ro.observe(container)
     window.addEventListener('alethe:zoom-changed', scheduleObservedResize)
     window.addEventListener('alethe:terminal-resize-request', onResizeRequest)
+    document.fonts?.ready?.then(() => {
+      if (!disposed) scheduleResize(true)
+    })
 
     // Fit adicional com delay pra garantir que o layout estabilizou
     const initialFitTimer = window.setTimeout(() => {
-      scheduleResize()
+      scheduleResize(true)
     }, 150)
 
     const attachExistingPty = async (existingId: string) => {
@@ -899,6 +1189,10 @@ export function XTermView({
     terminal.onData((data) => {
       const id = ptyIdRef.current
       if (!id) return
+      // Não repassa pro PTY se o data gerado pelo xterm for apenas resposta automática a queries
+      if (/^\x1b\[(?:\d+;\d+R|\?\d+;\d+\$y|\?\d+;\d+c)$/.test(data)) {
+        return
+      }
       useTerminalsStore.getState().recordIo(id)
       recordPromptInput(data)
       completionMonitor?.handleInput(data)
@@ -913,11 +1207,7 @@ export function XTermView({
 
     async function start() {
       try {
-        // Fit inicial só com dimensões válidas. Um fit em container 0×0 (pane
-        // recém-montado/colapsado) deixa o renderer sem dimensões e o
-        // syncScrollArea assíncrono do xterm estoura depois com "Cannot read
-        // properties of undefined (reading 'dimensions')". Se ainda não tem
-        // layout, o ResizeObserver + initialFitTimer refazem o fit quando estabiliza.
+        // Fit inicial só com dimensões válidas.
         try {
           const rect = container?.getBoundingClientRect()
           if (rect && rect.width >= 50 && rect.height >= 30) fitAddon.fit()
@@ -935,6 +1225,66 @@ export function XTermView({
         const backendHasPty = await ptyExists(ptyId).catch(() => false)
         if (backendHasPty) {
           await attachExistingPty(ptyId)
+          return
+        }
+
+        // Fast-path: RESTORING com PTY VIVO — o processo já existe no Rust (só
+        // hibernado pelo pool). Re-registra listeners sem spawn de novo. Com
+        // snapshot, reidrata dele; SEM snapshot, reanexa via attachPty (replay
+        // do scrollback) — nunca spawnPty com id de PTY vivo (mataria/duplicaria
+        // a sessão do CLI).
+        const restoringRuntime = useTerminalsStore.getState().byPtyId[ptyId]
+        const currentSnapshot = restoringRuntime?.snapshot
+        if (restoringRuntime?.poolState === 'RESTORING' && restoringRuntime.alive) {
+          ptyIdRef.current = ptyId
+          useTerminalsStore.getState().registerPty(ptyId)
+          setBootPhase('attaching')
+          void setPtyPriority(ptyId, true).catch(() => {})
+          void setPtyReadState(ptyId, true).catch(() => {})
+          if (currentSnapshot) {
+            // Escreve snapshot ANSI e restaura scroll
+            terminal.write(currentSnapshot.ansiBuffer, () => {
+              try { terminal.scrollToLine(currentSnapshot.scrollTop) } catch { /* ignore */ }
+              if (!disposed) {
+                useTerminalsStore.getState().setSnapshot(ptyId, null)
+                useTerminalsStore.getState().setPoolState(ptyId, 'ACTIVE')
+              }
+            })
+          } else {
+            const replayBuffer = await attachPty(ptyId)
+            if (disposed) return
+            if (replayBuffer) queueTerminalWrite(replayBuffer)
+            useTerminalsStore.getState().setPoolState(ptyId, 'ACTIVE')
+          }
+          // Re-registra listener de dados
+          const dataUnlisten = await listenPtyData(ptyId, (chunk) => {
+            queueTerminalWrite(chunk)
+            completionMonitor?.handleOutput(chunk)
+          })
+          if (disposed) { dataUnlisten(); return }
+          unlistenData = dataUnlisten
+          // Re-registra listener de exit
+          const exitUnlisten = await listenPtyExit(ptyId, (payload) => {
+            if (payload.reason === 'restarted') {
+              useTerminalsStore.getState().markExited(ptyId)
+              return
+            }
+            if (payload.reason === 'suspended') {
+              useTerminalsStore.getState().markSuspended(ptyId)
+              completionMonitor?.dispose()
+              completionMonitor = null
+              return
+            }
+            useTerminalsStore.getState().markExited(ptyId)
+            completionMonitor?.dispose()
+            completionMonitor = null
+            removeSession(ptyId)
+            onExitRef.current?.(payload.code)
+          })
+          if (disposed) { exitUnlisten(); return }
+          unlistenExit = exitUnlisten
+          scheduleResize()
+          if (!disposed) setBootPhase('ready')
           return
         }
 
@@ -962,8 +1312,29 @@ export function XTermView({
           ? savedSession?.claudeSessionId
           : command === 'codex'
             ? savedSession?.codexSessionId
-            : undefined
+            : command === 'opencode'
+              ? savedSession?.opencodeSessionId
+              : undefined
         let resumeId = sessionId ?? savedConversationId
+        // OpenCode: NÃO cai pra --continue quando falta o ID específico —
+        // --continue não é por terminal, é "a última sessão do OpenCode" pra
+        // aquele cwd, então com 2+ terminais no mesmo projeto todos caem na
+        // MESMA sessão (conteúdo duplicado entre panes). Em vez disso,
+        // consulta as sessões existentes daquele cwd e reivindica (via
+        // claimMostRecentSession) a mais recente que NENHUM outro pane já
+        // pegou — --session <id> explícito é sempre mais confiável que
+        // --continue. Sem nenhuma disponível, começa sessão nova (honesto);
+        // a detecção pós-spawn abaixo captura o ID novo certinho.
+        if (command === 'opencode' && !resumeId && cwd) {
+          try {
+            const existing = await snapshotOpenCodeSessions(cwd)
+            const claimed = claimMostRecentSession('opencode', cwd, existing, ptyId)
+            if (claimed) resumeId = claimed.id
+          } catch {
+            /* sem sessões existentes ou consulta falhou — segue sem resume */
+          }
+          if (disposed) return
+        }
         // Claude: valida que a conversa ainda existe no cwd antes de passar
         // --resume. Se o id ficou órfão (conversa apagada, cwd diferente de onde
         // nasceu, ou o --session-id forçado nunca virou transcript), o CLI aborta
@@ -989,8 +1360,38 @@ export function XTermView({
         const preparedRuntime = command
           ? preparePtyRuntimeLaunch(command, runtimeProfile, extraArgs ?? [], env)
           : { args: extraArgs ?? [], env }
+
+        // RFC-004 — Graphify por projeto: garante o bootstrap do grafo (só o
+        // primeiro agente gera; demais usam) e injeta o MCP no launch. Tudo
+        // best-effort: falha do Graphify NUNCA bloqueia o spawn. Universal
+        // pros 3 providers — cada um tem seu próprio mecanismo de MCP (ver
+        // comentário em graphify.rs `graphify_opencode_config_write`/
+        // `graphify_codex_config_write`): Claude recebe `--mcp-config` no
+        // spawn; Codex/OpenCode leem de um arquivo de config no próprio
+        // projeto, escrito/mesclado ANTES do spawn (sem flag extra).
+        let graphifyMcpPath: string | undefined
+        if (graphifyRepo && (command === 'claude' || command === 'codex' || command === 'opencode')) {
+          void graphifyEnsureGraph(graphifyRepo)
+            .then((status) => {
+              if (status === 'started') {
+                useUiStore.getState().pushToast({
+                  title: translate(getLocale(), 'graphify.title'),
+                  body: translate(getLocale(), 'graphify.bootstrapStarted'),
+                })
+              }
+            })
+            .catch(() => {})
+          if (command === 'claude') {
+            graphifyMcpPath = await graphifyMcpConfigPath(graphifyRepo).catch(() => undefined)
+          } else if (command === 'opencode') {
+            await graphifyOpenCodeConfigWrite(graphifyRepo).catch(() => {})
+          } else if (command === 'codex') {
+            await graphifyCodexConfigWrite(graphifyRepo).catch(() => {})
+          }
+          if (disposed) return
+        }
         const launch = command
-          ? buildAgentLaunch(command, preparedRuntime.args, resumeId)
+          ? buildAgentLaunch(command, preparedRuntime.args, resumeId, undefined, graphifyMcpPath)
           : { args: preparedRuntime.args, sessionId: undefined, createdSession: false }
         const spawnArgs = launch.args.length > 0 ? launch.args : undefined
         if (launch.sessionId && launch.sessionId !== sessionId) {
@@ -1004,6 +1405,12 @@ export function XTermView({
           ? snapshotCodexSessions(cwd).catch(() => [])
           : null
 
+        // Snapshot leve das sessões OpenCode existentes antes do spawn para
+        // identificar e persistir o ID novo.
+        const opencodeSessionsBeforePromise = (command === 'opencode' && cwd && !launch.sessionId)
+          ? snapshotOpenCodeSessions(cwd).catch(() => [])
+          : null
+
         // Serializa spawns globalmente — sem isso, abrir grupo com N×M terminais
         // dispara muitos spawn_pty em paralelo e trava o app.
         setBootPhase('queued')
@@ -1014,6 +1421,34 @@ export function XTermView({
           return
         }
         setBootPhase('spawning')
+
+        // Node Heap Profile: injeta NODE_OPTIONS (--max-old-space-size) e
+        // UV_THREADPOOL_SIZE no ambiente de agentes Node (claude/codex/opencode).
+        const heapProfile = useProjectsStore.getState().preferences.nodeHeapProfile
+        const nodeHeap: Record<string, string> = {}
+        if (command && ['claude', 'codex', 'opencode'].includes(command) && heapProfile) {
+          const heapMb = heapProfile === 'conservative' ? 96 : heapProfile === 'balanced' ? 128 : 256
+          const existing = env?.['NODE_OPTIONS'] ?? ''
+          nodeHeap.NODE_OPTIONS = existing
+            ? `${existing} --max-old-space-size=${heapMb}`
+            : `--max-old-space-size=${heapMb}`
+          nodeHeap.UV_THREADPOOL_SIZE = '4'
+        }
+
+        // Sinal real de working/idle do OpenCode (ver opencode_bridge.rs) — o
+        // plugin global lê essa env var pra saber onde fazer POST. Best-effort:
+        // se o endpoint não resolver a tempo, o terminal ainda spawna normal e
+        // cai de volta na heurística de PTY (agentCompletionMonitor.ts).
+        const bridgeEnv: Record<string, string> = {}
+        if (command === 'opencode') {
+          try {
+            bridgeEnv.ALETHE_BRIDGE_ENDPOINT = await agentHooksEndpoint()
+          } catch {
+            /* segue sem o bridge — heurística de PTY continua valendo */
+          }
+        }
+        const spawnEnv = { ...preparedRuntime.env, ...nodeHeap, ...bridgeEnv }
+
         let response: { id: string }
         try {
           response = await spawnPty({
@@ -1024,7 +1459,7 @@ export function XTermView({
             cwd: cwd ?? undefined,
             extraArgs: spawnArgs,
             launcherOverride,
-            env: preparedRuntime.env,
+            env: Object.keys(spawnEnv).length > 0 ? spawnEnv : undefined,
           })
         } finally {
           releaseSpawnSlot()
@@ -1054,6 +1489,7 @@ export function XTermView({
             sessionId: response.id,
             claudeSessionId: command === 'claude' ? launch.sessionId : undefined,
             codexSessionId: command === 'codex' ? launch.sessionId : undefined,
+            opencodeSessionId: command === 'opencode' ? launch.sessionId : undefined,
             cwd: cwd ?? '',
             agent: command,
             timestamp: Date.now(),
@@ -1091,11 +1527,57 @@ export function XTermView({
             }
             void detectCodexSession()
           }
+
+          // OpenCode: detecta o ID da sessão nova pós-spawn (similar ao Codex).
+          // Quando usamos --continue, a sessão já existe — pegamos a mais recente.
+          if (command === 'opencode' && cwd && opencodeSessionsBeforePromise) {
+            const detectOpenCodeSession = async () => {
+              const before = new Set((await opencodeSessionsBeforePromise).map((s) => s.id))
+              for (let attempt = 0; attempt < 4; attempt++) {
+                await Promise.race([
+                  new Promise((r) => setTimeout(r, 3000)),
+                  waitForSessionHint('opencode'),
+                ])
+                if (disposed) return
+                const sessions = await snapshotOpenCodeSessions(cwd).catch(() => [])
+                // Primeiro tenta achar sessão NOVA (não estava no before).
+                const newSession = claimDiscoveredSession('opencode', cwd, before, sessions)
+                if (newSession) {
+                  saveSession(ptyId, {
+                    sessionId: response.id,
+                    opencodeSessionId: newSession.id,
+                    cwd: cwd ?? '',
+                    agent: command,
+                    timestamp: Date.now(),
+                  })
+                  onSessionIdRef.current?.(newSession.id)
+                  return
+                }
+              }
+            }
+            void detectOpenCodeSession()
+          }
         }
 
-        const replay = await attachPty(response.id)
-        if (disposed) return
-        if (replay) queueTerminalWrite(replay)
+        let replay: string | null = null
+        const snapshot = useTerminalsStore.getState().byPtyId[ptyId]?.snapshot
+
+        if (snapshot) {
+          terminal.write(snapshot.ansiBuffer, () => {
+            try {
+              terminal.scrollToLine(snapshot.scrollTop)
+            } catch { /* ignore */ }
+            if (!disposed) {
+              useTerminalsStore.getState().setPoolState(ptyId, 'ACTIVE')
+            }
+          })
+          void setPtyPriority(response.id, true).catch(() => {})
+          void setPtyReadState(response.id, true).catch(() => {})
+        } else {
+          replay = await attachPty(response.id)
+          if (disposed) return
+          if (replay) queueTerminalWrite(replay)
+        }
 
         // Race fix: se o componente desmontar entre o await e a atribuição,
         // a cleanup function já rodou com unlistenData/unlistenExit ainda
@@ -1150,12 +1632,20 @@ export function XTermView({
       container.removeEventListener('wheel', onWheel, true)
       container.removeEventListener('click', focusTerminal)
       container.removeEventListener('paste', onPaste)
+      container.removeEventListener('focusin', onContainerFocusIn)
       window.removeEventListener('alethe:zoom-changed', scheduleObservedResize)
       window.removeEventListener('alethe:terminal-resize-request', onResizeRequest)
       ro.disconnect()
       if (resizeTimer !== null) window.clearTimeout(resizeTimer)
       if (writeFrame !== null) window.cancelAnimationFrame(writeFrame)
+      if (flushTimer !== null) window.clearTimeout(flushTimer)
       pendingWrite = ''
+      // Se desmontou com o PTY pausado, retoma a leitura — sem isso o PTY fica bloqueado.
+      if (backpressurePaused) {
+        const pausedId = ptyIdRef.current
+        if (pausedId) void setPtyReadState(pausedId, true).catch(() => {})
+        backpressurePaused = false
+      }
       window.clearTimeout(initialFitTimer)
       unlistenData?.()
       unlistenExit?.()
@@ -1171,9 +1661,13 @@ export function XTermView({
       releaseWebglContext?.()
       releaseWebglContext = null
     }
-    // ptyId/retryKey são as chaves de identidade. Outros props lidos via refs.
+    // ptyId/retryKey/isDormant são as chaves de identidade. `isDormant` (e NÃO
+    // `poolState` cru): hibernar desmonta 1×, acordar remonta 1×, e transições
+    // intermediárias (HIBERNATING/RESTORING→ACTIVE) não recriam nada.
+    // `canMount` vem da fila de montagem (mountQueue) — vira true quando este
+    // terminal ganha a vaga pra fazer o setup síncrono pesado do xterm.js.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [ptyId, retryKey])
+  }, [ptyId, retryKey, isDormant, canMount])
 
   useEffect(() => {
     const terminal = terminalRef.current
@@ -1211,11 +1705,39 @@ export function XTermView({
 
   return (
     <>
-      <div
-        ref={containerRef}
-        className={`${styles.host} ${dropActive ? styles.dropActive : ''}`}
-        style={{ background: getXtermTheme(terminalTheme).background }}
-      />
+      {poolState === 'FAILED' ? (
+        <div className={styles.overlay}>
+          <div className={styles.overlayText} style={{ color: 'var(--status-stopped)' }}>
+            <strong>Falha ao reidratar o terminal.</strong>
+          </div>
+          <button
+            type="button"
+            className={styles.overlayBtn}
+            onClick={() => useTerminalsStore.getState().setPoolState(ptyId, 'ACTIVE')}
+          >
+            Tentar Novamente
+          </button>
+        </div>
+      ) : poolState === 'HIBERNATED' ? (
+        <div className={styles.overlay}>
+          <div className={styles.overlayText} style={{ color: 'var(--fg-muted)', fontFamily: 'monospace' }}>
+            [Terminal Suspenso — RAM Liberada]
+          </div>
+          <button
+            type="button"
+            className={styles.overlayBtn}
+            onClick={() => useTerminalsStore.getState().setPoolState(ptyId, 'ACTIVE')}
+          >
+            Reativar
+          </button>
+        </div>
+      ) : (
+        <div
+          ref={containerRef}
+          className={`${styles.host} ${dropActive ? styles.dropActive : ''}`}
+          style={{ background: getXtermTheme(terminalTheme).background }}
+        />
+      )}
       {bootLabel && !commandNotFound ? (
         <div className={styles.bootOverlay}>
           <div className={styles.bootSpinner} aria-hidden />

@@ -17,12 +17,15 @@
     opacity 0.15s ease;
 }
 
-/* Foco do pane (Alethe focus mode): outline pontilhado azul,
-   sem bg/lift extras. Acende sempre que o xterm de dentro recebe foco.
-   Suprimido quando .paneFocus (overlay) — lá não queremos borda azul. */
+/* Foco do pane (Alethe focus mode): anel sólido em camadas (mesmo padrão do
+   .dropTarget abaixo), sem bg/lift extras. Acende sempre que o xterm de
+   dentro recebe foco. Suprimido quando .paneFocus (overlay) — lá não
+   queremos anel azul. */
 .pane:focus-within:not(.paneFocus) {
-  outline: 2px dashed var(--focus-ring, #38bdf8);
-  outline-offset: -2px;
+  border-color: var(--focus-ring, #38bdf8);
+  box-shadow:
+    inset 0 0 0 1px color-mix(in srgb, var(--focus-ring) 70%, transparent),
+    0 0 0 3px color-mix(in srgb, var(--focus-ring) 22%, transparent);
   z-index: 2;
 }
 
@@ -193,15 +196,37 @@
   background: var(--status-stopped);
   flex-shrink: 0;
 }
-.status_working { background: var(--status-working); animation: pulse 1.4s infinite; }
+
+.hibernationBadge {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 14px;
+  height: 14px;
+  border-radius: 50%;
+  background: var(--fg-faint);
+  color: var(--bg);
+  flex-shrink: 0;
+  cursor: help;
+}
+.status_working {
+  background: var(--status-working);
+  animation: glowPulse 2s infinite ease-in-out;
+}
 .status_waiting { background: var(--status-waiting); }
 .status_stopped { background: var(--status-stopped); }
 .status_disabled { background: var(--status-disabled); }
 .status_offline { background: var(--status-offline); }
 
-@keyframes pulse {
-  0%, 100% { opacity: 1; }
-  50% { opacity: 0.4; }
+@keyframes glowPulse {
+  0%, 100% {
+    box-shadow: 0 0 0 0px var(--status-working-soft), 0 0 4px var(--status-working);
+    opacity: 1;
+  }
+  50% {
+    box-shadow: 0 0 0 5px rgba(16, 185, 129, 0), 0 0 8px var(--status-working);
+    opacity: 0.8;
+  }
 }
 
 /* Actions sempre visíveis. As secundárias só aparecem quando expandido

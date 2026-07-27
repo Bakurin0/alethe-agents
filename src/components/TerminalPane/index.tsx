@@ -98,6 +98,14 @@ export const TerminalPane = memo(function TerminalPane({
   )
   const useNativeBackend = shouldUseNativeBackend(nativeTerminalMacos)
 
+  // RFC-004 — projeto com Graphify habilitado: cada spawn de agente recebe o
+  // repo para injetar o MCP (o XTermView resolve o config/bootstrap).
+  const graphifyRepo = useProjectsStore((s) => {
+    const p = s.projects.find((p) => p.id === projectId)
+    if (!p?.graphifyEnabled) return null
+    return terminal.cwd || p.terminals[0]?.cwd || null
+  })
+
   // Resize de span no grid do PROJETO (quando project.layoutMode === 'grid').
   const projectGrid = useProjectsStore((s) => {
     const p = s.projects.find((p) => p.id === projectId)
@@ -285,6 +293,7 @@ export const TerminalPane = memo(function TerminalPane({
                   extraArgs={activeTab.extraArgs}
                   runtimeProfile={activeTab.runtimeProfile}
                   sessionId={activeTab.sessionId}
+                  graphifyRepo={graphifyRepo}
                   terminalTheme={terminalTheme}
                   onSpawned={(id) => {
                     if (activeTab.ptyId !== id) {
@@ -365,4 +374,3 @@ function DisabledOverlay({
     </div>
   )
 }
-

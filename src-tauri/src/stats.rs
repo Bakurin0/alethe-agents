@@ -10,6 +10,8 @@ pub struct MemoryStats {
     pub webview_mb: f64,
     pub ptys_mb: f64,
     pub process_count: usize,
+    pub system_total_mb: f64,
+    pub system_available_mb: f64,
 }
 
 fn shared_system() -> &'static Mutex<System> {
@@ -24,6 +26,10 @@ pub fn collect_memory_stats() -> MemoryStats {
         .lock()
         .unwrap_or_else(|poisoned| poisoned.into_inner());
     sys.refresh_processes(sysinfo::ProcessesToUpdate::All);
+    sys.refresh_memory();
+
+    let system_total_mb = sys.total_memory() as f64 / 1024.0 / 1024.0;
+    let system_available_mb = sys.available_memory() as f64 / 1024.0 / 1024.0;
 
     // BFS no subtree de processos a partir do PID atual.
     let root_pid = std::process::id() as usize;
@@ -34,6 +40,12 @@ pub fn collect_memory_stats() -> MemoryStats {
             continue;
         }
         for (other_pid, process) in sys.processes() {
+            // Threads de /proc/<pid>/task/<tid> aparecem como entradas próprias
+            // no sysinfo (thread_kind() == Some) — pular, senão cada thread
+            // reconta a memória inteira do processo pai.
+            if process.thread_kind().is_some() {
+                continue;
+            }
             if let Some(parent) = process.parent() {
                 if parent.as_u32() as usize == pid {
                     frontier.push(other_pid.as_u32() as usize);
@@ -68,6 +80,8 @@ pub fn collect_memory_stats() -> MemoryStats {
         webview_mb: to_mb(webview_bytes),
         ptys_mb: to_mb(pty_bytes),
         process_count: visited.len(),
+        system_total_mb,
+        system_available_mb,
     }
 }
 

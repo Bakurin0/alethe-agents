@@ -11,6 +11,7 @@ import {
   type Group,
   type LayoutMode,
   type Locale,
+  type OrphanWorktree,
   type Preferences,
   type Project,
   type ProjectsFile,
@@ -55,6 +56,8 @@ type ProjectsState = ProjectsFile & {
   profiles: ProfileMeta[]
   hydrated: boolean
   hydrate: () => Promise<void>
+  /** true durante uma passada de handleCleanupWorktrees — bloqueia cliques duplos. */
+  isCleaningOrphans: boolean
 
   // groups
   createGroup: (name: string, color?: string, parentGroupId?: string | null) => Group
@@ -84,6 +87,29 @@ type ProjectsState = ProjectsFile & {
   renameProject: (id: string, name: string) => void
   setProjectColor: (id: string, color: string | undefined) => void
   setProjectIconUrl: (id: string, iconUrl: string | undefined) => void
+  setWorktreeMode: (id: string, mode: 'gitWorktree' | 'localCopy') => void
+  setValidationCommands: (id: string, commands: string[]) => void
+  setGsdWatcherEnabled: (id: string, enabled: boolean) => void
+  setConflictAgentProvider: (id: string, provider: AgentType) => void
+  setGraphifyEnabled: (id: string, enabled: boolean) => void
+  setAutoWorktree: (id: string, enabled: boolean) => void
+  /** Upsert por `path` — sobrescreve a entrada existente (limpando `adminLockReason`
+   * obsoleto se a nova falha não for lock administrativo) ou adiciona uma nova. */
+  addOrphanWorktree: (projectId: string, entry: OrphanWorktree) => void
+  removeOrphanWorktree: (projectId: string, path: string) => void
+  setCleaningOrphans: (value: boolean) => void
+  /** Processa `project.orphanWorktrees` sequencial-com-continuação: cada item
+   * falho não interrompe os demais. Aplica a transição requiresRawDeletion →
+   * pruneOnly, classifica lock administrativo vs falha de SO, e retorna a
+   * taxonomia quadridimensional (X limpos / Y parciais / W aguardando unlock /
+   * Z falhas) — a UI usa isso pro toast de resumo. */
+  cleanupOrphanWorktrees: (projectId: string) => Promise<{
+    cleaned: number
+    partial: number
+    awaitingUnlock: number
+    failed: number
+  }>
+
   deleteProject: (id: string) => void
   setActiveProject: (id: string | null) => void
   setActiveProjectOnly: (id: string | null) => void
@@ -124,12 +150,28 @@ type ProjectsState = ProjectsFile & {
       name: string
       cwd: string
       firstTab: { type: AgentType; cwd: string; extraArgs?: string[]; runtimeProfile?: AgentRuntimeProfile }
+      worktreeAgentId?: string
     },
   ) => Terminal
+  /**
+   * RFC-003 — como createTerminal, mas com isolamento automático: se o projeto
+   * tem `autoWorktree` e o agente não é shell, provisiona uma worktree e o
+   * terminal nasce dentro dela (com `worktreeAgentId` p/ o botão Integrar).
+   * Falha do provision NUNCA bloqueia: cai no terminal normal.
+   */
+  createAgentTerminal: (
+    projectId: string,
+    args: {
+      name: string
+      cwd: string
+      firstTab: { type: AgentType; cwd: string; extraArgs?: string[]; runtimeProfile?: AgentRuntimeProfile }
+    },
+  ) => Promise<Terminal>
   /** Cria um pane viewer (markdown/arquivo) e adiciona ao grid do projeto. */
   createFilePane: (projectId: string, args: { filePath: string; name?: string }) => Terminal
   /** Cria um pane web persistente e adiciona ao grid do projeto. */
   createWebPane: (projectId: string, args: { url: string; name?: string }) => Terminal
+  createGraphifyPane: (projectId: string, cwd: string) => Terminal
   renameTerminal: (projectId: string, terminalId: string, name: string) => void
   deleteTerminal: (projectId: string, terminalId: string) => void
   /** Mata a árvore de processos do terminal + fecha o pane, mas MANTÉM o atalho na
@@ -213,6 +255,16 @@ type ProjectsState = ProjectsFile & {
 let saveTimer: ReturnType<typeof setTimeout> | null = null
 let pendingSave = false
 
+// Sequência monotônica enviada a cada gravação (ver SAVE_MUTEX/LAST_WRITE_SEQUENCE
+// em src-tauri/src/projects.rs) — garante last-write-wins mesmo se duas chamadas de
+// save_projects chegarem fora de ordem no backend (reload concorrente, IPC atrasado).
+let lastWriteSequence = Date.now()
+
+function nextWriteSequence(): number {
+  lastWriteSequence = Math.max(Date.now(), lastWriteSequence + 1)
+  return lastWriteSequence
+}
+
 function scheduleSave(getState: () => ProjectsState) {
   if (!getState().hydrated) return
   pendingSave = true
@@ -233,7 +285,7 @@ function scheduleSave(getState: () => ProjectsState) {
       preferences: state.preferences,
       cliPaths: state.cliPaths,
     }
-    void saveProjectsFile(JSON.stringify(payload, null, 2))
+    void saveProjectsFile(JSON.stringify(payload, null, 2), nextWriteSequence())
   }, SAVE_DEBOUNCE_MS)
 }
 
@@ -258,6 +310,7 @@ function makeDefaultTerminal(args: {
   name: string
   cwd: string
   firstTab: { type: AgentType; cwd: string; extraArgs?: string[]; runtimeProfile?: AgentRuntimeProfile }
+  worktreeAgentId?: string
 }): Terminal {
   const tabId = nanoid()
   const now = Date.now()
@@ -269,6 +322,7 @@ function makeDefaultTerminal(args: {
     disabled: false,
     laneVisible: null,
     lastUsedAt: now,
+    worktreeAgentId: args.worktreeAgentId,
     tabs: [
       {
         id: tabId,
@@ -629,13 +683,29 @@ function migrateWorkspaceNavigation(base: {
 
 /** Migra arquivos antigos e normaliza snapshots restauráveis. */
 function migrate(parsed: any): ProjectsFile {
-  if (
-    parsed.version === 2 ||
-    parsed.version === 3 ||
-    parsed.version === 4 ||
-    parsed.version === 5 ||
-    parsed.version === 6
-  ) {
+  if (parsed.version === 6) {
+    return { ...parsed, preferences: normalizePreferences(parsed.preferences) }
+  }
+
+  const v5Result = parsed.version === 5 ? parsed : migrateToV5(parsed)
+
+  // Migrate v5 -> v6: orphanWorktrees (rastreamento de limpeza inacabada de worktrees).
+  const v6Projects = (v5Result.projects ?? []).map((p: any) => ({
+    ...p,
+    orphanWorktrees: p.orphanWorktrees ?? [],
+  }))
+
+  return {
+    ...v5Result,
+    version: 6,
+    projects: v6Projects,
+    preferences: normalizePreferences(v5Result.preferences),
+  }
+}
+
+function migrateToV5(parsed: any): any {
+  let v4Result: any
+  if (parsed.version === 2 || parsed.version === 3 || parsed.version === 4) {
     // backfill parentGroupId (v2.1) — grupos antigos viram raiz.
     const groups = (parsed.groups ?? []).map((g: any) => ({
       ...g,
@@ -651,7 +721,7 @@ function migrate(parsed: any): ProjectsFile {
       ungroupedOrder: parsed.ungroupedOrder ?? [],
       todos: normalizeTodos(parsed.todos),
     }
-    return {
+    v4Result = {
       ...base,
       workspace: migrateWorkspaceNavigation({
         workspace: parsed.workspace,
@@ -661,53 +731,68 @@ function migrate(parsed: any): ProjectsFile {
         preferences,
       }),
     }
-  }
-
-  // v1 → v2
-  const oldProjects: any[] = parsed.projects ?? []
-  const projects: Project[] = oldProjects.map((p) => ({
-    id: p.id,
-    name: p.name,
-    color: p.color,
-    groupId: null, // tudo vira Solto na migração
-    terminals: p.terminals ?? [],
-    layoutMode: p.layoutMode ?? 'auto',
-    collapsed: p.collapsed ?? false,
-    createdAt: p.createdAt ?? Date.now(),
-  }))
-
-  const containers: WorkspaceContainer[] = oldProjects
-    .filter((p) => Array.isArray(p.activeTerminalIds) && p.activeTerminalIds.length > 0)
-    .map((p) => ({
-      projectId: p.id,
-      paneIds: p.activeTerminalIds,
-      size: 0,
-      internalLayout: p.layoutMode ?? 'auto',
-      collapsed: false,
+  } else {
+    // legacy v1 -> v4
+    const oldProjects: any[] = parsed.projects ?? []
+    const projects: Project[] = oldProjects.map((p) => ({
+      id: p.id,
+      name: p.name,
+      color: p.color,
+      groupId: null,
+      terminals: p.terminals ?? [],
+      layoutMode: p.layoutMode ?? 'auto',
+      collapsed: p.collapsed ?? false,
+      createdAt: p.createdAt ?? Date.now(),
     }))
 
-  return {
-    version: 6,
-    groups: [],
-    ungroupedOrder: projects.map((p) => p.id),
-    projects,
-    todos: [],
-    activeProjectId: parsed.activeProjectId ?? projects[0]?.id ?? null,
-    workspace: migrateWorkspaceNavigation({
-      workspace: {
-      containers,
-      recentProjectIds: containers.map((c) => c.projectId).slice(0, MAX_RECENT_PROJECT_TABS),
-      recentTabs: containers
-        .map((c) => ({ kind: 'project' as const, id: c.projectId }))
-        .slice(0, MAX_RECENT_PROJECT_TABS),
-      },
-      projects,
+    const containers: WorkspaceContainer[] = oldProjects
+      .filter((p) => Array.isArray(p.activeTerminalIds) && p.activeTerminalIds.length > 0)
+      .map((p) => ({
+        projectId: p.id,
+        paneIds: p.activeTerminalIds,
+        size: 0,
+        internalLayout: p.layoutMode ?? 'auto',
+        collapsed: false,
+      }))
+
+    v4Result = {
+      version: 4,
       groups: [],
+      ungroupedOrder: projects.map((p) => p.id),
+      projects,
+      todos: [],
       activeProjectId: parsed.activeProjectId ?? projects[0]?.id ?? null,
+      workspace: migrateWorkspaceNavigation({
+        workspace: {
+          containers,
+          recentProjectIds: containers.map((c) => c.projectId).slice(0, MAX_RECENT_PROJECT_TABS),
+          recentTabs: containers
+            .map((c) => ({ kind: 'project' as const, id: c.projectId }))
+            .slice(0, MAX_RECENT_PROJECT_TABS),
+        },
+        projects,
+        groups: [],
+        activeProjectId: parsed.activeProjectId ?? projects[0]?.id ?? null,
+        preferences: normalizePreferences(parsed.preferences),
+      }),
       preferences: normalizePreferences(parsed.preferences),
-    }),
-    preferences: normalizePreferences(parsed.preferences),
-    cliPaths: parsed.cliPaths ?? {},
+      cliPaths: parsed.cliPaths ?? {},
+    }
+  }
+
+  // Migrate v4 -> v5
+  const projects = (v4Result.projects ?? []).map((p: any) => ({
+    ...p,
+    worktreeMode: p.worktreeMode ?? 'gitWorktree',
+    validationCommands: p.validationCommands ?? [],
+    gsdWatcherEnabled: p.gsdWatcherEnabled ?? false,
+    conflictAgentProvider: p.conflictAgentProvider ?? 'claude',
+  }))
+
+  return {
+    ...v4Result,
+    version: 5,
+    projects,
   }
 }
 
@@ -1008,6 +1093,7 @@ export const useProjectsStore = create<ProjectsState>((set, get) => {
     activeProfileId: 'default',
     profiles: [],
     hydrated: false,
+    isCleaningOrphans: false,
 
     hydrate: async () => {
       let profileState: ProfilesState = {
@@ -1382,6 +1468,115 @@ export const useProjectsStore = create<ProjectsState>((set, get) => {
     setProjectColor: (id, color) => updateProject(id, (p) => ({ ...p, color })),
 
     setProjectIconUrl: (id, iconUrl) => updateProject(id, (p) => ({ ...p, iconUrl })),
+
+    setWorktreeMode: (id, worktreeMode) => updateProject(id, (p) => ({ ...p, worktreeMode })),
+
+    setValidationCommands: (id, validationCommands) => updateProject(id, (p) => ({ ...p, validationCommands })),
+
+    setGsdWatcherEnabled: (id, gsdWatcherEnabled) => updateProject(id, (p) => ({ ...p, gsdWatcherEnabled })),
+
+    setConflictAgentProvider: (id, conflictAgentProvider) => updateProject(id, (p) => ({ ...p, conflictAgentProvider })),
+
+    setGraphifyEnabled: (id, graphifyEnabled) => updateProject(id, (p) => ({ ...p, graphifyEnabled })),
+
+    setAutoWorktree: (id, autoWorktree) => updateProject(id, (p) => ({ ...p, autoWorktree })),
+
+    addOrphanWorktree: (projectId, entry) =>
+      updateProject(projectId, (p) => {
+        const existing = p.orphanWorktrees ?? []
+        const index = existing.findIndex((o) => o.path === entry.path)
+        if (index === -1) {
+          return { ...p, orphanWorktrees: [...existing, entry] }
+        }
+        const next = [...existing]
+        next[index] = {
+          ...existing[index],
+          ...entry,
+          // Sobrescreve incondicionalmente: se a nova falha não é lock
+          // administrativo, `entry.adminLockReason` é undefined e limpa o motivo
+          // obsoleto em vez de deixá-lo sobreviver a uma mudança de causa.
+          adminLockReason: entry.adminLockReason,
+        }
+        return { ...p, orphanWorktrees: next }
+      }),
+
+    removeOrphanWorktree: (projectId, path) =>
+      updateProject(projectId, (p) => ({
+        ...p,
+        orphanWorktrees: (p.orphanWorktrees ?? []).filter((o) => o.path !== path),
+      })),
+
+    setCleaningOrphans: (isCleaningOrphans) => update(() => ({ isCleaningOrphans })),
+
+    cleanupOrphanWorktrees: async (projectId) => {
+      const summary = { cleaned: 0, partial: 0, awaitingUnlock: 0, failed: 0 }
+      const project = get().projects.find((p) => p.id === projectId)
+      const repoPath = project?.terminals[0]?.cwd
+      const orphans = project?.orphanWorktrees ?? []
+      if (!project || !repoPath || orphans.length === 0) return summary
+
+      const { worktreeCleanup, worktreeRemove } = await import('../lib/tauri')
+      set({ isCleaningOrphans: true })
+
+      // Snapshot da lista no início — processa cada item uma vez, mesmo que a
+      // limpeza de um item anterior já tenha alterado `orphanWorktrees`.
+      for (const orphan of orphans) {
+        try {
+          if (orphan.pruneOnly) {
+            // Pasta já não existe fisicamente — só falta destravar o registro
+            // fantasma do git.
+            await worktreeCleanup(repoPath)
+            get().removeOrphanWorktree(projectId, orphan.path)
+            summary.cleaned++
+            continue
+          }
+
+          // requiresRawDeletion (ou nenhuma flag ainda — primeira tentativa):
+          // tenta a remoção completa (o backend já decide internamente entre
+          // `git worktree remove` e deleção crua conforme o estado da pasta).
+          const agentId = orphan.path.split(/[\\/]/).filter(Boolean).pop() ?? ''
+          await worktreeRemove(repoPath, agentId, true)
+
+          // Deleção física OK — confirma que o registro do git também sumiu.
+          try {
+            await worktreeCleanup(repoPath)
+            get().removeOrphanWorktree(projectId, orphan.path)
+            summary.cleaned++
+          } catch {
+            // Progresso real (pasta já foi embora) — reseta cleanAttempts.
+            get().addOrphanWorktree(projectId, {
+              path: orphan.path,
+              mode: orphan.mode,
+              pruneOnly: true,
+              requiresRawDeletion: undefined,
+              cleanAttempts: 0,
+              adminLockReason: undefined,
+            })
+            summary.partial++
+          }
+        } catch (error) {
+          const message = String(error)
+          const adminLockMatch = message.match(/admin_locked:(.*)$/)
+          if (adminLockMatch) {
+            get().addOrphanWorktree(projectId, {
+              ...orphan,
+              adminLockReason: adminLockMatch[1],
+            })
+            summary.awaitingUnlock++
+          } else {
+            get().addOrphanWorktree(projectId, {
+              ...orphan,
+              adminLockReason: undefined,
+              cleanAttempts: (orphan.cleanAttempts ?? 0) + 1,
+            })
+            summary.failed++
+          }
+        }
+      }
+
+      set({ isCleaningOrphans: false })
+      return summary
+    },
 
     deleteProject: (id) =>
       update((state) => {
@@ -2046,6 +2241,31 @@ export const useProjectsStore = create<ProjectsState>((set, get) => {
       return terminal
     },
 
+    createAgentTerminal: async (projectId, args) => {
+      const state = get()
+      const project = state.projects.find((p) => p.id === projectId)
+      const wantsIsolation = Boolean(project?.autoWorktree) && args.firstTab.type !== 'shell'
+      if (project && wantsIsolation) {
+        const repo = getProjectDefaultCwd(project, state.projects)
+        if (repo) {
+          const agentId = `${args.firstTab.type.slice(0, 2)}-${nanoid(6)}`.replace(/[^A-Za-z0-9_-]/g, 'x')
+          try {
+            const { worktreeProvision } = await import('../lib/tauri')
+            const info = await worktreeProvision(repo, agentId, project.worktreeMode ?? 'gitWorktree')
+            return get().createTerminal(projectId, {
+              name: args.name,
+              cwd: info.path,
+              firstTab: { ...args.firstTab, cwd: info.path },
+              worktreeAgentId: agentId,
+            })
+          } catch (error) {
+            console.warn('[projectsStore] autoWorktree falhou; terminal normal:', error)
+          }
+        }
+      }
+      return get().createTerminal(projectId, args)
+    },
+
     createFilePane: (projectId, args) => {
       const pane = makeFilePane(args)
       update((state) => {
@@ -2111,6 +2331,47 @@ export const useProjectsStore = create<ProjectsState>((set, get) => {
               state.workspace.recentProjectIds,
               projectId,
             ),
+            recentTabs: rememberWorkspaceTab(state.workspace.recentTabs, {
+              kind: 'project',
+              id: projectId,
+            }),
+          },
+        }
+      })
+      return pane
+    },
+
+    createGraphifyPane: (projectId, cwd) => {
+      const pane: Terminal = {
+        id: `graphify-${nanoid()}`,
+        name: 'Visualização de Grafo (Graphify)',
+        cwd,
+        tabs: [],
+        activeTabId: '',
+        disabled: false,
+        laneVisible: true,
+        kind: 'graphify',
+      }
+      update((state) => {
+        const projects = state.projects.map((p) =>
+          p.id === projectId ? { ...p, terminals: [...p.terminals, pane] } : p,
+        )
+        const project = projects.find((p) => p.id === projectId)
+        const layout = project?.layoutMode ?? 'auto'
+        const existing = state.workspace.containers.find((c) => c.projectId === projectId)
+        const containers = existing
+          ? state.workspace.containers.map((c) =>
+              c.projectId === projectId
+                ? { ...c, paneIds: [...c.paneIds, pane.id], lastUsedAt: Date.now() }
+                : c,
+            )
+          : [...state.workspace.containers, newContainer(projectId, [pane.id], layout)]
+        return {
+          projects,
+          workspace: {
+            ...state.workspace,
+            containers,
+            recentProjectIds: rememberProjectTab(state.workspace.recentProjectIds, projectId),
             recentTabs: rememberWorkspaceTab(state.workspace.recentTabs, {
               kind: 'project',
               id: projectId,

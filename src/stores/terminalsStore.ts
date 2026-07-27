@@ -12,6 +12,14 @@ import type { PtyStatus } from '../lib/types'
  * inferência vem quando portarmos `agentMonitor.ts`.
  */
 
+export type TerminalSnapshot = {
+  ansiBuffer: string
+  scrollTop: number
+  options: Record<string, any>
+  cursor?: { col: number; row: number }
+  selection?: string
+}
+
 export type PtyRuntime = {
   ptyId: string
   status: PtyStatus
@@ -33,6 +41,9 @@ export type PtyRuntime = {
    * fica grudado.
    */
   expectedOldExits: number
+  lastFocusedAt?: number
+  poolState?: 'ACTIVE' | 'HIBERNATING' | 'HIBERNATED' | 'RESTORING' | 'FAILED'
+  snapshot?: TerminalSnapshot | null
 }
 
 type TerminalsState = {
@@ -46,6 +57,9 @@ type TerminalsState = {
   markExited: (ptyId: string) => void
   markSuspended: (ptyId: string) => void
   unregister: (ptyId: string) => void
+  focusPty: (ptyId: string) => void
+  setSnapshot: (ptyId: string, snapshot: TerminalSnapshot | null) => void
+  setPoolState: (ptyId: string, poolState: PtyRuntime['poolState']) => void
 }
 
 function emptyRuntime(ptyId: string): PtyRuntime {
@@ -59,6 +73,9 @@ function emptyRuntime(ptyId: string): PtyRuntime {
     spawnedAt: now,
     lastIoAt: now,
     expectedOldExits: 0,
+    lastFocusedAt: Date.now(),
+    poolState: 'ACTIVE',
+    snapshot: null,
   }
 }
 
@@ -87,6 +104,8 @@ export const useTerminalsStore = create<TerminalsState>((set) => ({
             spawnedAt: Date.now(),
             lastIoAt: Date.now(),
             expectedOldExits: base.expectedOldExits + 1,
+            poolState: 'ACTIVE',
+            snapshot: null,
           },
         },
       }
@@ -156,6 +175,8 @@ export const useTerminalsStore = create<TerminalsState>((set) => ({
             parked: true,
             status: 'stopped',
             lastTransitionAt: Date.now(),
+            poolState: 'ACTIVE',
+            snapshot: null,
           },
         },
       }
@@ -167,5 +188,41 @@ export const useTerminalsStore = create<TerminalsState>((set) => ({
       const next = { ...state.byPtyId }
       delete next[ptyId]
       return { byPtyId: next }
+    }),
+
+  focusPty: (ptyId) =>
+    set((state) => {
+      const current = state.byPtyId[ptyId]
+      if (!current) return state
+      return {
+        byPtyId: {
+          ...state.byPtyId,
+          [ptyId]: { ...current, lastFocusedAt: Date.now() },
+        },
+      }
+    }),
+
+  setSnapshot: (ptyId, snapshot) =>
+    set((state) => {
+      const current = state.byPtyId[ptyId]
+      if (!current) return state
+      return {
+        byPtyId: {
+          ...state.byPtyId,
+          [ptyId]: { ...current, snapshot },
+        },
+      }
+    }),
+
+  setPoolState: (ptyId, poolState) =>
+    set((state) => {
+      const current = state.byPtyId[ptyId]
+      if (!current) return state
+      return {
+        byPtyId: {
+          ...state.byPtyId,
+          [ptyId]: { ...current, poolState },
+        },
+      }
     }),
 }))

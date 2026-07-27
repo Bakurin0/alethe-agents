@@ -3,7 +3,7 @@ import { Bell, X } from 'lucide-react'
 import { lazy, Suspense, type CSSProperties, useEffect } from 'react'
 import { Group as PanelGroup, Panel, Separator } from 'react-resizable-panels'
 
-import { ghosttyKillAll } from './lib/tauri'
+import { ghosttyKillAll, startGsdWatcher } from './lib/tauri'
 
 import { AgentIcon } from './components/icons/AgentIcons'
 import { ErrorBoundary } from './components/ErrorBoundary'
@@ -44,7 +44,8 @@ import { intlLocale, translate } from './lib/i18n'
 import { setMaxConcurrentSpawns } from './lib/spawnQueue'
 import { getLastCrashReport } from './lib/tauri'
 import { checkForUpdate } from './lib/updater'
-import { useProjectsStore } from './stores/projectsStore'
+import { getProjectDefaultCwd, useProjectsStore } from './stores/projectsStore'
+import { useSchedulerStore } from './stores/schedulerStore'
 import { type InAppToast, useUiStore } from './stores/uiStore'
 import styles from './App.module.css'
 import logoLoading from './assets/logo-loading.png'
@@ -140,6 +141,7 @@ export default function App() {
   const leftSidebarWidth = useProjectsStore((s) => s.preferences.leftSidebarWidth)
   const rightSidebarWidth = useProjectsStore((s) => s.preferences.rightSidebarWidth)
   const todoEnabled = useProjectsStore((s) => s.preferences.enabledFeatures.todos)
+  const activeTerminal = useUiStore((s) => s.activeTerminal)
   const setPreferences = useProjectsStore((s) => s.setPreferences)
 
   useKeybindings()
@@ -150,6 +152,29 @@ export default function App() {
   useEffect(() => {
     void hydrate()
   }, [hydrate])
+
+  // RFC-002 — listener global do scheduler: reage a AgentSpawnRequested criando
+  // o terminal do agente na worktree. Antes ficava só no PreferencesModal e o
+  // spawn automático nunca acontecia com o modal fechado.
+  useEffect(() => {
+    return useSchedulerStore.getState().initListener()
+  }, [])
+
+  // RFC-005 — o watcher de `.planning/` vive no backend e morre no restart do
+  // app; re-liga aqui, pós-hydrate, para todo projeto com GSD habilitado.
+  // Erros só logam (repo pode ter sido movido/apagado).
+  useEffect(() => {
+    if (!hydrated) return
+    const { projects } = useProjectsStore.getState()
+    for (const project of projects) {
+      if (!project.gsdWatcherEnabled) continue
+      const repoPath = getProjectDefaultCwd(project, projects)
+      if (!repoPath) continue
+      void startGsdWatcher(project.id, repoPath).catch((err) =>
+        console.warn(`[App] GSD watcher não restaurado para "${project.name}":`, err),
+      )
+    }
+  }, [hydrated])
 
   // No boot/reload da WebView, mata surfaces nativas órfãs do Ghostty: o JS é
   // recriado mas as NSViews/o app Ghostty persistem no backend. Sem isto, a cada
@@ -240,6 +265,10 @@ export default function App() {
       .catch(() => {})
   }, [hydrated])
 
+  useEffect(() => {
+    window.dispatchEvent(new CustomEvent('alethe:terminal-resize-request'))
+  }, [leftSidebarVisible, rightSidebarVisible, leftSidebarWidth, rightSidebarWidth])
+
   if (!hydrated) {
     return <LoadingScreen />
   }
@@ -260,6 +289,7 @@ export default function App() {
                 onResize={(size, _id, previous) => {
                   if (previous && Math.abs(size.inPixels - previous.inPixels) >= 1) {
                     setPreferences({ leftSidebarWidth: Math.round(size.inPixels) })
+                    window.dispatchEvent(new CustomEvent('alethe:terminal-resize-request'))
                   }
                 }}
               >
@@ -285,7 +315,7 @@ export default function App() {
             </main>
           </Panel>
 
-          {todoEnabled && rightSidebarVisible ? (
+          {(todoEnabled || activeTerminal) && rightSidebarVisible ? (
             <>
               <Separator className={styles.shellSeparator} />
               <Panel
@@ -297,6 +327,7 @@ export default function App() {
                 onResize={(size, _id, previous) => {
                   if (previous && Math.abs(size.inPixels - previous.inPixels) >= 1) {
                     setPreferences({ rightSidebarWidth: Math.round(size.inPixels) })
+                    window.dispatchEvent(new CustomEvent('alethe:terminal-resize-request'))
                   }
                 }}
               >

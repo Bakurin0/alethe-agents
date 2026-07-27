@@ -1,14 +1,23 @@
 import { AgentCompletionMonitor } from './agentCompletionMonitor'
 import {
+  listenOpenCodeBridgeStatus,
   listenPtyData,
   recordActivitySamples,
   type ActivityAgentSample,
   type ActivitySample,
+  type OpenCodeBridgeStatus,
 } from './tauri'
 import type { AgentType } from './types'
 import { useProjectsStore } from '../stores/projectsStore'
 import { useTerminalsStore } from '../stores/terminalsStore'
 import { useUiStore } from '../stores/uiStore'
+
+/** Normaliza pra comparar cwd do plugin (Bun, no processo do OpenCode) com o
+ * cwd que o Alethe guarda pro tab — evita falso-negativo por caixa/separador/
+ * barra final divergente entre os dois lados. */
+function normalizeCwd(path: string): string {
+  return path.trim().replace(/[\\/]+$/, '').replace(/\//g, '\\').toLowerCase()
+}
 
 const SAMPLE_MS = 5_000
 const FLUSH_MS = 30_000
@@ -33,6 +42,23 @@ let flushChain: Promise<void> = Promise.resolve()
 let started = false
 let lastInteractionAt = Date.now()
 let lastSampleAt = Date.now()
+
+/** ptyIds que já receberam pelo menos um sinal real do plugin do OpenCode
+ * (opencode_bridge.rs) — a partir daí a heurística de PTY
+ * (AgentCompletionMonitor) para de mandar status pra esse ptyId, pro sinal
+ * real não ficar competindo/flicando com o palpite. */
+const bridgeActivePtyIds = new Set<string>()
+
+function applyOpenCodeBridgeStatus({ directory, state }: OpenCodeBridgeStatus): void {
+  const normalized = normalizeCwd(directory)
+  const status = state === 'working' ? 'working' : 'waiting'
+  for (const [ptyId, entry] of tracked) {
+    if (entry.agent !== 'opencode') continue
+    if (normalizeCwd(entry.cwd) !== normalized) continue
+    bridgeActivePtyIds.add(ptyId)
+    useTerminalsStore.getState().setStatus(ptyId, status)
+  }
+}
 
 function localDate(timestamp = Date.now()): string {
   const date = new Date(timestamp)
@@ -83,7 +109,12 @@ function syncTrackedAgents(): void {
       agent: meta.agent,
       cwd: meta.cwd,
       notifyOnComplete: false,
-      onStatusChange: (status) => useTerminalsStore.getState().setStatus(ptyId, status),
+      onStatusChange: (status) => {
+        // Sinal real do bridge (OpenCode) já assumiu esse ptyId — não deixa a
+        // heurística de PTY brigar com ele.
+        if (bridgeActivePtyIds.has(ptyId)) return
+        useTerminalsStore.getState().setStatus(ptyId, status)
+      },
     })
     const entry: TrackedAgent = { ...meta, monitor, unlisten: null }
     tracked.set(ptyId, entry)
@@ -99,6 +130,7 @@ function syncTrackedAgents(): void {
       entry.unlisten?.()
       entry.monitor.dispose()
       tracked.delete(ptyId)
+      bridgeActivePtyIds.delete(ptyId)
     }
   }
 }
@@ -186,6 +218,17 @@ export function startActivityTracker(): () => void {
   const unsubUi = useUiStore.subscribe(scheduleSyncTrackedAgents)
   syncTrackedAgents()
 
+  let unlistenBridge: (() => void) | null = null
+  let bridgeDisposed = false
+  void listenOpenCodeBridgeStatus(applyOpenCodeBridgeStatus)
+    .then((unlisten) => {
+      if (bridgeDisposed) unlisten()
+      else unlistenBridge = unlisten
+    })
+    .catch(() => {
+      /* sem o bridge, a heurística de PTY continua sendo a única fonte */
+    })
+
   const flushOnHide = () => { sample(); void flush() }
   window.addEventListener('blur', flushOnHide)
   window.addEventListener('beforeunload', flushOnHide)
@@ -206,7 +249,10 @@ export function startActivityTracker(): () => void {
     window.removeEventListener('beforeunload', flushOnHide)
     document.removeEventListener('visibilitychange', flushOnHide)
     unsubTerminals(); unsubProjects(); unsubUi()
+    bridgeDisposed = true
+    unlistenBridge?.()
     for (const entry of tracked.values()) { entry.unlisten?.(); entry.monitor.dispose() }
     tracked.clear()
+    bridgeActivePtyIds.clear()
   }
 }

@@ -21,6 +21,7 @@ import { AgentIcon } from '../icons/AgentIcons'
 import { EmptyState } from '../EmptyState/EmptyState'
 import { NowPlayingWidget } from './NowPlayingWidget'
 import { UsageStrip } from './UsageStrip'
+import { ActivityGraph } from './ActivityGraph'
 import { TimeAnalytics } from './TimeAnalytics'
 import styles from './HomeView.module.css'
 
@@ -207,6 +208,10 @@ export function HomeView() {
       <section className={styles.section}>
         <div className={styles.sectionHeader}>{t('home.usageActivity')}</div>
         <UsageStrip />
+      </section>
+
+      <section className={`${styles.section} ${styles.timeAnalyticsSection}`}>
+        <ActivityGraph />
       </section>
 
       <section id="time-analytics" className={`${styles.section} ${styles.timeAnalyticsSection}`}>

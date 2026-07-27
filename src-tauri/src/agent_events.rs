@@ -174,6 +174,21 @@ pub fn start_listener(app: AppHandle) {
                 continue;
             }
 
+            // Bridge do plugin OpenCode (opencode_bridge.rs) — reporta
+            // working/idle real de sessoes OpenCode. Campos: directory
+            // (cwd da sessao, usado pro front correlacionar com o ptyId certo),
+            // state ("working" | "idle").
+            if url.starts_with("/opencode-status") {
+                match serde_json::from_str::<serde_json::Value>(&body) {
+                    Ok(payload) => {
+                        let _ = app.emit("opencode-bridge-status", &payload);
+                    }
+                    Err(e) => eprintln!("[agent_events] /opencode-status payload inválido: {e}"),
+                }
+                let _ = request.respond(tiny_http::Response::empty(200));
+                continue;
+            }
+
             match serde_json::from_str::<serde_json::Value>(&body) {
                 Ok(payload) => {
                     let get = |k: &str| {

@@ -21,6 +21,7 @@ use serde::Serialize;
 
 /// Retângulo em coordenadas da WebView (CSS px, origem no topo-esquerda),
 /// como o `getBoundingClientRect()` do placeholder reporta.
+#[allow(dead_code)]
 #[derive(Debug, Clone, Copy, serde::Deserialize)]
 pub struct WebRect {
     pub x: f64,

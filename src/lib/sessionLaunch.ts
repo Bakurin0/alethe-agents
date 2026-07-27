@@ -45,6 +45,14 @@ export function buildAgentLaunch(
   baseArgs: readonly string[] = [],
   sessionId?: string,
   createUuid: () => string = () => crypto.randomUUID(),
+  // RFC-004: quando o Graphify está habilitado para o projeto, o Alethe gera um
+  // `.mcp` (ver graphifyMcpConfigPath) e injeta aqui, sem tocar no `.claude/` do
+  // repo. Só o Claude Code usa uma flag de spawn (`--mcp-config`) — Codex e
+  // OpenCode leem MCP de um arquivo de config AMBIENTE no próprio projeto
+  // (`.codex/config.toml` / `opencode.json`), escrito ANTES do spawn por
+  // graphifyCodexConfigWrite/graphifyOpenCodeConfigWrite (XTermView) — não por
+  // uma flag aqui. Isso é arquitetura correta dos 3 CLIs, não uma lacuna.
+  mcpConfigPath?: string,
 ): AgentLaunch {
   if (agent === 'shell') {
     return { args: [...baseArgs], sessionId: undefined, createdSession: false }
@@ -52,16 +60,17 @@ export function buildAgentLaunch(
 
   if (agent === 'claude') {
     const clean = stripClaudeSessionArgs([...baseArgs])
+    const mcp = mcpConfigPath ? ['--mcp-config', mcpConfigPath] : []
     if (sessionId) {
       return {
-        args: ['--resume', sessionId, ...clean],
+        args: ['--resume', sessionId, ...mcp, ...clean],
         sessionId,
         createdSession: false,
       }
     }
     const createdId = createUuid()
     return {
-      args: ['--session-id', createdId, ...clean],
+      args: ['--session-id', createdId, ...mcp, ...clean],
       sessionId: createdId,
       createdSession: true,
     }
@@ -78,6 +87,10 @@ export function buildAgentLaunch(
 
   if (agent === 'opencode') {
     const clean = stripOpenCodeSessionArgs([...baseArgs])
+    // --session <id> explícito sempre — nunca --continue, que não é por
+    // terminal (pega "a última sessão do OpenCode" pro cwd inteiro e colide
+    // entre panes). O ID vem de sessionDiscovery.claimMostRecentSession,
+    // reivindicado antes do spawn.
     return {
       args: sessionId ? ['--session', sessionId, ...clean] : clean,
       sessionId,
