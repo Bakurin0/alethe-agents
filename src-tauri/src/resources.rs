@@ -473,18 +473,18 @@ fn run_cycle(
         || (was_active && snapshot.effective_total_mb > policy.recovery_target_mb);
     let candidates = eligible_candidates(&snapshot, &metas, &policy, now);
     let mut suspended_id = None;
-    let mut suspension_failed = false;
     if automatic && pressure_active {
         if let Some(id) = candidates.first() {
             if pty::suspend_session(app, sessions, id).unwrap_or(false) {
                 suspended_id = Some(id.clone());
-            } else {
-                suspension_failed = true;
             }
         }
     }
-    let spawn_blocked =
-        automatic && critical && (candidates.is_empty() || suspension_failed);
+    // O modo manual desativa apenas o estacionamento automático; não deve
+    // permitir que novos PTYs agravem uma pressão crítica e congelem o sistema.
+    // Sessões já abertas continuam intactas para o usuário decidir o que
+    // suspender/encerrar.
+    let spawn_blocked = critical;
     let level = if critical {
         "critical"
     } else if snapshot.effective_total_mb >= policy.warning_threshold_mb || pressure_active {

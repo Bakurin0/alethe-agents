@@ -321,6 +321,13 @@ pub fn run() {
         .build(tauri::generate_context!())
         .expect("error while building alethe")
         .run(move |_app_handle, event| {
+            // Faça o teardown assim que o runtime começa a sair. Em alguns
+            // caminhos do Windows a janela é destruída, mas o loop demora a
+            // emitir `Exit`; esperar esse evento deixa shells/agentes vivos
+            // por tempo indefinido (e inacessíveis ao usuário).
+            if let tauri::RunEvent::ExitRequested { .. } = event {
+                pty::kill_all_sessions(&sessions_for_exit);
+            }
             // Saída limpa (event loop encerrou normalmente) → marca a sessão como
             // OK. Se o processo for morto/crashar, isto NÃO roda e o próximo boot
             // reporta a saída suja.
@@ -332,7 +339,11 @@ pub fn run() {
 }
 
 #[tauri::command]
-fn quit_app(app: tauri::AppHandle) {
+fn quit_app(app: tauri::AppHandle, sessions: tauri::State<'_, PtySessions>) {
+    // Última barreira do caminho normal de fechamento: o frontend chama este
+    // comando depois de destruir a janela, então não dependemos do timing do
+    // event loop para matar shells, agentes e seus descendentes.
+    pty::kill_all_sessions(sessions.inner());
     app.exit(0);
 }
 

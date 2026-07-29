@@ -1,6 +1,9 @@
 .menu {
   position: fixed;
-  z-index: 200;
+  /* Menus are portaled to body, so they must sit above terminal panes and
+     their link menu (which can create a higher stacking context than the
+     sidebar panel). */
+  z-index: 2000;
   min-width: 180px;
   background: var(--bg-elevated);
   border: 1px solid var(--border);

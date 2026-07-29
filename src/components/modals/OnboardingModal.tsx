@@ -121,6 +121,10 @@ export function OnboardingModal() {
       displayName: trimmedName,
       profileImageUrl: trimmedPhotoUrl,
     })
+    // A primeira tela útil após o onboarding é a Home. O modal de criação de
+    // projeto continua abrindo por cima dela, evitando o flash da workspace
+    // vazia que antes aparecia entre as duas etapas.
+    useUiStore.getState().setActiveView('home')
     window.setTimeout(() => {
       openModal('newProject')
     }, 0)

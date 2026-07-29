@@ -39,3 +39,5 @@
   color: var(--fg-muted);
   opacity: 0.85;
 }
+
+/* Estado padrão (sem update): rótulo discreto da versão instalada. */

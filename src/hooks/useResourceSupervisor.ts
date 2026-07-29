@@ -211,8 +211,10 @@ export function useResourceSupervisor(hydrated: boolean): void {
       try {
         const stats = await getMemoryStats()
         if (cancelled) return
-        const blocked =
-          policy.mode === 'smart-lru' && stats.total_mb >= policy.memoryBudgetMb
+        // Mesmo no modo manual, não deixe criar novos PTYs quando o orçamento
+        // crítico já foi atingido. Manual controla o estacionamento automático,
+        // não a segurança contra uma nova explosão de memória.
+        const blocked = stats.total_mb >= policy.memoryBudgetMb
         useUiStore.getState().setRuntimeSnapshot(null)
         useUiStore.getState().addMemorySample(stats)
         setSpawnPressureBlocked(blocked, blocked ? 'memory-pressure' : null)

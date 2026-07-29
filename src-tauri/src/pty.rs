@@ -79,6 +79,9 @@ pub struct PtySession {
 
 pub type PtySessions = Arc<Mutex<HashMap<String, PtySession>>>;
 
+#[cfg(windows)]
+static PTY_JOB_HANDLE: OnceLock<isize> = OnceLock::new();
+
 /// Coordena somente spawns do MESMO id. O mutex de `PtySessions` não pode
 /// permanecer travado durante `openpty`/resolução/spawn do processo: isso
 /// serializava todos os terminais apesar da fila do frontend permitir paralelismo.
@@ -1137,6 +1140,7 @@ pub fn install_kill_on_close_guard() {
         SetInformationJobObject, JOBOBJECT_EXTENDED_LIMIT_INFORMATION,
         JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE,
     };
+    use windows_sys::Win32::Foundation::CloseHandle;
     use windows_sys::Win32::System::Threading::GetCurrentProcess;
 
     unsafe {
@@ -1155,9 +1159,16 @@ pub fn install_kill_on_close_guard() {
         {
             return;
         }
-        let _ = AssignProcessToJobObject(job, GetCurrentProcess());
-        // Handle vazado DE PROPÓSITO: fechá-lo dispararia o kill enquanto o app
-        // ainda vive. Fica aberto até o processo morrer, quando o SO o fecha.
+        // Mantém o handle num OnceLock estático. Além de documentar a posse do
+        // recurso, isso impede que uma refatoração futura feche o Job Object
+        // cedo demais e elimine os terminais enquanto o app ainda está vivo.
+        if AssignProcessToJobObject(job, GetCurrentProcess()) != 0 {
+            let _ = PTY_JOB_HANDLE.set(job as isize);
+        } else {
+            // Se o Windows recusar a associação (por exemplo, uma política de
+            // jobs aninhados), não deixe um handle inválido vazando.
+            let _ = CloseHandle(job);
+        }
     }
 }
 

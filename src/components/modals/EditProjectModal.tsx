@@ -165,7 +165,7 @@ export function EditProjectModal() {
     const newIconUrl = trimmedUrl || undefined
     if (newIconUrl !== project.iconUrl) setProjectIconUrl(project.id, newIconUrl)
 
-    // Salvar configurações multiagente
+    // Save multi-agent settings.
     if (worktreeMode !== project.worktreeMode) {
       setWorktreeMode(project.id, worktreeMode)
     }
@@ -308,10 +308,10 @@ export function EditProjectModal() {
 
       {/* --- RFC-009 Multi-Agent Configuration --- */}
       <hr style={{ margin: '20px 0 16px', border: 'none', borderTop: '1px solid var(--border)' }} />
-      <h3 style={{ fontSize: 13, fontWeight: 600, marginBottom: 12 }}>Configurações Multi-Agent</h3>
+      <h3 style={{ fontSize: 13, fontWeight: 600, marginBottom: 12 }}>Multi-agent settings</h3>
 
       <div className={controls.field}>
-        <label className={controls.label}>Modo de Worktree Padrão</label>
+        <label className={controls.label}>Default worktree mode</label>
         <div style={{ display: 'flex', gap: 16, marginTop: 4 }}>
           <label style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 12, cursor: 'pointer' }}>
             <input
@@ -321,7 +321,7 @@ export function EditProjectModal() {
               checked={worktreeMode === 'gitWorktree'}
               onChange={() => setWorktreeModeState('gitWorktree')}
             />
-            Git Worktree (Rápido)
+            Git worktree (fast)
           </label>
           <label style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 12, cursor: 'pointer' }}>
             <input
@@ -331,13 +331,13 @@ export function EditProjectModal() {
               checked={worktreeMode === 'localCopy'}
               onChange={() => setWorktreeModeState('localCopy')}
             />
-            Cópia Local (Pesado)
+            Local copy (slow)
           </label>
         </div>
       </div>
 
       <div className={controls.field}>
-        <label className={controls.label}>Comandos de Validação (um por linha)</label>
+        <label className={controls.label}>Validation commands (one per line)</label>
         <textarea
           className={controls.input}
           style={{ height: 60, fontFamily: 'monospace', fontSize: 11, padding: '6px 8px', resize: 'vertical' }}
@@ -408,7 +408,7 @@ export function EditProjectModal() {
         <div style={{ fontSize: 11, color: 'var(--fg-muted)' }}>Carregando worktrees...</div>
       ) : worktrees.length === 0 ? (
         <div style={{ fontSize: 11, color: 'var(--fg-muted)', fontStyle: 'italic' }}>
-          Nenhum worktree ou cópia ativa para este projeto.
+          No active worktrees or copies for this project.
         </div>
       ) : (
         <div style={{ display: 'flex', flexDirection: 'column', gap: 8, maxHeight: 150, overflowY: 'auto' }}>
@@ -427,7 +427,7 @@ export function EditProjectModal() {
               }}
             >
               <div style={{ overflow: 'hidden', marginRight: 12 }}>
-                <div style={{ fontWeight: 600 }}>Agente: {wt.agentId} ({wt.mode === 'gitWorktree' ? 'Worktree' : 'Cópia'})</div>
+                <div style={{ fontWeight: 600 }}>Agent: {wt.agentId} ({wt.mode === 'gitWorktree' ? 'Worktree' : 'Copy'})</div>
                 <div
                   style={{
                     fontSize: 10,

@@ -42,9 +42,12 @@ export function createCloseCoordinator(deps: CloseCoordinatorDependencies): {
     if (!confirmed) return
     closing = true
 
+    // Destruir a janela não encerra necessariamente o processo Tauri: plugins,
+    // watchers e PTYs podem manter o event loop vivo. Sempre solicite o quit
+    // explícito depois da destruição (ou mesmo se ela falhar), para garantir
+    // que o backend execute o teardown dos processos.
     try {
       await deps.destroyWindow()
-      return
     } catch (error) {
       deps.onFailure?.('destroy', error)
     }

@@ -35,6 +35,9 @@ export default defineConfig({
         manualChunks: {
           xterm: ['@xterm/xterm', '@xterm/addon-fit', '@xterm/addon-search'],
           react: ['react', 'react-dom'],
+          mermaid: ['mermaid'],
+          cytoscape: ['cytoscape'],
+          markdown: ['react-markdown', 'remark-gfm'],
         },
       },
     },

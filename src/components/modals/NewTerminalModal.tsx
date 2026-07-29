@@ -37,7 +37,7 @@ export function NewTerminalModal() {
   )
 
   const [type, setType] = useState<AgentType>('claude')
-  const [runtimeProfile, setRuntimeProfile] = useState<AgentRuntimeProfile>('full')
+  const [runtimeProfile, setRuntimeProfile] = useState<AgentRuntimeProfile>('lean')
   const [cwd, setCwd] = useState('')
   const [unrestricted, setUnrestricted] = useState<Record<AgentType, boolean>>({
     shell: false,
@@ -85,7 +85,7 @@ export function NewTerminalModal() {
 
   const reset = () => {
     setType(defaultType)
-    setRuntimeProfile('full')
+    setRuntimeProfile('lean')
     setCwd('')
     setUnrestricted({ shell: false, claude: false, codex: false, antigravity: false, opencode: false, freebuff: false, mimo: false })
   }

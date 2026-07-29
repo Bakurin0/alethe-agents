@@ -140,8 +140,8 @@ function ToastItem({ toast }: { toast: InAppToast }) {
         type="button"
         className={styles.toastClose}
         onClick={() => dismissToast(toast.id)}
-        aria-label="Fechar notificação"
-        title="Fechar"
+        aria-label="Close notification"
+        title="Close"
       >
         <X size={14} />
       </button>
@@ -184,6 +184,8 @@ export default function App() {
   const rightSidebarDefaultRef = useRef(rightSidebarWidth)
   const leftPanelRef = usePanelRef()
   const rightPanelRef = usePanelRef()
+  const leftSidebarSaveTimerRef = useRef<number | null>(null)
+  const rightSidebarSaveTimerRef = useRef<number | null>(null)
   const leftPanelElementRef = useRef<HTMLDivElement>(null)
   const rightPanelElementRef = useRef<HTMLDivElement>(null)
 
@@ -196,13 +198,9 @@ export default function App() {
     void hydrate()
   }, [hydrate])
 
-  // No boot/reload da WebView, mata surfaces nativas órfãs do Ghostty: o JS é
-  // recriado mas as NSViews/o app Ghostty persistem no backend. Sem isto, a cada
-  // reload sobra uma surface antiga empilhada que rouba o foco do teclado — e
-  // você digita sem nada aparecer. Roda UMA vez, antes de qualquer GhosttySurface.
   useEffect(() => {
     void ghosttyKillAll().catch(() => {
-      /* não-macOS ou sem libghostty: no-op */
+      /* No-op on unsupported platforms. */
     })
   }, [])
 
@@ -224,7 +222,7 @@ export default function App() {
     void getCurrentWebview()
       .setZoom(uiZoom)
       .catch(() => {
-        /* setZoom exige permissão Tauri em runtime; em testes/browser puro pode falhar. */
+        /* Browser tests may not expose the Tauri permission. */
       })
       .finally(() => {
         window.dispatchEvent(new CustomEvent('alethe:zoom-changed', { detail: { zoom: uiZoom } }))
@@ -234,7 +232,7 @@ export default function App() {
   useEffect(() => {
     if (!hydrated) return
     void setWindowOpacity(windowOpacity).catch(() => {
-      /* Browser/testes e plataformas sem suporte: mantém a janela opaca. */
+      /* Keep the window opaque where native opacity is unavailable. */
     })
   }, [hydrated, windowOpacity])
 
@@ -291,9 +289,11 @@ export default function App() {
     return startActivityTracker()
   }, [hydrated])
 
-  // Checa atualização em silêncio no boot. Se houver, o chip discreto na sidebar
-  // aparece (SidebarUpdate); nada de popup. Erros (dev sem assinatura, offline,
-  // endpoint fora) são engolidos — updater indisponível = "sem update".
+  useEffect(() => () => {
+    if (leftSidebarSaveTimerRef.current !== null) window.clearTimeout(leftSidebarSaveTimerRef.current)
+    if (rightSidebarSaveTimerRef.current !== null) window.clearTimeout(rightSidebarSaveTimerRef.current)
+  }, [])
+
   useEffect(() => {
     if (!hydrated) return
     let cancelled = false
@@ -307,8 +307,6 @@ export default function App() {
     }
   }, [hydrated])
 
-  // Se a sessão anterior não saiu limpa (crash/OOM/kill), avisa com o estado de
-  // memória de quando caiu — diagnóstico de "o que matou o app".
   useEffect(() => {
     if (!hydrated) return
     void getLastCrashReport()
@@ -351,7 +349,11 @@ export default function App() {
               if (size.inPixels >= 220 && previous && Math.abs(size.inPixels - previous.inPixels) >= 1) {
                 const nextWidth = Math.max(220, Math.min(380, Math.round(size.inPixels)))
                 leftSidebarDefaultRef.current = nextWidth
-                setPreferences({ leftSidebarWidth: nextWidth })
+                if (leftSidebarSaveTimerRef.current !== null) window.clearTimeout(leftSidebarSaveTimerRef.current)
+                leftSidebarSaveTimerRef.current = window.setTimeout(() => {
+                  leftSidebarSaveTimerRef.current = null
+                  setPreferences({ leftSidebarWidth: nextWidth })
+                }, 180)
               }
             }}
           >
@@ -390,13 +392,17 @@ export default function App() {
                 collapsedSize="0px"
                 collapsible
                 groupResizeBehavior="preserve-pixel-size"
-                onResize={(size, _id, previous) => {
-                  if (size.inPixels >= 260 && previous && Math.abs(size.inPixels - previous.inPixels) >= 1) {
-                    const nextWidth = Math.max(260, Math.min(420, Math.round(size.inPixels)))
-                    rightSidebarDefaultRef.current = nextWidth
-                    setPreferences({ rightSidebarWidth: nextWidth })
-                  }
-                }}
+            onResize={(size, _id, previous) => {
+              if (size.inPixels >= 260 && previous && Math.abs(size.inPixels - previous.inPixels) >= 1) {
+                const nextWidth = Math.max(260, Math.min(420, Math.round(size.inPixels)))
+                rightSidebarDefaultRef.current = nextWidth
+                if (rightSidebarSaveTimerRef.current !== null) window.clearTimeout(rightSidebarSaveTimerRef.current)
+                rightSidebarSaveTimerRef.current = window.setTimeout(() => {
+                  rightSidebarSaveTimerRef.current = null
+                  setPreferences({ rightSidebarWidth: nextWidth })
+                }, 180)
+              }
+            }}
               >
                 <div className={styles.sidebarContent} data-hidden={!rightSidebarVisible}>
                   <RightSidebar />

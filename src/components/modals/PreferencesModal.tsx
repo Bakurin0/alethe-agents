@@ -15,9 +15,13 @@ import {
   UserRound,
   X,
   Activity,
+  Info,
+  DownloadCloud,
   type LucideIcon,
 } from 'lucide-react'
 import { useEffect, useMemo, useRef, useState, useCallback } from 'react'
+import { getVersion } from '@tauri-apps/api/app'
+import { checkForUpdate, installPendingUpdate } from '../../lib/updater'
 
 import { AgentIcon } from '../icons/AgentIcons'
 import { FEATURES } from '../../lib/features'
@@ -49,7 +53,7 @@ import type { EventBusPayload, MetricData, PluginManifest, PlanningCommit } from
 import controls from './controls.module.css'
 import styles from './PreferencesModal.module.css'
 
-type CategoryId = 'account' | 'appearance' | 'features' | 'terminal' | 'integrations' | 'multiagent'
+type CategoryId = 'account' | 'appearance' | 'features' | 'terminal' | 'integrations' | 'multiagent' | 'about'
 
 type Category = {
   id: CategoryId
@@ -86,6 +90,7 @@ export function PreferencesModal() {
   const open = useUiStore((state) => state.openModal === 'preferences')
   const closeModal = useUiStore((state) => state.closeModal)
   const openModal = useUiStore((state) => state.openModal_)
+  const modalContext = useUiStore((state) => state.modalContext)
   const preferences = useProjectsStore((state) => state.preferences)
   const [category, setCategory] = useState<CategoryId>('account')
   const [query, setQuery] = useState('')
@@ -101,7 +106,8 @@ export function PreferencesModal() {
       { id: 'features', label: t('prefs.features'), description: t('prefs.featuresDesc'), Icon: Blocks },
       { id: 'terminal', label: t('prefs.categoryTerminal'), description: t('prefs.categoryTerminalDesc'), Icon: TerminalSquare },
       { id: 'integrations', label: t('prefs.categoryIntegrations'), description: t('prefs.categoryIntegrationsDesc'), Icon: Plug },
-      { id: 'multiagent', label: 'Multi-Agent & Telemetria', description: 'Métricas, traces de eventos e logs estruturados em tempo real.', Icon: Activity },
+      { id: 'multiagent', label: 'Multi-Agent & Telemetry', description: 'Real-time metrics, event traces, and structured logs.', Icon: Activity },
+      { id: 'about', label: t('prefs.categoryAbout'), description: t('prefs.categoryAboutDesc'), Icon: Info },
     ],
     [t],
   )
@@ -123,6 +129,8 @@ export function PreferencesModal() {
       { category: 'integrations', target: 'spotify', label: t('prefs.spotify'), description: t('prefs.spotifyDesc'), keywords: 'spotify music música client id secret' },
       { category: 'integrations', target: 'discord', label: t('prefs.discordPresence'), description: t('prefs.discordPresenceHint'), keywords: 'discord rich presence status integração' },
       { category: 'integrations', target: 'dictation', label: t('prefs.dictation'), description: t('prefs.dictationDesc'), keywords: 'dictation voice mic microphone ditado voz microfone handy speech' },
+      { category: 'about', target: 'app-version', label: t('prefs.aboutVersionTitle'), description: t('prefs.aboutVersionDesc'), keywords: 'version versão about sobre build info app' },
+      { category: 'about', target: 'app-updates', label: t('prefs.aboutUpdatesTitle'), description: t('prefs.aboutUpdatesDesc'), keywords: 'update atualização atualizar upgrade nova versão release check' },
     ],
     [t],
   )
@@ -145,11 +153,12 @@ export function PreferencesModal() {
 
   useEffect(() => {
     if (!open) return
-    setCategory('account')
+    const initial = (modalContext?.category as CategoryId) ?? 'account'
+    setCategory(initial)
     setQuery('')
     setResultCursor(0)
     setPendingTarget(null)
-  }, [open])
+  }, [open, modalContext])
 
   useEffect(() => {
     setResultCursor(0)
@@ -301,6 +310,7 @@ export function PreferencesModal() {
                 {category === 'terminal' ? <TerminalPage enabledCount={enabledCount} /> : null}
                 {category === 'integrations' ? <IntegrationsPage /> : null}
                 {category === 'multiagent' ? <MultiagentPage /> : null}
+                {category === 'about' ? <AboutPage /> : null}
               </div>
             </div>
           </main>
@@ -679,7 +689,7 @@ function TerminalPage({ enabledCount }: { enabledCount: number }) {
         <SettingsSection
           id="native-terminal-macos"
           title="Terminal nativo (Ghostty)"
-          description="Usa a engine do Ghostty (render GPU) embutida, no lugar do terminal interno. Experimental. Reabra os terminais após mudar."
+          description="Use the embedded Ghostty engine (GPU rendering) instead of the internal terminal. Experimental. Reopen terminals after changing this."
         >
           <label
             style={{
@@ -807,7 +817,7 @@ function MultiagentPage() {
       const history = await planningAuditHistory(path, 15)
       setAuditLogs(history)
     } catch (err) {
-      console.error('Falha ao obter histórico de auditoria GSD:', err)
+      console.error('Failed to load GSD audit history:', err)
       setAuditLogs([])
     } finally {
       setLoadingAudit(false)
@@ -854,7 +864,7 @@ function MultiagentPage() {
     try {
       const manifest = JSON.parse(raw) as PluginManifest
       if (!manifest.name || !manifest.version || !manifest.kind) {
-        alert("Manifest inválido. Certifique-se de preencher name, version e kind.")
+        alert('Invalid manifest. Fill in name, version, and kind.')
         return
       }
       await pluginInstall(manifest)
@@ -900,8 +910,7 @@ function MultiagentPage() {
 
   return (
     <>
-      {/* Seção 1: Agendador e Fila de Tarefas (RFC-002) */}
-      <SettingsSection id="multiagent-scheduler" title="Agendador & Fila de Tarefas" description="Gerenciamento de ondas de execução (Task DAG) por projeto.">
+      <SettingsSection id="multiagent-scheduler" title="Scheduler & task queue" description="Manage execution waves (Task DAG) per project.">
         <div style={{ display: 'flex', gap: 10, marginBottom: 12 }}>
           <select
             className={controls.input}
@@ -909,7 +918,7 @@ function MultiagentPage() {
             value={selectedProjectId}
             onChange={(e) => setSelectedProjectId(e.target.value)}
           >
-            <option value="">-- Selecione um Projeto --</option>
+            <option value="">-- Select a project --</option>
             {projects.map((p) => (
               <option key={p.id} value={p.id}>{p.name}</option>
             ))}
@@ -922,7 +931,7 @@ function MultiagentPage() {
               style={{ height: 32, padding: '0 12px', fontSize: 11 }}
               onClick={handleTick}
             >
-              Executar Tick (Forçar Fila)
+              Run tick (force queue)
             </button>
           )}
         </div>
@@ -992,17 +1001,16 @@ function MultiagentPage() {
           )
         ) : (
           <div style={{ fontSize: 11, color: 'var(--fg-muted)', fontStyle: 'italic' }}>
-            Selecione um projeto para inspecionar e orquestrar suas tarefas.
+            Select a project to inspect and orchestrate its tasks.
           </div>
         )}
       </SettingsSection>
 
-      {/* Seção 2: Métricas de Eventos */}
-      <SettingsSection id="multiagent-metrics" title="Métricas de Execução (Fase 1/2)" description="Contadores globais acumulados do barramento de eventos interno.">
+      <SettingsSection id="multiagent-metrics" title="Execution metrics (phases 1/2)" description="Accumulated global counters from the internal event bus.">
         {loadingTelemetry ? (
-          <div style={{ fontSize: 11, color: 'var(--fg-muted)' }}>Carregando métricas...</div>
+          <div style={{ fontSize: 11, color: 'var(--fg-muted)' }}>Loading metrics...</div>
         ) : Object.keys(metrics).length === 0 ? (
-          <div style={{ fontSize: 11, color: 'var(--fg-muted)', fontStyle: 'italic' }}>Nenhuma métrica de evento acumulada.</div>
+          <div style={{ fontSize: 11, color: 'var(--fg-muted)', fontStyle: 'italic' }}>No accumulated event metrics.</div>
         ) : (
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(130px, 1fr))', gap: 8 }}>
             {Object.entries(metrics).map(([key, data]) => {
@@ -1013,7 +1021,7 @@ function MultiagentPage() {
                   <div style={{ fontSize: 18, fontWeight: 700, marginTop: 4 }}>{data.count}</div>
                   {data.last_value > 0 && (
                     <div style={{ fontSize: 9, color: 'var(--accent)', marginTop: 2 }}>
-                      Último: {data.last_value.toFixed(2)}
+                      Last: {data.last_value.toFixed(2)}
                     </div>
                   )}
                 </div>
@@ -1023,12 +1031,11 @@ function MultiagentPage() {
         )}
       </SettingsSection>
 
-      {/* Seção 3: Histórico de Traces */}
-      <SettingsSection id="multiagent-traces" title="Histórico de Eventos Recentes" description="Rastreamento em tempo real dos logs estruturados do Event Bus.">
+      <SettingsSection id="multiagent-traces" title="Recent event history" description="Real-time tracking of structured Event Bus logs.">
         {loadingTelemetry ? (
-          <div style={{ fontSize: 11, color: 'var(--fg-muted)' }}>Carregando traces...</div>
+          <div style={{ fontSize: 11, color: 'var(--fg-muted)' }}>Loading traces...</div>
         ) : traces.length === 0 ? (
-          <div style={{ fontSize: 11, color: 'var(--fg-muted)', fontStyle: 'italic' }}>Nenhum evento registrado recentemente.</div>
+          <div style={{ fontSize: 11, color: 'var(--fg-muted)', fontStyle: 'italic' }}>No recent events recorded.</div>
         ) : (
           <div style={{ display: 'flex', flexDirection: 'column', gap: 6, maxHeight: 180, overflowY: 'auto', border: '1px solid var(--border)', borderRadius: 'var(--radius-sm)', padding: 8, background: 'var(--bg-active)' }}>
             {traces.map((trace, idx) => (
@@ -1047,15 +1054,14 @@ function MultiagentPage() {
         )}
       </SettingsSection>
 
-      {/* Seção 4: Gerenciador de Plugins (RFC-012) */}
-      <SettingsSection id="multiagent-plugins" title="Gerenciador de Plugins" description="Visualize e instale plugins de orquestradores e ferramentas personalizadas.">
+      <SettingsSection id="multiagent-plugins" title="Plugin manager" description="View and install orchestrator plugins and custom tools.">
         <button
           type="button"
           className={styles.secondaryButton}
           style={{ marginBottom: 12, fontSize: 11 }}
           onClick={handleInstallPlugin}
         >
-          Instalar Novo Plugin (JSON)
+          Install new plugin (JSON)
         </button>
 
         {loadingPlugins ? (
@@ -1106,8 +1112,7 @@ function MultiagentPage() {
         )}
       </SettingsSection>
 
-      {/* Seção 5: Auditoria do Planejamento GSD (RFC-005) */}
-      <SettingsSection id="multiagent-gsd-audit" title="Auditoria GSD & Autocommit" description="Monitore o histórico de alterações das tarefas em `.planning/` e configure o commit automático de auditoria.">
+      <SettingsSection id="multiagent-gsd-audit" title="GSD audit & autocommit" description="Monitor task changes in `.planning/` and configure automatic audit commits.">
         <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 12 }}>
           <input
             type="checkbox"
@@ -1126,7 +1131,7 @@ function MultiagentPage() {
             <div style={{ fontSize: 11, color: 'var(--fg-muted)' }}>Carregando logs de auditoria...</div>
           ) : auditLogs.length === 0 ? (
             <div style={{ fontSize: 11, color: 'var(--fg-muted)', fontStyle: 'italic' }}>
-              Nenhuma alteração registrada em `.planning/` via Git.
+              No changes recorded in `.planning/` through Git.
             </div>
           ) : (
             <div style={{ display: 'flex', flexDirection: 'column', gap: 6, maxHeight: 180, overflowY: 'auto', border: '1px solid var(--border)', borderRadius: 'var(--radius-sm)', padding: 8, background: 'var(--bg-active)' }}>
@@ -1150,9 +1155,123 @@ function MultiagentPage() {
           )
         ) : (
           <div style={{ fontSize: 11, color: 'var(--fg-muted)', fontStyle: 'italic' }}>
-            Selecione um projeto acima para visualizar o histórico de auditoria GSD.
+            Select a project above to view the GSD audit history.
           </div>
         )}
+      </SettingsSection>
+    </>
+  )
+}
+
+function AboutPage() {
+  const t = useT()
+  const updateInfo = useUiStore((state) => state.updateInfo)
+  const setUpdateInfo = useUiStore((state) => state.setUpdateInfo)
+  const [version, setVersion] = useState('')
+  const [checking, setChecking] = useState(false)
+  const [checkedUpToDate, setCheckedUpToDate] = useState(false)
+  const [phase, setPhase] = useState<'idle' | 'installing' | 'error'>('idle')
+  const [percent, setPercent] = useState(0)
+  const [error, setError] = useState('')
+
+  useEffect(() => {
+    void getVersion().then(setVersion).catch(() => setVersion(''))
+  }, [])
+
+  const onCheck = async () => {
+    if (checking) return
+    setChecking(true)
+    setCheckedUpToDate(false)
+    setError('')
+    try {
+      const info = await checkForUpdate()
+      setUpdateInfo(info)
+      if (!info) setCheckedUpToDate(true)
+    } catch (err) {
+      setError(String(err))
+    } finally {
+      setChecking(false)
+    }
+  }
+
+  const onInstall = async () => {
+    setPhase('installing')
+    setError('')
+    try {
+      await installPendingUpdate(({ downloaded, total }) => {
+        setPercent(total > 0 ? Math.min(100, Math.round((downloaded / total) * 100)) : 0)
+      })
+    } catch (err) {
+      setPhase('error')
+      setError(String(err))
+    }
+  }
+
+  const installing = phase === 'installing'
+
+  return (
+    <>
+      <SettingsSection id="app-version" title={t('prefs.aboutVersionTitle')} description={t('prefs.aboutVersionDesc')}>
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '12px 14px', borderRadius: 'var(--radius-md)', border: '1px solid var(--border)', background: 'var(--bg-sunken)' }}>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
+            <strong style={{ fontSize: 14 }}>Alethe</strong>
+            <span style={{ fontSize: 11, color: 'var(--fg-muted)' }}>com.kc1t.alethe</span>
+          </div>
+          <span style={{ fontSize: 15, fontWeight: 700, fontVariantNumeric: 'tabular-nums', color: 'var(--fg)' }}>
+            {version ? `v${version}` : '—'}
+          </span>
+        </div>
+      </SettingsSection>
+
+      <SettingsSection id="app-updates" title={t('prefs.aboutUpdatesTitle')} description={t('prefs.aboutUpdatesDesc')}>
+        {updateInfo ? (
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 13 }}>
+              <DownloadCloud size={16} style={{ color: 'var(--status-working)', flexShrink: 0 }} />
+              <span>{t('prefs.aboutUpdateAvailable', { version: updateInfo.version, current: updateInfo.currentVersion })}</span>
+            </div>
+            {updateInfo.notes ? (
+              <div style={{ fontSize: 12, color: 'var(--fg-muted)', whiteSpace: 'pre-wrap', maxHeight: 160, overflowY: 'auto', padding: '8px 10px', border: '1px solid var(--border)', borderRadius: 'var(--radius-sm)', background: 'var(--bg-active)' }}>
+                {updateInfo.notes}
+              </div>
+            ) : null}
+            {installing ? (
+              <div style={{ height: 6, borderRadius: 3, background: 'var(--bg-active)', overflow: 'hidden' }} aria-hidden>
+                <div style={{ height: '100%', width: `${percent}%`, background: 'var(--accent)', transition: 'width 0.2s ease' }} />
+              </div>
+            ) : null}
+            <button
+              type="button"
+              className={`${controls.btn} ${controls.btnPrimary}`}
+              onClick={() => void onInstall()}
+              disabled={installing}
+              style={{ alignSelf: 'flex-start' }}
+            >
+              {installing ? t('update.installing', { percent }) : t('update.installNow')}
+            </button>
+          </div>
+        ) : (
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+            <button
+              type="button"
+              className={styles.secondaryButton}
+              onClick={() => void onCheck()}
+              disabled={checking}
+              style={{ alignSelf: 'flex-start' }}
+            >
+              <RotateCcw size={15} />
+              {checking ? t('prefs.aboutChecking') : t('prefs.aboutCheckUpdates')}
+            </button>
+            {checkedUpToDate ? (
+              <span style={{ fontSize: 12, color: 'var(--fg-muted)' }}>{t('prefs.aboutUpToDate', { version })}</span>
+            ) : null}
+          </div>
+        )}
+        {error ? (
+          <p style={{ fontSize: 12, color: 'var(--status-failed-fg, #ef4444)', marginTop: 8, wordBreak: 'break-word' }}>
+            {t('update.error', { error })}
+          </p>
+        ) : null}
       </SettingsSection>
     </>
   )

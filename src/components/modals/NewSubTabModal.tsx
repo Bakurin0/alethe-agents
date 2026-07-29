@@ -40,7 +40,7 @@ export function NewSubTabModal() {
   })
 
   const [type, setType] = useState<AgentType>('shell')
-  const [runtimeProfile, setRuntimeProfile] = useState<AgentRuntimeProfile>('full')
+  const [runtimeProfile, setRuntimeProfile] = useState<AgentRuntimeProfile>('lean')
   const [cwd, setCwd] = useState('')
   const [unrestricted, setUnrestricted] = useState<Record<AgentType, boolean>>({
     shell: false,
@@ -65,7 +65,7 @@ export function NewSubTabModal() {
 
   const reset = () => {
     setType('shell')
-    setRuntimeProfile('full')
+    setRuntimeProfile('lean')
     setCwd('')
     setUnrestricted({ shell: false, claude: false, codex: false, antigravity: false, opencode: false, freebuff: false, mimo: false })
   }

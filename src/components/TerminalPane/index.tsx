@@ -53,7 +53,7 @@ export const TerminalPane = memo(function TerminalPane({
   const isFocusMode = inFocusOverlay || focusedTerminalId === terminal.id
   const canDragPane = paneDragEnabled && !isFocusMode && !preview
   // Drag-and-drop pra reordenar entre panes (igual canvas-agents focus mode).
-  // Skip dentro do focus overlay — não faz sentido reordenar quando só tem 1.
+  // Skip the focus overlay; a single pane cannot be reordered.
   const draggable = useDraggable({
     id: `pane:${terminal.id}`,
     disabled: !canDragPane,
@@ -109,8 +109,7 @@ export const TerminalPane = memo(function TerminalPane({
   const terminalTheme = useProjectsStore(
     (s) => s.preferences.terminalTheme ?? s.preferences.uiTheme,
   )
-  // Backend de terminal nativo (Ghostty) — só no macOS e quando opt-in. Em
-  // qualquer outro caso, segue no xterm.js (caminho atual, intocado).
+  // Native Ghostty rendering is opt-in and macOS-only; other platforms use xterm.js.
   const nativeTerminalMacos = useProjectsStore(
     (s) => s.preferences.nativeTerminalMacos ?? false,
   )

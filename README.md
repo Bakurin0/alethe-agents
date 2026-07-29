@@ -113,6 +113,32 @@ Built with Tauri, Rust, React, TypeScript, Vite, `portable-pty`, and `xterm.js`.
 
 Use the published installers from [Releases](https://github.com/Kc1t/alethe-agents/releases).
 
+### Windows SmartScreen / Defender warning
+
+> [!WARNING]
+> Windows builds are **not code-signed yet**. Windows Defender may flag `alethe.exe` as
+> `Trojan:Win32/Bearfoos.A!ml` and quarantine or delete it. **This is a false positive.**
+
+The `!ml` suffix means the detection came from Defender's machine-learning heuristic, not from a
+malware signature. Alethe trips it because it does exactly what a terminal multiplexer must do:
+spawn child processes, create PTYs, write commands into them, and self-update — all from an
+unsigned binary with no download reputation yet.
+
+If Defender removes the app:
+
+1. Open **Windows Security → Virus & threat protection → Protection history**.
+2. Find the Alethe entry and choose **Actions → Restore**.
+3. Add an exclusion for `%LOCALAPPDATA%\Alethe` (and for `src-tauri/target` if you build from
+   source, otherwise your dev binaries get quarantined too).
+
+You can also report the file at
+[Microsoft Security Intelligence](https://www.microsoft.com/wdsi/filesubmission) as an incorrect
+detection. Code signing for Windows is tracked on the [roadmap](#roadmap); it will remove these
+warnings for good.
+
+macOS builds are not notarized yet either, so Gatekeeper will show an unidentified-developer
+warning. Right-click the app and choose **Open** to bypass it.
+
 ## Run From Source
 
 ```sh

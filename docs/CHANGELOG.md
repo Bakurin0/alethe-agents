@@ -10,6 +10,11 @@ Mudanças relevantes do **Alethe** para quem usa o app. Formato inspirado em
 
 ## [Não lançado]
 
+### Adicionado
+
+- Tela **"Sobre & Atualizações"** em Configurações: mostra a versão instalada do app, verifica atualizações sob demanda e instala a nova versão com barra de progresso e erros visíveis (em vez de a falha sumir sem aviso).
+- A **versão instalada** agora aparece sempre no rodapé da sidebar; clicar abre a tela "Sobre & Atualizações".
+
 ## [1.3.0] — 2026-07-27
 
 Integra as contribuições de multi-provider/graphify e de macOS, além do redesign

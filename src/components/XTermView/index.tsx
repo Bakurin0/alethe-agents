@@ -277,16 +277,11 @@ export type XTermViewProps = {
 }
 
 const PROMPT_HISTORY_KEY = (id: string) => `prompt-history:${id}`
-// Abaixo deste tempo (ms) consideramos que o agent "morreu no nascimento" — típico
-// de sessão de resume inválida ou binário quebrado. Serve de gatilho pro fallback
-// que reabre sessão nova em vez de deixar o pane cinza.
+// Early exits trigger a single fresh-session retry.
 const EARLY_EXIT_MS = 4000
 const PASTE_CHUNK_SIZE = 1024
 const PASTE_CHUNK_DELAY_MS = 8
-// Nunca entregue um burst inteiro de saída ao xterm em um único frame. TUIs
-// como o OpenCode ecoam colagens grandes e podem gerar centenas de KB de saída;
-// um terminal.write() gigante bloqueia o WebView e faz a aplicação parecer
-// travada. A fila continua preservando todos os bytes, só distribui o trabalho.
+// Spread large output bursts across frames so terminal.write does not block the WebView.
 const TERMINAL_WRITE_FRAME_BUDGET = 64 * 1024
 const LINK_MENU_WIDTH = 272
 const LINK_MENU_MAX_HEIGHT = 276
@@ -337,7 +332,10 @@ export function XTermView({
   sessionKey,
   env,
   graphifyRepo,
-  runtimeProfile = 'full',
+  // Terminais antigos sem perfil persistido entram no modo lean para não
+  // iniciar Claude com concorrência/MCP ilimitados por acidente. `full` segue
+  // disponível quando o usuário escolhe explicitamente no modal.
+  runtimeProfile = 'lean',
   terminalTheme = 'dark',
   onSpawned,
   onSessionId,
@@ -375,7 +373,6 @@ export function XTermView({
   const historyCursorRef = useRef(-1)
   const currentLineRef = useRef('')
 
-  // Estado do fallback de early-exit (sessão de resume órfã → reabrir sessão nova).
   const spawnedAtRef = useRef(0)
   const usedResumeRef = useRef(false)
   const earlyExitRetriedRef = useRef(false)
@@ -991,11 +988,7 @@ export function XTermView({
 
     async function start() {
       try {
-        // Fit inicial só com dimensões válidas. Um fit em container 0×0 (pane
-        // recém-montado/colapsado) deixa o renderer sem dimensões e o
-        // syncScrollArea assíncrono do xterm estoura depois com "Cannot read
-        // properties of undefined (reading 'dimensions')". Se ainda não tem
-        // layout, o ResizeObserver + initialFitTimer refazem o fit quando estabiliza.
+        // Skip zero-sized panes; the observer retries after layout settles.
         try {
           const rect = container?.getBoundingClientRect()
           if (rect && rect.width >= 50 && rect.height >= 30) fitAddon.fit()
@@ -1378,10 +1371,10 @@ export function XTermView({
   const configurePath = useCallback(
     async (agent: AgentType) => {
       const picked = await pickFile({
-        title: `Selecione o executável do ${agent}`,
+        title: `Select the ${agent} executable`,
         filters: [
-          { name: 'Executável', extensions: ['cmd', 'exe', 'bat', 'ps1'] },
-          { name: 'Todos', extensions: ['*'] },
+          { name: 'Executable', extensions: ['cmd', 'exe', 'bat', 'ps1'] },
+          { name: 'All files', extensions: ['*'] },
         ],
       })
       if (!picked) return
@@ -1419,7 +1412,7 @@ export function XTermView({
       {commandNotFound ? (
         <div className={styles.overlay}>
           <div className={styles.overlayText}>
-            <strong>{commandNotFound}</strong> não encontrado nesta máquina.
+            <strong>{commandNotFound}</strong> was not found on this machine.
           </div>
           <button
             type="button"
