@@ -279,6 +279,7 @@ export const ptBR: Record<MessageKey, string> = {
   'prefs.resetSessionBusy': 'Retomando…',
   'prefs.resetSessionDone': 'Última sessão retomada',
   'prefs.resetSessionDoneBody': '{count} agente(s) reiniciado(s) com resume.',
+  'prefs.resetSessionConfirm': 'Isso vai reiniciar {count} painéis de agente em todos os projetos abertos (inclusive os em segundo plano), um de cada vez. Continuar?',
   'prefs.resetSessionEmpty': 'Nenhum agente pra retomar',
   'prefs.resetSessionEmptyBody': 'Nenhum painel de agente aberto (Claude/Codex/OpenCode) foi encontrado.',
   'prefs.resetSessionFailed': 'Não deu pra retomar a última sessão.',

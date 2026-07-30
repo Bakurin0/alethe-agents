@@ -1,3 +1,4 @@
+use chrono::DateTime;
 use serde::Serialize;
 use std::env;
 use std::fs;
@@ -31,6 +32,30 @@ fn file_modified_ms(meta: &fs::Metadata) -> u128 {
         .unwrap_or(0)
 }
 
+/// Resolve o timestamp de uma conversa: prioriza `summary.UpdatedAt` (UTC),
+/// cai pro `last_modified_time` irmão quando summary está ausente (conversas
+/// internas não têm summary), e só usa o mtime do arquivo inteiro como
+/// último recurso — sem isso toda conversa fica com o MESMO timestamp e a
+/// ordenação por recência não funciona (o container inteiro compartilha um
+/// único arquivo `conversation_metadata.json`).
+fn conversation_modified_ms(item: &serde_json::Value, default_ms: u128) -> u128 {
+    let summary_updated = item
+        .get("summary")
+        .and_then(|s| s.get("UpdatedAt"))
+        .and_then(|v| v.as_str());
+    let last_modified = item.get("last_modified_time").and_then(|v| v.as_str());
+
+    for candidate in [summary_updated, last_modified].into_iter().flatten() {
+        if let Ok(parsed) = DateTime::parse_from_rfc3339(candidate) {
+            let millis = parsed.timestamp_millis();
+            if millis >= 0 {
+                return millis as u128;
+            }
+        }
+    }
+    default_ms
+}
+
 fn normalize_uri_path(uri: &str) -> String {
     let mut clean = uri.trim();
     if clean.starts_with("file:///") {
@@ -58,6 +83,30 @@ fn normalize_cwd(cwd: &str) -> String {
     } else {
         trimmed.to_string()
     }
+}
+
+/// Compara dois paths já normalizados permitindo que um seja ancestral do
+/// outro (workspace root vs subpasta — o Antigravity registra `WorkspaceURIs`
+/// por workspace, que pode ser mais amplo que o cwd do pane), mas exige
+/// fronteira de separador logo após a string mais curta — sem isso
+/// "c:\users\foo\project" e "c:\users\foo\project2" combinariam
+/// incorretamente (o segundo só começa com o primeiro).
+fn cwd_matches(norm: &str, target_cwd: &str) -> bool {
+    if norm == target_cwd {
+        return true;
+    }
+    let sep = if cfg!(windows) { '\\' } else { '/' };
+    if let Some(rest) = norm.strip_prefix(target_cwd) {
+        if rest.starts_with(sep) {
+            return true;
+        }
+    }
+    if let Some(rest) = target_cwd.strip_prefix(norm) {
+        if rest.starts_with(sep) {
+            return true;
+        }
+    }
+    false
 }
 
 #[tauri::command]
@@ -98,7 +147,7 @@ pub fn snapshot_antigravity_sessions(cwd: String) -> Result<Vec<AntigravitySessi
                 for uri in uri_list {
                     if let Some(u_str) = uri.as_str() {
                         let norm = normalize_uri_path(u_str);
-                        if norm == target_cwd || norm.starts_with(&target_cwd) || target_cwd.starts_with(&norm) {
+                        if cwd_matches(&norm, &target_cwd) {
                             matches_cwd = true;
                             break;
                         }
@@ -110,7 +159,7 @@ pub fn snapshot_antigravity_sessions(cwd: String) -> Result<Vec<AntigravitySessi
                 snapshots.push(AntigravitySessionSnapshot {
                     id: id.clone(),
                     preview,
-                    modified_at_ms: default_ms,
+                    modified_at_ms: conversation_modified_ms(item, default_ms),
                 });
             }
         }

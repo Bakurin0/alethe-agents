@@ -78,12 +78,7 @@ fn fetch_usage() -> Result<CodexUsage, String> {
         .stdout(Stdio::piped())
         .stderr(Stdio::null());
 
-    // Evita o flash de janela de console no Windows (CREATE_NO_WINDOW).
-    #[cfg(windows)]
-    {
-        use std::os::windows::process::CommandExt;
-        command.creation_flags(0x0800_0000);
-    }
+    crate::git_control::hide_console(&mut command);
 
     let mut child = command
         .spawn()

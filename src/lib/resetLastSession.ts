@@ -10,6 +10,7 @@
  */
 
 import { getActiveSessions, saveSession } from './sessionResume'
+import { acquireSpawnSlot, releaseSpawnSlot } from './spawnQueue'
 import {
   getPtyCwd,
   restartPty,
@@ -161,14 +162,30 @@ function collectLivePanes(): ResumeTarget[] {
 }
 
 /**
+ * Quantos painéis de agente seriam reiniciados agora, em toda a workspace
+ * (todos os projetos/grupos, não só o visível) — usado pra confirmar com o
+ * usuário antes de disparar um `resetLastSession()` grande.
+ */
+export function countLiveResumablePanes(): number {
+  return collectLivePanes().length
+}
+
+/**
  * Força o resume da última sessão em cada painel de agente aberto.
  * Retorna quantos foram retomados de quantos painéis vivos havia.
+ *
+ * Cada restart passa pela `spawnQueue` (mesma fila usada pra abrir terminais
+ * normalmente) pra respeitar o teto de concorrência e a pausa de pressão de
+ * memória do resource supervisor — sem isso, muitos painéis acumulados em
+ * background reiniciariam em sequência sem nenhuma checagem de RAM.
  */
 export async function resetLastSession(): Promise<ResetLastSessionResult> {
   const targets = collectLivePanes()
   let resumed = 0
 
   for (const target of targets) {
+    const acquired = await acquireSpawnSlot()
+    if (!acquired) continue
     try {
       let cwd = target.cwd
       if (!cwd) {
@@ -225,6 +242,8 @@ export async function resetLastSession(): Promise<ResetLastSessionResult> {
       resumed++
     } catch {
       // Uma falha num painel não aborta o resto.
+    } finally {
+      releaseSpawnSlot()
     }
   }
 

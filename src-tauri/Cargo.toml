@@ -42,8 +42,10 @@ tiny_http = "0.12"
 # feature explícita ele usa um store mock e todo get_password() falha. Os
 # backends nativos são declarados por plataforma abaixo (macos/windows/linux).
 keyring = { version = "3", default-features = false }
+chrono = { version = "0.4", default-features = false, features = ["std"] }
 dirs-next = "2"
 base64 = "0.22"
+image = { version = "0.25", default-features = false, features = ["png", "bmp"] }
 urlencoding = "2"
 dotenvy = "0.15"
 discord-rich-presence = "1.1.0"
@@ -80,6 +82,7 @@ windows-sys = { version = "0.61", features = [
   "Win32_System_Ole",
   "Win32_System_ProcessStatus",
   "Win32_System_Threading",
+  "Win32_UI_Shell",
   "Win32_UI_WindowsAndMessaging",
 ] }
 

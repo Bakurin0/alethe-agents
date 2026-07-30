@@ -279,6 +279,7 @@ export const en = {
   'prefs.resetSessionBusy': 'Resuming…',
   'prefs.resetSessionDone': 'Last session resumed',
   'prefs.resetSessionDoneBody': '{count} agent(s) restarted with resume.',
+  'prefs.resetSessionConfirm': 'This will restart {count} agent panes across every open project (including ones in the background), one at a time. Continue?',
   'prefs.resetSessionEmpty': 'No agents to resume',
   'prefs.resetSessionEmptyBody': 'No open agent panes (Claude/Codex/OpenCode) were found.',
   'prefs.resetSessionFailed': 'Could not resume the last session.',

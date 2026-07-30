@@ -43,11 +43,17 @@ fn empty_usage(status: &str, cli_path: String) -> AntigravityUsage {
 }
 
 /// O `agy` guarda o envelope OAuth no Credential Manager usando o target
-/// `gemini:antigravity`. Apenas o access token é mantido em memória durante a
-/// requisição; nunca persistimos nem registramos o segredo.
+/// literal `gemini:antigravity` — precisa de `new_with_target` porque
+/// `Entry::new(service, user)` monta o target como `"{user}.{service}"` no
+/// backend Windows do crate `keyring`, que nunca bate com o que o `agy`
+/// (binário Go) escreveu lá. Também usamos `get_secret` (bytes crus) em vez
+/// de `get_password`: este último sempre assume blob UTF-16LE (convenção do
+/// próprio crate ao gravar), mas o `agy` grava JSON em UTF-8 puro. Apenas o
+/// access token é mantido em memória durante a requisição; nunca
+/// persistimos nem registramos o segredo.
 fn discover_access_token() -> Option<String> {
-    let entry = keyring::Entry::new("gemini", "antigravity").ok()?;
-    let secret = entry.get_password().ok()?;
+    let entry = keyring::Entry::new_with_target("gemini:antigravity", "gemini", "antigravity").ok()?;
+    let secret = String::from_utf8(entry.get_secret().ok()?).ok()?;
     let value: serde_json::Value = serde_json::from_str(&secret).ok()?;
     value
         .get("token")
@@ -64,11 +70,7 @@ fn refresh_credential_with_agy(launcher: &std::path::Path) -> bool {
         .stdin(Stdio::null())
         .stdout(Stdio::null())
         .stderr(Stdio::null());
-    #[cfg(windows)]
-    {
-        use std::os::windows::process::CommandExt;
-        command.creation_flags(0x0800_0000);
-    }
+    crate::git_control::hide_console(&mut command);
     let Ok(mut child) = command.spawn() else {
         return false;
     };

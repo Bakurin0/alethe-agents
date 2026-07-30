@@ -2,22 +2,14 @@ use std::process::Command;
 use std::path::Path;
 use serde::{Serialize, Deserialize};
 
+use crate::git_control::hide_console;
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ValidationResult {
     pub success: bool,
     pub stage: String,
     pub output: String,
 }
-
-#[cfg(windows)]
-fn hide_console(command: &mut Command) {
-    use std::os::windows::process::CommandExt;
-    const CREATE_NO_WINDOW: u32 = 0x0800_0000;
-    command.creation_flags(CREATE_NO_WINDOW);
-}
-
-#[cfg(not(windows))]
-fn hide_console(_command: &mut Command) {}
 
 #[tauri::command]
 pub fn run_validation(cwd: String, commands: Vec<String>) -> Result<ValidationResult, String> {

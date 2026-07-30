@@ -3,6 +3,7 @@
  * retomar agentes automaticamente ao reabrir o app.
  */
 
+import { normalizeCwd } from './platform'
 import { readScopedStorage, writeScopedStorage } from './storageNamespace'
 
 const STORAGE_KEY = 'active-sessions'
@@ -24,12 +25,6 @@ export type SavedSession = {
 
 export type ActiveSessions = Record<string, SavedSession>
 
-function normalizeCwd(cwd: string): string {
-  const trimmed = cwd.trim().replace(/[\\/]+$/, '')
-  if (/^[a-z]:/i.test(trimmed)) return trimmed.replace(/\//g, '\\').toLowerCase()
-  return trimmed
-}
-
 export function savedConversationIdFor(
   session: SavedSession | null,
   agent: string | null | undefined,
@@ -41,6 +36,7 @@ export function savedConversationIdFor(
   if (agent === 'claude') return session.claudeSessionId
   if (agent === 'codex') return session.codexSessionId
   if (agent === 'antigravity') return session.antigravitySessionId
+  if (agent === 'opencode') return session.opencodeSessionId
   return undefined
 }
 

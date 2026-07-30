@@ -526,6 +526,16 @@ export async function readClipboardText(): Promise<string> {
   return invoke<string>('read_clipboard_text')
 }
 
+export type ClipboardPayload =
+  | { kind: 'text'; text: string }
+  | { kind: 'paths'; paths: string[] }
+  | { kind: 'image'; path: string }
+  | { kind: 'empty' }
+
+export async function readClipboardPayload(): Promise<ClipboardPayload> {
+  return invoke<ClipboardPayload>('read_clipboard_payload')
+}
+
 export async function resetAppData(): Promise<void> {
   await invoke('reset_app_data')
 }

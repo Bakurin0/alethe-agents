@@ -528,12 +528,10 @@ pub fn spawn_pty(
 /// ainda vivo, senão a travessia da árvore não encontra os netos reparentados).
 #[cfg(windows)]
 fn kill_process_tree(pid: u32) {
-    use std::os::windows::process::CommandExt;
-    const CREATE_NO_WINDOW: u32 = 0x0800_0000;
-    let _ = std::process::Command::new("taskkill")
-        .args(["/F", "/T", "/PID", &pid.to_string()])
-        .creation_flags(CREATE_NO_WINDOW)
-        .output();
+    let mut command = std::process::Command::new("taskkill");
+    command.args(["/F", "/T", "/PID", &pid.to_string()]);
+    crate::git_control::hide_console(&mut command);
+    let _ = command.output();
 }
 
 #[cfg(not(windows))]
@@ -556,6 +554,11 @@ pub fn restart_pty(
             .map_err(|_| "PTY sessions lock poisoned".to_string())?;
         if let Some(session) = sessions.remove(&id) {
             session.teardown.store(TEARDOWN_RESTARTED, Ordering::SeqCst);
+            // `kill_pty_tree` (process_tree.rs) derruba raiz + descendentes em
+            // qualquer plataforma (via sysinfo); precisa rodar ANTES de
+            // `kill_process_tree`/`child.kill()` matarem a raiz, senão a
+            // travessia da árvore não encontra os netos reparentados.
+            let _ = process_tree::kill_pty_tree(&id);
             if let Ok(mut child) = session.child.lock() {
                 if let Some(pid) = child.process_id() {
                     kill_process_tree(pid);
@@ -677,6 +680,9 @@ pub fn resize_pty(
 }
 
 fn terminate_session(session: PtySession) {
+    // Precisa rodar antes de `unregister_pty` (abaixo) — `kill_pty_tree` busca
+    // o PID raiz no mesmo registro que `unregister_pty` limpa.
+    let _ = process_tree::kill_pty_tree(&session.pty_id);
     process_tree::unregister_pty(&session.pty_id);
     {
         let (lock, cvar) = &*session.read_active;
@@ -730,6 +736,7 @@ pub fn suspend_session(app: &AppHandle, sessions: &PtySessions, id: &str) -> Res
     session
         .teardown
         .store(TEARDOWN_SUSPENDED, Ordering::SeqCst);
+    let _ = process_tree::kill_pty_tree(&session.pty_id);
     if let Ok(mut child) = session.child.lock() {
         if let Some(pid) = child.process_id() {
             kill_process_tree(pid);

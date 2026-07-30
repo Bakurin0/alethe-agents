@@ -19,6 +19,7 @@ import { getCachedActivity } from '../../lib/activityCache'
 import { pickDirectory } from '../../lib/dialog'
 import { formatHomeDate, formatRelativeTimestamp, getGreeting } from '../../lib/greeting'
 import { useT, type TFunction } from '../../lib/i18n'
+import { formatShortcut } from '../../lib/platform'
 import { getFirstName, getProfileImageUrl, getProfileInitial } from '../../lib/profile'
 import { openInBrowser } from '../../lib/tauri'
 import { getProjectDefaultCwd, useProjectsStore } from '../../stores/projectsStore'
@@ -432,19 +433,19 @@ export function HomeView() {
             <ActionCard
               icon={<TerminalSquare size={14} />}
               label={t('home.newTerminal')}
-              shortcut="⌘T"
+              shortcut={formatShortcut('Ctrl+T')}
               onClick={handleNewTerminal}
             />
             <ActionCard
               icon={<FolderPlus size={14} />}
               label={t('home.newProject')}
-              shortcut="⌘⇧P"
+              shortcut={formatShortcut('Ctrl+Shift+P')}
               onClick={() => openModal('newProject')}
             />
             <ActionCard
               icon={<Layers size={14} />}
               label={t('home.newGroup')}
-              shortcut="⌘⇧G"
+              shortcut={formatShortcut('Ctrl+Shift+G')}
               onClick={() => openModal('newGroup')}
             />
           </div>
@@ -526,8 +527,8 @@ export function HomeView() {
           <FooterLink icon={<PackageOpen size={13} />} label={t('home.releases')} onClick={() => void openInBrowser(RELEASES_URL)} />
         </div>
         <div className={styles.footerShortcuts}>
-          <FooterShortcut keys="⌘P" label={t('home.searchShortcut')} onClick={() => openModal('findJump')} />
-          <FooterShortcut keys="⌘K" label={t('home.commandShortcut')} />
+          <FooterShortcut keys={formatShortcut('Ctrl+P')} label={t('home.searchShortcut')} onClick={() => openModal('findJump')} />
+          <FooterShortcut keys={formatShortcut('Ctrl+K')} label={t('home.commandShortcut')} />
           <FooterShortcut keys="?" label={t('home.helpShortcut')} />
         </div>
       </footer>

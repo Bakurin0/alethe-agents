@@ -1,5 +1,6 @@
 import { FitAddon } from '@xterm/addon-fit'
 import { SearchAddon } from '@xterm/addon-search'
+import { Unicode11Addon } from '@xterm/addon-unicode11'
 import { WebglAddon } from '@xterm/addon-webgl'
 import { Terminal } from '@xterm/xterm'
 import type { ILink } from '@xterm/xterm'
@@ -13,7 +14,7 @@ import { AgentCompletionMonitor } from '../../lib/agentCompletionMonitor'
 import { preparePtyRuntimeLaunch } from '../../lib/agentRuntimeAdapter'
 import { recordAgentActivityInput } from '../../lib/activityTracker'
 import { buildAgentLaunch } from '../../lib/sessionLaunch'
-import { claimDiscoveredSession, registerSessionClaim } from '../../lib/sessionDiscovery'
+import { claimDiscoveredSession, claimMostRecentSession, registerSessionClaim } from '../../lib/sessionDiscovery'
 import { consumeSession, removeSession, savedConversationIdFor, saveSession } from '../../lib/sessionResume'
 import { waitForSessionHint } from '../../lib/sessionWatch'
 import { acquireSpawnSlot, releaseSpawnSlot } from '../../lib/spawnQueue'
@@ -32,12 +33,13 @@ import {
   openInBrowser,
   openInFileExplorer,
   ptyExists,
-  readClipboardText,
+  readClipboardPayload,
   resizePty,
   spawnPty,
   snapshotAntigravitySessions,
   snapshotClaudeSessions,
   snapshotCodexSessions,
+  snapshotOpenCodeSessions,
   writeClipboardText,
   writePty,
 } from '../../lib/tauri'
@@ -591,6 +593,13 @@ export function XTermView({
     const searchAddon = new SearchAddon()
     terminal.loadAddon(fitAddon)
     terminal.loadAddon(searchAddon)
+    // Sem isso, o xterm.js usa as tabelas de largura Unicode 6 (default) pra
+    // decidir quantas colunas cada caractere ocupa — emojis e símbolos largos
+    // (usados no TUI do OpenCode, ex. status bar) ficam com largura diferente
+    // da que o próprio CLI assume, desalinhando toda linha que os contém de
+    // forma permanente (não é um problema de redraw — nenhuma tecla conserta).
+    terminal.loadAddon(new Unicode11Addon())
+    terminal.unicode.activeVersion = '11'
     terminal.open(container)
     terminalRef.current = terminal
     const clampHorizontalScroll = () => {
@@ -738,6 +747,24 @@ export function XTermView({
       }
     }
 
+    // Resolve o clipboard do SO pra uma string colável no PTY: texto vira
+    // texto puro; arquivos do Explorer (CF_HDROP) e imagens cruas (CF_DIB /
+    // formato "PNG" registrado, já salvas como PNG temporário pelo backend)
+    // reaproveitam formatDroppedPaths — o mesmo formato usado no drag-and-drop.
+    const resolveClipboardPaste = async (): Promise<string> => {
+      const payload = await readClipboardPayload()
+      switch (payload.kind) {
+        case 'text':
+          return payload.text
+        case 'paths':
+          return formatDroppedPaths(payload.paths)
+        case 'image':
+          return formatDroppedPaths([payload.path])
+        case 'empty':
+          return ''
+      }
+    }
+
     // Arrastar arquivo do SO pro terminal: o onDragDropEvent do Tauri é global,
     // então todo pane recebe o evento — cada um filtra pelo hit-test da posição
     // (física → CSS via devicePixelRatio) e só reage quando o cursor está sobre
@@ -813,7 +840,7 @@ export function XTermView({
 
       if (key === 'v') {
         event.preventDefault()
-        void readClipboardText()
+        void resolveClipboardPaste()
           .catch(() => navigator.clipboard?.readText() ?? '')
           .then(pasteText)
           .catch(() => {
@@ -837,7 +864,7 @@ export function XTermView({
       const raw = event.clipboardData?.getData('text/plain') ?? ''
       event.preventDefault()
       event.stopPropagation()
-      void readClipboardText()
+      void resolveClipboardPaste()
         .catch(() => raw)
         .then(pasteText)
         .catch(() => {
@@ -1018,7 +1045,7 @@ export function XTermView({
             launcherOverride = cliPathOverride
             console.info(`[pty-launch] ${command} usando override: ${cliPathOverride}`)
           } else {
-            const auto = await findCliLauncher(command)
+            const auto = await findCliLauncher(agentCliCommand(command) ?? command)
             console.info(`[pty-launch] ${command} findCliLauncher → ${auto ?? 'null (NÃO ENCONTRADO)'}`)
             if (!auto) {
               console.warn(`[pty-launch] ${command} não resolvido — mostrando overlay "not found" e ficando offline`)
@@ -1046,7 +1073,7 @@ export function XTermView({
         // podem ficar órfãos após limpeza de histórico ou sincronização entre PCs;
         // nesse caso removemos o vínculo e iniciamos uma conversa limpa.
         if (
-          (command === 'claude' || command === 'codex' || command === 'antigravity')
+          (command === 'claude' || command === 'codex' || command === 'antigravity' || command === 'opencode')
           && resumeId
           && cwd
         ) {
@@ -1055,7 +1082,9 @@ export function XTermView({
               ? await snapshotClaudeSessions(cwd)
               : command === 'codex'
                 ? await snapshotCodexSessions(cwd)
-                : await snapshotAntigravitySessions(cwd)
+                : command === 'antigravity'
+                  ? await snapshotAntigravitySessions(cwd)
+                  : await snapshotOpenCodeSessions(cwd)
             if (!existing.some((session) => session.id === resumeId)) {
               console.warn(`[pty-launch] ${command} ignorando sessão órfã ${resumeId}`)
               resumeId = undefined
@@ -1064,6 +1093,23 @@ export function XTermView({
             }
           } catch {
             /* mantém o resume — não arrisca falso negativo */
+          }
+          if (disposed) return
+        }
+        // OpenCode não permite escolher o ID no nascimento (ao contrário do
+        // Claude) — sem um ID salvo válido, reivindicamos aqui a conversa mais
+        // recente ainda não pega por outro pane (ex.: reabrir o app depois de
+        // fechado). `!forceFreshRef.current` é essencial: no fallback de
+        // early-exit (abaixo) o resumeId acabou de ser zerado de propósito
+        // porque a sessão órfã matou o agente no nascimento — reivindicar de
+        // novo aqui recriaria o mesmo loop.
+        if (command === 'opencode' && !resumeId && cwd && !forceFreshRef.current) {
+          try {
+            const sessions = await snapshotOpenCodeSessions(cwd)
+            const claimed = claimMostRecentSession('opencode', cwd, sessions)
+            if (claimed) resumeId = claimed.id
+          } catch {
+            /* sem sessão prévia — segue pro nível 3 (CLI cria uma nova) */
           }
           if (disposed) return
         }
@@ -1107,7 +1153,9 @@ export function XTermView({
             ? snapshotCodexSessions(cwd).catch(() => [])
             : command === 'antigravity'
               ? snapshotAntigravitySessions(cwd).catch(() => [])
-              : null
+              : command === 'opencode'
+                ? snapshotOpenCodeSessions(cwd).catch(() => [])
+                : null
           : null
 
         // Serializa spawns globalmente — sem isso, abrir grupo com N×M terminais
@@ -1166,15 +1214,17 @@ export function XTermView({
             sessionId: response.id,
             claudeSessionId: command === 'claude' ? launch.sessionId : undefined,
             codexSessionId: command === 'codex' ? launch.sessionId : undefined,
+            opencodeSessionId: command === 'opencode' ? launch.sessionId : undefined,
             antigravitySessionId: command === 'antigravity' ? launch.sessionId : undefined,
             cwd: cwd ?? '',
             agent: command,
             timestamp: Date.now(),
           })
 
-          // Codex e Antigravity precisam do ID específico para não misturar
-          // conversas de panes diferentes no próximo boot.
-          if ((command === 'codex' || command === 'antigravity') && cwd && discoveredSessionsBeforePromise) {
+          // Codex, Antigravity e OpenCode não permitem escolher o ID no
+          // nascimento — precisam do ID específico descoberto depois do spawn
+          // pra não misturar conversas de panes diferentes no próximo boot.
+          if ((command === 'codex' || command === 'antigravity' || command === 'opencode') && cwd && discoveredSessionsBeforePromise) {
             const detectCreatedSession = async () => {
               const before = new Set((await discoveredSessionsBeforePromise).map((s) => s.id))
               // Janela ~30s (10×3s): o Codex às vezes leva a escrever o arquivo de
@@ -1192,13 +1242,16 @@ export function XTermView({
                 if (disposed) return
                 const sessions = command === 'codex'
                   ? await snapshotCodexSessions(cwd).catch(() => [])
-                  : await snapshotAntigravitySessions(cwd).catch(() => [])
+                  : command === 'antigravity'
+                    ? await snapshotAntigravitySessions(cwd).catch(() => [])
+                    : await snapshotOpenCodeSessions(cwd).catch(() => [])
                 const newSession = claimDiscoveredSession(command, cwd, before, sessions, response.id)
                 if (newSession) {
                   saveSession(sessionPersistenceKey, {
                     sessionId: response.id,
                     codexSessionId: command === 'codex' ? newSession.id : undefined,
                     antigravitySessionId: command === 'antigravity' ? newSession.id : undefined,
+                    opencodeSessionId: command === 'opencode' ? newSession.id : undefined,
                     cwd: cwd ?? '',
                     agent: command,
                     timestamp: Date.now(),
