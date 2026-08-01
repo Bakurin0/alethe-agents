@@ -27,6 +27,7 @@ import { useUiStore } from '../../stores/uiStore'
 import { UNRESTRICTED_FLAG, type AgentType, type Project } from '../../lib/types'
 import { AgentIcon } from '../icons/AgentIcons'
 import { AsciiEffect } from '../ui/ascii-effect'
+import { Avatar } from '../ui/Avatar'
 import { EmptyState } from '../EmptyState/EmptyState'
 import homeBackground from '../../assets/home-bg-right.png'
 import { computeStreak } from './ActivityGraph'
@@ -258,11 +259,7 @@ export function HomeView() {
               </span>
               <strong>{activityStreak ?? '–'}</strong>
             </div>
-            {avatarUrl ? (
-              <img src={avatarUrl} alt="" className={styles.avatar} draggable={false} />
-            ) : (
-              <div className={styles.avatar}>{initial}</div>
-            )}
+            <Avatar key={avatarUrl} src={avatarUrl} initial={initial} className={styles.avatar} />
             <div className={styles.homePlayerDock}>
               <NowPlayingWidget enabled />
             </div>

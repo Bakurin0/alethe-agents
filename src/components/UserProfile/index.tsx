@@ -5,6 +5,7 @@ import { useT } from '../../lib/i18n'
 import { getProfileImageUrl, getProfileInitial } from '../../lib/profile'
 import { useProjectsStore } from '../../stores/projectsStore'
 import { useUiStore } from '../../stores/uiStore'
+import { Avatar } from '../ui/Avatar'
 import styles from './UserProfile.module.css'
 
 export function UserProfile() {
@@ -15,16 +16,11 @@ export function UserProfile() {
   const profiles = useProjectsStore((s) => s.profiles)
   const setPreferences = useProjectsStore((s) => s.setPreferences)
   const [open, setOpen] = useState(false)
-  const [imgFailed, setImgFailed] = useState(false)
   const ref = useRef<HTMLDivElement>(null)
   const displayName = preferences.displayName || t('profile.fallbackName')
   const avatarUrl = getProfileImageUrl(preferences)
   const initial = getProfileInitial(displayName)
   const activeProfile = profiles.find((profile) => profile.id === activeProfileId) ?? null
-
-  useEffect(() => {
-    setImgFailed(false)
-  }, [avatarUrl])
 
   const logout = () => {
     setPreferences({
@@ -60,17 +56,7 @@ export function UserProfile() {
         aria-label={t('profile.menuLabel')}
         title={displayName}
       >
-        {avatarUrl && !imgFailed ? (
-          <img
-            src={avatarUrl}
-            alt=""
-            className={styles.avatar}
-            draggable={false}
-            onError={() => setImgFailed(true)}
-          />
-        ) : (
-          <span className={styles.avatar}>{initial}</span>
-        )}
+        <Avatar key={avatarUrl} src={avatarUrl} initial={initial} className={styles.avatar} />
         <span className={styles.identity}>
           <span className={styles.name}>{displayName}</span>
           <span className={styles.email}>
@@ -84,17 +70,12 @@ export function UserProfile() {
       {open ? (
         <div className={styles.popover} role="menu">
           <div className={styles.popHeader}>
-            {avatarUrl && !imgFailed ? (
-              <img
-                src={avatarUrl}
-                alt=""
-                className={styles.popAvatar}
-                draggable={false}
-                onError={() => setImgFailed(true)}
-              />
-            ) : (
-              <span className={styles.popAvatar}>{initial}</span>
-            )}
+            <Avatar
+              key={avatarUrl}
+              src={avatarUrl}
+              initial={initial}
+              className={styles.popAvatar}
+            />
             <div className={styles.popIdentity}>
               <strong className={styles.popName}>{displayName}</strong>
               <span className={styles.popEmail}>{t('profile.localAccount')}</span>
