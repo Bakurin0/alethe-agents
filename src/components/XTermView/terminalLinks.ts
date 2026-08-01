@@ -1,3 +1,5 @@
+import type { ILink } from '@xterm/xterm'
+
 /** Categoria de arquivo apontado por um link de path — decide o viewer no grid. */
 export type FileLinkKind = 'markdown' | 'image' | 'text'
 
@@ -150,5 +152,22 @@ export function terminalLinkRange(
   return {
     start: { x: (startOffset % columns) + 1, y: startLine + Math.floor(startOffset / columns) },
     end: { x: (endOffset % columns) + 1, y: startLine + Math.floor(endOffset / columns) },
+  }
+}
+
+/** Monta o `ILink` do xterm a partir de um link detectado, com o handler de menu. */
+export function makeXtermLink(
+  logicalLineStart: number,
+  columns: number,
+  link: DetectedTerminalLink,
+  handlers: {
+    openMenu: (event: MouseEvent, link: DetectedTerminalLink) => void
+  },
+): ILink {
+  return {
+    text: link.text,
+    range: terminalLinkRange(logicalLineStart, columns, link),
+    decorations: { pointerCursor: true, underline: true },
+    activate: (event: MouseEvent) => handlers.openMenu(event, link),
   }
 }
