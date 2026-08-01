@@ -1,11 +1,10 @@
-import { invoke } from '@tauri-apps/api/core'
 import { getCurrentWindow } from '@tauri-apps/api/window'
 import { confirm } from '@tauri-apps/plugin-dialog'
 import { useEffect } from 'react'
 
 import { createCloseCoordinator, type CloseFailureStage } from '../lib/closeCoordinator'
 import { getLocale, translate } from '../lib/i18n'
-import { recordFrontendError } from '../lib/tauri'
+import { quitApp, recordFrontendError } from '../lib/tauri'
 import { useUiStore } from '../stores/uiStore'
 
 function errorDetails(error: unknown): { message: string; stack: string | null } {
@@ -44,7 +43,7 @@ const closeCoordinator = createCloseCoordinator({
   },
   confirmFallback: () => window.confirm(translate(getLocale(), 'appClose.message')),
   destroyWindow: () => appWindow.destroy(),
-  quitApp: () => invoke<void>('quit_app'),
+  quitApp: () => quitApp(),
   onFailure: reportCloseFailure,
 })
 

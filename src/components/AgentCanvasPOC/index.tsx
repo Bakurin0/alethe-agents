@@ -8,7 +8,6 @@ import {
   useSensor,
   useSensors,
 } from '@dnd-kit/core'
-import { invoke } from '@tauri-apps/api/core'
 import { listen } from '@tauri-apps/api/event'
 import {
   ArrowLeft,
@@ -56,15 +55,23 @@ import { costLevel, fmtTokens, fmtUsd, shortModel } from '../../lib/costFormat'
 import { useT } from '../../lib/i18n'
 import { normalizeCwd } from '../../lib/platform'
 import {
+  agentHooksEndpoint,
+  agentHooksSettingsPath,
   attachPty,
+  economyAgentsEnabled,
   getModelPricing,
+  installAgent as installAgentCmd,
   killPty,
+  listInstalledAgents,
   listenPtyExit,
+  setEconomyAgents,
   spawnPty,
+  uninstallAgent as uninstallAgentCmd,
   writeClipboardText,
   writePty,
   type ClaudeUsage,
   type CodexUsage,
+  type InstalledAgent,
   type ModelRate,
   type SessionCost,
 } from '../../lib/tauri'
@@ -170,8 +177,6 @@ function orchestrationRules(agentEndpoint: string, budgetUsd?: number | null) {
     budget
   )
 }
-
-type InstalledAgent = { name: string; from_alethe: boolean }
 
 function colorFor(agentType: string): string {
   const known = AGENT_COLORS[agentType.toLowerCase()]
@@ -700,7 +705,7 @@ function AgentCanvasInner() {
 
   const refreshInstalled = useCallback(() => {
     if (!session) return
-    invoke<InstalledAgent[]>('list_installed_agents', { folder: session.folder })
+    listInstalledAgents(session.folder)
       .then((list) => {
         console.log(
           '[AgentCanvasPOC] agents instalados:',
@@ -714,10 +719,7 @@ function AgentCanvasInner() {
   // Gera o settings com os hooks ANTES de spawnar o claude — o XTermView só
   // monta quando o path existe, senão a sessão nasceria sem hooks.
   useEffect(() => {
-    Promise.all([
-      invoke<string>('agent_hooks_endpoint'),
-      invoke<string>('agent_hooks_settings_path'),
-    ])
+    Promise.all([agentHooksEndpoint(), agentHooksSettingsPath()])
       .then(([endpoint, path]) => {
         console.log('[AgentCanvasPOC] hooks endpoint:', endpoint)
         console.log('[AgentCanvasPOC] hooks settings pronto em:', path)
@@ -737,7 +739,7 @@ function AgentCanvasInner() {
   // Estado inicial: modo economia + agents instalados na pasta.
   useEffect(() => {
     if (!session) return
-    invoke<boolean>('economy_agents_enabled', { folder: session.folder })
+    economyAgentsEnabled(session.folder)
       .then(setEconomyOn)
       .catch(() => {})
     refreshInstalled()
@@ -755,7 +757,7 @@ function AgentCanvasInner() {
       CORE_AGENTS.map((name) => {
         const tpl = AGENT_LIBRARY.find((a) => a.name === name)
         if (!tpl) return Promise.resolve(null)
-        return invoke('install_agent', {
+        return installAgentCmd({
           folder,
           name: tpl.name,
           content: tpl.content,
@@ -772,7 +774,7 @@ function AgentCanvasInner() {
   const toggleEconomy = () => {
     if (!session) return
     const next = !economyOn
-    invoke<string[]>('set_economy_agents', { folder: session.folder, enabled: next })
+    setEconomyAgents(session.folder, next)
       .then((touched) => {
         console.log(`[AgentCanvasPOC] modo economia ${next ? 'ON' : 'OFF'}, arquivos:`, touched)
         setEconomyOn(next)
@@ -802,7 +804,7 @@ function AgentCanvasInner() {
     if (!session) return
     const template = AGENT_LIBRARY.find((item) => item.name === name)
     if (!template) return
-    invoke<string>('install_agent', {
+    installAgentCmd({
       folder: session.folder,
       name: template.name,
       content: template.content,
@@ -830,7 +832,7 @@ function AgentCanvasInner() {
       ? t('ws.confirmRemoveAgent', { name: agent.name })
       : t('ws.confirmRemoveForeignAgent', { name: agent.name })
     if (!window.confirm(msg)) return
-    invoke('uninstall_agent', { folder: session.folder, name: agent.name, force: true })
+    uninstallAgentCmd(session.folder, agent.name, true)
       .then(() => {
         console.log('[AgentCanvasPOC] agent removido:', agent.name)
         setRestartHint(true)

@@ -13,6 +13,11 @@ export async function setWindowOpacity(opacity: number): Promise<void> {
   await invoke('set_window_opacity', { opacity })
 }
 
+/** Encerra o app pelo backend (teardown de PTYs/watchers antes de sair). */
+export async function quitApp(): Promise<void> {
+  await invoke('quit_app')
+}
+
 export type ProfileMeta = {
   id: string
   name: string
@@ -339,6 +344,44 @@ export type PtyExitPayload = {
  * working/idle real (ver opencode_bridge.rs). */
 export async function agentHooksEndpoint(): Promise<string> {
   return invoke('agent_hooks_endpoint')
+}
+
+/** Caminho do settings.json de hooks gerado pro Claude Code (agent_events.rs). */
+export async function agentHooksSettingsPath(): Promise<string> {
+  return invoke<string>('agent_hooks_settings_path')
+}
+
+export type InstalledAgent = { name: string; from_alethe: boolean }
+
+/** Agents (.md) instalados na pasta do projeto (.claude/agents/…). */
+export async function listInstalledAgents(folder: string): Promise<InstalledAgent[]> {
+  return invoke<InstalledAgent[]>('list_installed_agents', { folder })
+}
+
+/** Se o modo economia (roteamento por sub-agents) está ativo na pasta. */
+export async function economyAgentsEnabled(folder: string): Promise<boolean> {
+  return invoke<boolean>('economy_agents_enabled', { folder })
+}
+
+/** Liga/desliga o modo economia; devolve os arquivos tocados. */
+export async function setEconomyAgents(folder: string, enabled: boolean): Promise<string[]> {
+  return invoke<string[]>('set_economy_agents', { folder, enabled })
+}
+
+/** Instala um agent (.md) na pasta; devolve o path. `force` sobrescreve
+ * um agent externo de mesmo nome (senão rejeita com 'conflict'). */
+export async function installAgent(args: {
+  folder: string
+  name: string
+  content: string
+  force: boolean
+}): Promise<string> {
+  return invoke<string>('install_agent', args)
+}
+
+/** Remove um agent (.md) da pasta. */
+export async function uninstallAgent(folder: string, name: string, force = true): Promise<void> {
+  await invoke('uninstall_agent', { folder, name, force })
 }
 
 export type OpenCodeBridgeStatus = {
