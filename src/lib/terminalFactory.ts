@@ -1,0 +1,202 @@
+/**
+ * Factories e helpers puros de Terminal/pane, extraídos do projectsStore pra
+ * ficarem testáveis e reutilizáveis. Nenhum acesso a estado global — só
+ * transformam dados de entrada em objetos de domínio.
+ */
+
+import { nanoid } from 'nanoid'
+
+import { basename } from './paths'
+import { MAX_RECENT_PROJECT_TABS } from '../stores/projectsStore.constants'
+import type {
+  AgentRuntimeProfile,
+  AgentType,
+  Project,
+  SubTab,
+  Terminal,
+  WorkspaceRecentTab,
+} from './types'
+
+export function rememberProjectTab(
+  recentProjectIds: string[] | undefined,
+  projectId: string,
+): string[] {
+  const current = (recentProjectIds ?? []).slice(0, MAX_RECENT_PROJECT_TABS)
+  if (current.includes(projectId)) return current
+  if (current.length < MAX_RECENT_PROJECT_TABS) return [...current, projectId]
+  return [...current.slice(0, MAX_RECENT_PROJECT_TABS - 1), projectId]
+}
+
+export function rememberWorkspaceTab(
+  recentTabs: WorkspaceRecentTab[] | undefined,
+  tab: WorkspaceRecentTab,
+): WorkspaceRecentTab[] {
+  const current = (recentTabs ?? []).slice(0, MAX_RECENT_PROJECT_TABS)
+  if (current.some((item) => item.kind === tab.kind && item.id === tab.id)) return current
+  if (current.length < MAX_RECENT_PROJECT_TABS) return [...current, tab]
+  return [...current.slice(0, MAX_RECENT_PROJECT_TABS - 1), tab]
+}
+
+export function makeDefaultTerminal(args: {
+  name: string
+  cwd: string
+  firstTab: {
+    type: AgentType
+    cwd: string
+    extraArgs?: string[]
+    initialInput?: string
+    runtimeProfile?: AgentRuntimeProfile
+  }
+  worktreeAgentId?: string
+}): Terminal {
+  const tabId = nanoid()
+  const now = Date.now()
+  return {
+    id: nanoid(),
+    name: args.name,
+    cwd: args.cwd,
+    activeTabId: tabId,
+    disabled: false,
+    laneVisible: null,
+    lastUsedAt: now,
+    worktreeAgentId: args.worktreeAgentId,
+    tabs: [
+      {
+        id: tabId,
+        type: args.firstTab.type,
+        name: args.firstTab.type,
+        cwd: args.firstTab.cwd,
+        lastUsedAt: now,
+        ptyId: null,
+        extraArgs: args.firstTab.extraArgs,
+        initialInput: args.firstTab.initialInput,
+        runtimeProfile: args.firstTab.runtimeProfile,
+      },
+    ],
+  }
+}
+
+const MARKDOWN_FILE_PATTERN = /\.(md|markdown|mdx)$/i
+
+/** Escolhe o viewer certo pela extensão. Imagem fica pra depois (precisa de backend). */
+function classifyPaneKind(filePath: string): 'markdown' | 'file' {
+  return MARKDOWN_FILE_PATTERN.test(filePath) ? 'markdown' : 'file'
+}
+
+export function makeFilePane(args: { filePath: string; name?: string }): Terminal {
+  // Remove o sufixo `:linha:coluna` que agents anexam (ex.: `foo.ts:42:10`) —
+  // senão o read_text_file não acha o arquivo.
+  const filePath = args.filePath.trim().replace(/:\d+(?::\d+)?$/, '')
+  return {
+    id: nanoid(),
+    name: args.name?.trim() || basename(filePath) || filePath,
+    cwd: '',
+    activeTabId: '',
+    disabled: false,
+    laneVisible: null,
+    lastUsedAt: Date.now(),
+    tabs: [],
+    kind: classifyPaneKind(filePath),
+    filePath,
+  }
+}
+
+export function makeWebPane(args: { url: string; name?: string }): Terminal {
+  const url = args.url.trim()
+  let host = url
+  try {
+    host = new URL(url).hostname
+  } catch {
+    // A validação ocorre no modal; mantém fallback defensivo para dados importados.
+  }
+  return {
+    id: nanoid(),
+    name: args.name?.trim() || host,
+    cwd: '',
+    activeTabId: '',
+    disabled: false,
+    laneVisible: null,
+    lastUsedAt: Date.now(),
+    tabs: [],
+    kind: 'web',
+    url,
+  }
+}
+
+export function resolveTerminalCwd(terminal: Terminal | null | undefined): string {
+  if (!terminal) return ''
+  const activeTab = terminal.tabs.find((t) => t.id === terminal.activeTabId) ?? terminal.tabs[0]
+  return activeTab?.cwd?.trim() || terminal.cwd?.trim() || ''
+}
+
+export function touchTerminalUsage(terminal: Terminal, tabId = terminal.activeTabId): Terminal {
+  const now = Date.now()
+  const activeTabId = terminal.tabs.some((tab) => tab.id === tabId) ? tabId : terminal.activeTabId
+  return {
+    ...terminal,
+    lastUsedAt: now,
+    activeTabId,
+    tabs: terminal.tabs.map((tab) => (tab.id === activeTabId ? { ...tab, lastUsedAt: now } : tab)),
+  }
+}
+
+export function pickMostRecentTab(terminal: Terminal, excludeTabId?: string): SubTab | null {
+  const candidates = terminal.tabs.filter((tab) => tab.id !== excludeTabId)
+  if (candidates.length === 0) return null
+  return (
+    [...candidates].sort((a, b) => (b.lastUsedAt ?? 0) - (a.lastUsedAt ?? 0))[0] ?? candidates[0]
+  )
+}
+
+export function collectTerminalPtyIds(terminals: Terminal[]): string[] {
+  return terminals.flatMap((terminal) =>
+    terminal.tabs.map((tab) => tab.ptyId).filter((ptyId): ptyId is string => Boolean(ptyId)),
+  )
+}
+
+export function clearTerminalPtyIds(terminal: Terminal): Terminal {
+  if (terminal.tabs.length === 0) return terminal
+  return {
+    ...terminal,
+    tabs: terminal.tabs.map((tab) => (tab.ptyId ? { ...tab, ptyId: null } : tab)),
+  }
+}
+
+/** Como clearTerminalPtyIds, mas também DESCARTA a sessão do agente (sessionId) e o
+ *  badge de conclusão. Usado pelo "kill": mata o processo e reinicia do zero na
+ *  próxima abertura, ao contrário do "disable" (olhinho), que preserva sessionId. */
+export function resetTerminalRuntime(terminal: Terminal): Terminal {
+  if (terminal.tabs.length === 0) return terminal
+  return {
+    ...terminal,
+    tabs: terminal.tabs.map((tab) => ({
+      ...tab,
+      ptyId: null,
+      sessionId: undefined,
+      completionUnread: false,
+    })),
+  }
+}
+
+export function getProjectDefaultCwd(
+  project: Project | null | undefined,
+  projects: Project[] = [],
+): string {
+  if (!project) return ''
+  if (project.defaultCwd?.trim()) return project.defaultCwd.trim()
+  const candidates = [project]
+  if (project.groupId) {
+    candidates.push(...projects.filter((p) => p.id !== project.id && p.groupId === project.groupId))
+  }
+
+  for (const candidate of candidates) {
+    const terminals = [...candidate.terminals].sort(
+      (a, b) => (b.lastUsedAt ?? 0) - (a.lastUsedAt ?? 0),
+    )
+    for (const terminal of terminals) {
+      const cwd = resolveTerminalCwd(terminal)
+      if (cwd) return cwd
+    }
+  }
+  return ''
+}
