@@ -160,14 +160,14 @@ function orchestrationRules(agentEndpoint: string, budgetUsd?: number | null) {
       ? ` Budget ceiling for this session is about ${budgetUsd} US dollars; prefer cheap routing and pause to ask the user before exceeding it.`
       : ''
   return (
-  'You are the autonomous control plane and brain of an Alethe agent canvas session. The user gives you a high level goal in this terminal and you drive it to done by distributing the work across AIs, watching their results, and deciding each next action yourself. Work autonomously but with checkpoints. Rules: ' +
-  '(1) For a small task just do it solo; spawning agents has overhead. ' +
-  '(2) For a large goal such as building a feature or a small app, FIRST consult the orchestrator agent if it exists (Agent tool, subagent_type orchestrator) to get a plan: parallel streams for front, back, qa and docs, plus a task list with dependencies and a suggested agent per task; if no orchestrator agent is available, draft that plan yourself. Present the plan to the user and wait for approval before executing. ' +
-  '(3) After approval, create a SMALL agent team (2 to 4 teammates, never more) and give each teammate distinct file paths so two never edit the same file; put full context in each spawn prompt; break the work into tasks with dependencies; then coordinate and wait for your teammates instead of implementing everything yourself. ' +
-  '(4) Route by cost: if cheap workers exist in .claude/agents, use haiku-resumidor for bulk reading and summarizing, haiku-mecanico for well specified mechanical edits, codex-executor for long noisy execution; keep architecture and ambiguous work on capable models; never route ambiguous work to cheap workers; prefer offloading to a codex worker when Claude usage is high. ' +
-  '(5) Checkpoints: pause and ask the user at big milestones such as the end of an epic, before destructive or irreversible steps, and whenever spending approaches the budget ceiling; never exceed the ceiling without asking. Integrate the streams and run qa before declaring done. ' +
-  `(6) Real workers are EXPENSIVE: each spawn is a full separate process using hundreds of megabytes of RAM, so prefer in-process subagents and teammates for almost everything, spawn AT MOST two real workers at a time, reuse them instead of respawning, and prefer a codex worker over a claude worker because codex is far lighter. To spawn one, POST JSON to ${agentEndpoint}/spawn with body {agent, task, mode}: agent is claude, codex or opencode; task is one self contained English instruction; mode is exec for one shot fire and forget or interactive. Use curl -s -X POST with the -d flag and single quoted JSON. It is fire and forget: you do not get the output back, so use it only for offloadable work, not results you must read.` +
-  budget
+    'You are the autonomous control plane and brain of an Alethe agent canvas session. The user gives you a high level goal in this terminal and you drive it to done by distributing the work across AIs, watching their results, and deciding each next action yourself. Work autonomously but with checkpoints. Rules: ' +
+    '(1) For a small task just do it solo; spawning agents has overhead. ' +
+    '(2) For a large goal such as building a feature or a small app, FIRST consult the orchestrator agent if it exists (Agent tool, subagent_type orchestrator) to get a plan: parallel streams for front, back, qa and docs, plus a task list with dependencies and a suggested agent per task; if no orchestrator agent is available, draft that plan yourself. Present the plan to the user and wait for approval before executing. ' +
+    '(3) After approval, create a SMALL agent team (2 to 4 teammates, never more) and give each teammate distinct file paths so two never edit the same file; put full context in each spawn prompt; break the work into tasks with dependencies; then coordinate and wait for your teammates instead of implementing everything yourself. ' +
+    '(4) Route by cost: if cheap workers exist in .claude/agents, use haiku-resumidor for bulk reading and summarizing, haiku-mecanico for well specified mechanical edits, codex-executor for long noisy execution; keep architecture and ambiguous work on capable models; never route ambiguous work to cheap workers; prefer offloading to a codex worker when Claude usage is high. ' +
+    '(5) Checkpoints: pause and ask the user at big milestones such as the end of an epic, before destructive or irreversible steps, and whenever spending approaches the budget ceiling; never exceed the ceiling without asking. Integrate the streams and run qa before declaring done. ' +
+    `(6) Real workers are EXPENSIVE: each spawn is a full separate process using hundreds of megabytes of RAM, so prefer in-process subagents and teammates for almost everything, spawn AT MOST two real workers at a time, reuse them instead of respawning, and prefer a codex worker over a claude worker because codex is far lighter. To spawn one, POST JSON to ${agentEndpoint}/spawn with body {agent, task, mode}: agent is claude, codex or opencode; task is one self contained English instruction; mode is exec for one shot fire and forget or interactive. Use curl -s -X POST with the -d flag and single quoted JSON. It is fire and forget: you do not get the output back, so use it only for offloadable work, not results you must read.` +
+    budget
   )
 }
 
@@ -397,12 +397,7 @@ function LibraryItem({
     disabled: installed,
   })
   return (
-    <div
-      ref={setNodeRef}
-      {...attributes}
-      {...listeners}
-      className={styles.libraryChipWrap}
-    >
+    <div ref={setNodeRef} {...attributes} {...listeners} className={styles.libraryChipWrap}>
       <AgentChip
         name={template.name}
         cost={template.cost}
@@ -570,12 +565,27 @@ function AgentCanvasInner() {
       if (!folder) return null
       const ptyId = `${agent}-worker-${Date.now()}`
       const args = opts.task ? execArgsFor(agent, opts.task) : undefined
-      console.log('[AgentCanvasPOC] criando worker', agent, ptyId, '· task=', !!opts.task, '·', title)
+      console.log(
+        '[AgentCanvasPOC] criando worker',
+        agent,
+        ptyId,
+        '· task=',
+        !!opts.task,
+        '·',
+        title,
+      )
       setCodexWorkers((prev) => [
         ...prev,
         { ptyId, agent, title, cwd: folder, startedAt: Date.now(), exitedCode: null, args },
       ])
-      void spawnPty({ cols: 120, rows: 30, id: ptyId, command: agentCliCommand(agent), cwd: folder, extraArgs: args })
+      void spawnPty({
+        cols: 120,
+        rows: 30,
+        id: ptyId,
+        command: agentCliCommand(agent),
+        cwd: folder,
+        extraArgs: args,
+      })
         .then(() => {
           // Captura o término mesmo com o terminal fechado — senão o card de um
           // one-shot ficaria "running" pra sempre.
@@ -601,13 +611,15 @@ function AgentCanvasInner() {
                 )
               })
               .catch(() => {})
-          }).then((unlisten) => {
-            unlistenExit = unlisten
-            // Se o exit já disparou antes do promise resolver, desfaz agora e NÃO
-            // guarda (senão ficaria um listener órfão já-disparado no ref).
-            if (exited) unlisten()
-            else workerExitUnlistenersRef.current.set(ptyId, unlisten)
-          }).catch(() => {})
+          })
+            .then((unlisten) => {
+              unlistenExit = unlisten
+              // Se o exit já disparou antes do promise resolver, desfaz agora e NÃO
+              // guarda (senão ficaria um listener órfão já-disparado no ref).
+              if (exited) unlisten()
+              else workerExitUnlistenersRef.current.set(ptyId, unlisten)
+            })
+            .catch(() => {})
         })
         .catch((err) => console.error('[AgentCanvasPOC] falha spawnando PTY do worker:', err))
       if (opts.open) setExpandedCodexId(ptyId)
@@ -643,7 +655,10 @@ function AgentCanvasInner() {
       // A task vira arg via PowerShell -> *.cmd (batch). Aspas duplas e newlines
       // quebram o batch — então sanitiza: aspas duplas viram simples (o
       // command_builder escapa simples com segurança) e newlines viram espaço.
-      const safe = rawTask.replace(/"/g, "'").replace(/\s*[\r\n]+\s*/g, ' ').trim()
+      const safe = rawTask
+        .replace(/"/g, "'")
+        .replace(/\s*[\r\n]+\s*/g, ' ')
+        .trim()
       const interactive = payload.mode === 'interactive' || !safe
       // Teto de workers vivos: cada um é um processo pesado. Acima disso, recusa
       // (lê do ref pra não pegar contagem velha do closure) — evita a IA estourar
@@ -657,7 +672,11 @@ function AgentCanvasInner() {
         })
         return
       }
-      console.log('[AgentCanvasPOC] dispatch', agent, interactive ? '(interativo)' : safe.slice(0, 80))
+      console.log(
+        '[AgentCanvasPOC] dispatch',
+        agent,
+        interactive ? '(interativo)' : safe.slice(0, 80),
+      )
       const title = safe ? (safe.length > 60 ? `${safe.slice(0, 60)}…` : safe) : agent
       spawnAgentWorker(agent, title, interactive ? { open: true } : { task: safe })
     },
@@ -667,7 +686,11 @@ function AgentCanvasInner() {
   useEffect(() => {
     const unlistenPromise = listen('agent-spawn', (event) => {
       const payload = event.payload as { agent?: string; task?: string; mode?: string }
-      console.log('[AgentCanvasPOC] agent-spawn:', payload?.agent, String(payload?.task ?? '').slice(0, 60))
+      console.log(
+        '[AgentCanvasPOC] agent-spawn:',
+        payload?.agent,
+        String(payload?.task ?? '').slice(0, 60),
+      )
       dispatchToAgent(payload)
     })
     return () => {
@@ -679,7 +702,10 @@ function AgentCanvasInner() {
     if (!session) return
     invoke<InstalledAgent[]>('list_installed_agents', { folder: session.folder })
       .then((list) => {
-        console.log('[AgentCanvasPOC] agents instalados:', list.map((a) => a.name).join(', ') || '(nenhum)')
+        console.log(
+          '[AgentCanvasPOC] agents instalados:',
+          list.map((a) => a.name).join(', ') || '(nenhum)',
+        )
         setInstalled(list)
       })
       .catch((err) => console.error('[AgentCanvasPOC] falha listando agents:', err))
@@ -850,22 +876,25 @@ function AgentCanvasInner() {
   // quando o lead despacha (dispatchToCodex), aí já com tarefa rodando.
   // Idempotente (fallbackActiveRef). Também chamável pelo chip de usage pra
   // testar sem chegar a 80% de verdade.
-  const activateFallback = useCallback((u: ClaudeUsage | null, forced = false) => {
-    if (fallbackActiveRef.current) return
-    fallbackActiveRef.current = true
-    setFallbackActive(true)
-    const pct = u ? Math.round(u.five_hour.utilization) : 0
-    console.log(`[AgentCanvasPOC] FALLBACK codex ON${forced ? ' (forçado)' : ''} — 5h ${pct}%`)
-    if (!leadNotifiedRef.current && sessionRef.current) {
-      leadNotifiedRef.current = true
-      const reset = u ? formatReset(u.five_hour.resets_at) : '—'
-      // Instrução acionável e sem ambiguidade: despache via a ponte HTTP. Sem
-      // \r — o usuário confirma. (Requer sessão iniciada após esta regra existir.)
-      const endpoint = hooksEndpoint ?? 'http://127.0.0.1:9123'
-      const note = `[Alethe] Claude 5h usage at ${pct}% (resets in ${reset}). Conserve Claude tokens: from now on, offload heavy/long/mechanical work to the codex terminal by running: curl -s -X POST ${endpoint}/codex -d "<task as one self-contained English instruction>". It runs in the codex terminal worker shown in the canvas. `
-      void writePty(sessionRef.current.ptyId, note).catch(() => {})
-    }
-  }, [hooksEndpoint])
+  const activateFallback = useCallback(
+    (u: ClaudeUsage | null, forced = false) => {
+      if (fallbackActiveRef.current) return
+      fallbackActiveRef.current = true
+      setFallbackActive(true)
+      const pct = u ? Math.round(u.five_hour.utilization) : 0
+      console.log(`[AgentCanvasPOC] FALLBACK codex ON${forced ? ' (forçado)' : ''} — 5h ${pct}%`)
+      if (!leadNotifiedRef.current && sessionRef.current) {
+        leadNotifiedRef.current = true
+        const reset = u ? formatReset(u.five_hour.resets_at) : '—'
+        // Instrução acionável e sem ambiguidade: despache via a ponte HTTP. Sem
+        // \r — o usuário confirma. (Requer sessão iniciada após esta regra existir.)
+        const endpoint = hooksEndpoint ?? 'http://127.0.0.1:9123'
+        const note = `[Alethe] Claude 5h usage at ${pct}% (resets in ${reset}). Conserve Claude tokens: from now on, offload heavy/long/mechanical work to the codex terminal by running: curl -s -X POST ${endpoint}/codex -d "<task as one self-contained English instruction>". It runs in the codex terminal worker shown in the canvas. `
+        void writePty(sessionRef.current.ptyId, note).catch(() => {})
+      }
+    },
+    [hooksEndpoint],
+  )
 
   // Monitor de usage do Claude — lê a janela de 5h e liga/desliga o fallback.
   useEffect(() => {
@@ -1157,10 +1186,12 @@ function AgentCanvasInner() {
   }
 
   const copyTestPrompt = () => {
-    void writeClipboardText(TEST_PROMPT).then(() => {
-      setCopied(true)
-      window.setTimeout(() => setCopied(false), 1500)
-    }).catch(() => navigator.clipboard?.writeText(TEST_PROMPT))
+    void writeClipboardText(TEST_PROMPT)
+      .then(() => {
+        setCopied(true)
+        window.setTimeout(() => setCopied(false), 1500)
+      })
+      .catch(() => navigator.clipboard?.writeText(TEST_PROMPT))
   }
 
   const teammates = nodes.filter((n) => n.kind === 'teammate')
@@ -1199,75 +1230,75 @@ function AgentCanvasInner() {
     const cost = nodeCosts[node.id]
     const model = cost ? shortModel(cost.model) : null
     return (
-    <div
-      key={node.id}
-      ref={(el) => {
-        if (el) cardRefs.current.set(node.id, el)
-        else cardRefs.current.delete(node.id)
-      }}
-      className={[
-        styles.card,
-        node.kind === 'teammate' ? styles.cardTeammate : '',
-        node.status === 'done' ? styles.cardDone : '',
-      ]
-        .filter(Boolean)
-        .join(' ')}
-      style={{ ['--agent-color' as string]: colorFor(node.agentType) }}
-      onClick={() => select(node.id)}
-      role="button"
-      tabIndex={0}
-      onKeyDown={(e) => {
-        if (e.key === 'Enter' || e.key === ' ') select(node.id)
-      }}
-    >
-      <div className={styles.cardHeader}>
-        <span className={styles.cardType}>
-          {node.kind === 'teammate' ? <Users size={12} /> : null}
-          {node.agentType}
-        </span>
-        <span className={statusBadgeClass(node.status)}>
-          {node.status === 'done' ? durationLabel(node) ?? 'done' : node.status}
-        </span>
-      </div>
-      {node.kind === 'teammate' ? (
-        <div className={styles.teammateMeta}>
-          {node.team} · {t('ws.turns', { count: node.turns })}
-        </div>
-      ) : null}
-      {node.prompt ? <div className={styles.cardPrompt}>{node.prompt}</div> : null}
-      {node.feed.length > 0 ? (
-        <div className={styles.cardFeed}>
-          {node.feed.slice(-MINI_FEED_SIZE).map((ev) => (
-            <div key={ev.toolUseId} className={styles.feedRow}>
-              <span className={styles.feedTool}>{ev.toolName}</span>
-              <span className={styles.feedSummary}>{ev.summary}</span>
-            </div>
-          ))}
-          {node.feed.length > MINI_FEED_SIZE ? (
-            <div className={styles.feedMore}>
-              {t('ws.moreToolCalls', { count: node.feed.length - MINI_FEED_SIZE })}
-            </div>
-          ) : null}
-        </div>
-      ) : null}
-      {node.status !== 'running' && node.result ? (
-        <div className={styles.cardPrompt}>{node.result}</div>
-      ) : null}
-      {cost ? (
-        <div className={styles.cardCost}>
-          {model ? <span className={styles.cardCostModel}>{model}</span> : null}
-          <span className={styles.cardCostTokens}>
-            {fmtTokens(cost.total_tokens)} {t('ws.tokens')}
+      <div
+        key={node.id}
+        ref={(el) => {
+          if (el) cardRefs.current.set(node.id, el)
+          else cardRefs.current.delete(node.id)
+        }}
+        className={[
+          styles.card,
+          node.kind === 'teammate' ? styles.cardTeammate : '',
+          node.status === 'done' ? styles.cardDone : '',
+        ]
+          .filter(Boolean)
+          .join(' ')}
+        style={{ ['--agent-color' as string]: colorFor(node.agentType) }}
+        onClick={() => select(node.id)}
+        role="button"
+        tabIndex={0}
+        onKeyDown={(e) => {
+          if (e.key === 'Enter' || e.key === ' ') select(node.id)
+        }}
+      >
+        <div className={styles.cardHeader}>
+          <span className={styles.cardType}>
+            {node.kind === 'teammate' ? <Users size={12} /> : null}
+            {node.agentType}
           </span>
-          {cost.cost_usd != null ? (
-            <span className={`${styles.cardCostUsd} ${costClassFor(cost.cost_usd)}`}>
-              {fmtUsd(cost.cost_usd)}
-            </span>
-          ) : null}
+          <span className={statusBadgeClass(node.status)}>
+            {node.status === 'done' ? (durationLabel(node) ?? 'done') : node.status}
+          </span>
         </div>
-      ) : null}
-      <div className={styles.cardId}>{node.id}</div>
-    </div>
+        {node.kind === 'teammate' ? (
+          <div className={styles.teammateMeta}>
+            {node.team} · {t('ws.turns', { count: node.turns })}
+          </div>
+        ) : null}
+        {node.prompt ? <div className={styles.cardPrompt}>{node.prompt}</div> : null}
+        {node.feed.length > 0 ? (
+          <div className={styles.cardFeed}>
+            {node.feed.slice(-MINI_FEED_SIZE).map((ev) => (
+              <div key={ev.toolUseId} className={styles.feedRow}>
+                <span className={styles.feedTool}>{ev.toolName}</span>
+                <span className={styles.feedSummary}>{ev.summary}</span>
+              </div>
+            ))}
+            {node.feed.length > MINI_FEED_SIZE ? (
+              <div className={styles.feedMore}>
+                {t('ws.moreToolCalls', { count: node.feed.length - MINI_FEED_SIZE })}
+              </div>
+            ) : null}
+          </div>
+        ) : null}
+        {node.status !== 'running' && node.result ? (
+          <div className={styles.cardPrompt}>{node.result}</div>
+        ) : null}
+        {cost ? (
+          <div className={styles.cardCost}>
+            {model ? <span className={styles.cardCostModel}>{model}</span> : null}
+            <span className={styles.cardCostTokens}>
+              {fmtTokens(cost.total_tokens)} {t('ws.tokens')}
+            </span>
+            {cost.cost_usd != null ? (
+              <span className={`${styles.cardCostUsd} ${costClassFor(cost.cost_usd)}`}>
+                {fmtUsd(cost.cost_usd)}
+              </span>
+            ) : null}
+          </div>
+        ) : null}
+        <div className={styles.cardId}>{node.id}</div>
+      </div>
     )
   }
 
@@ -1393,7 +1424,9 @@ function AgentCanvasInner() {
               </label>
               <span className={styles.counter}>
                 {t('ws.runningDone', { running, done })}
-                {lastEventAt ? '' : ` · ${t('ws.waitingHooks', { endpoint: hooksEndpoint?.replace('http://127.0.0.1', ':') ?? '...' })}`}
+                {lastEventAt
+                  ? ''
+                  : ` · ${t('ws.waitingHooks', { endpoint: hooksEndpoint?.replace('http://127.0.0.1', ':') ?? '...' })}`}
               </span>
               <button
                 type="button"
@@ -1511,206 +1544,206 @@ function AgentCanvasInner() {
             ref={stageRef}
             style={{ transform: `translate(${pan.x}px, ${pan.y}px) scale(${zoom})` }}
           >
-          <svg className={styles.edges}>
-            {edges.map((e) => (
-              <path
-                key={e.id}
-                d={`M ${e.x1} ${e.y1} C ${e.x1} ${e.y1 + 48}, ${e.x2} ${e.y2 - 48}, ${e.x2} ${e.y2}`}
-                className={e.done ? styles.edgeDone : styles.edgeRunning}
-              />
-            ))}
-          </svg>
-
-          <div
-            className={planeDragOver ? `${styles.plane} ${styles.planeDropTarget}` : styles.plane}
-            ref={(el) => {
-              planeRef.current = el
-              setPlaneDropRef(el)
-            }}
-          >
-            <Bot size={18} />
-            <div>
-              <div className={styles.planeTitle}>
-                {teamName ? t('ws.leadTeam', { team: teamName }) : t('ws.controlPlane')}
-              </div>
-              <div className={styles.planeSubtitle}>
-                {session ? session.folder : t('ws.claudeMainSession')}
-              </div>
-              {leadCost ? (
-                <div className={styles.cardCost}>
-                  {shortModel(leadCost.model) ? (
-                    <span className={styles.cardCostModel}>{shortModel(leadCost.model)}</span>
-                  ) : null}
-                  <span className={styles.cardCostTokens}>
-                    {fmtTokens(leadCost.total_tokens)} {t('ws.tokens')}
-                  </span>
-                  {leadCost.cost_usd != null ? (
-                    <span className={`${styles.cardCostUsd} ${costClassFor(leadCost.cost_usd)}`}>
-                      {fmtUsd(leadCost.cost_usd)}
-                    </span>
-                  ) : null}
-                </div>
-              ) : null}
-            </div>
-            <span className={running > 0 ? styles.planeDotActive : styles.planeDot} />
-          </div>
-
-          {/* agents instalados no projeto (idle até o claude delegar) */}
-          {installed.length > 0 ? (
-            <div className={styles.installedRow}>
-              {installed.map((agent) => (
-                <AgentChip
-                  key={agent.name}
-                  name={agent.name}
-                  installed
-                  foreign={!agent.from_alethe}
-                  action={
-                    <button
-                      type="button"
-                      className={styles.chipAction}
-                      title={t('ws.removeFromProject')}
-                      onClick={() => uninstallAgent(agent)}
-                      aria-label={t('ws.removeAgent', { name: agent.name })}
-                    >
-                      <X size={13} />
-                    </button>
-                  }
+            <svg className={styles.edges}>
+              {edges.map((e) => (
+                <path
+                  key={e.id}
+                  d={`M ${e.x1} ${e.y1} C ${e.x1} ${e.y1 + 48}, ${e.x2} ${e.y2 - 48}, ${e.x2} ${e.y2}`}
+                  className={e.done ? styles.edgeDone : styles.edgeRunning}
                 />
               ))}
-            </div>
-          ) : null}
+            </svg>
 
-          {/* codex workers — terminais codex reais, clicar expande */}
-          {codexWorkers.length > 0 ? (
-            <div className={styles.codexRow}>
-              {codexWorkers.map((w) => (
-                <div
-                  key={w.ptyId}
-                  ref={(el) => {
-                    if (el) cardRefs.current.set(w.ptyId, el)
-                    else cardRefs.current.delete(w.ptyId)
-                  }}
-                  className={styles.codexCard}
-                  role="button"
-                  tabIndex={0}
-                  onClick={() => setExpandedCodexId(w.ptyId)}
-                  onKeyDown={(e) => {
-                    if (e.key === 'Enter' || e.key === ' ') setExpandedCodexId(w.ptyId)
-                  }}
-                >
-                  <div className={styles.cardHeader}>
-                    <span className={styles.codexType}>
-                      <CodexIcon size={15} /> codex
-                    </span>
-                    <span
-                      className={w.exitedCode !== null ? styles.statusDone : styles.statusRunning}
-                    >
-                      {w.exitedCode !== null ? `exit ${w.exitedCode}` : 'running'}
-                    </span>
-                  </div>
-                  <div className={styles.cardPrompt}>{w.title}</div>
-                  {w.result ? <div className={styles.codexResult}>{w.result}</div> : null}
-                  <div className={styles.codexCardFooter}>
-                    <span className={styles.cardId}>{w.ptyId}</span>
-                    <span className={styles.codexExpandHint}>
-                      <Maximize2 size={11} /> {t('ws.openTerminal')}
-                    </span>
-                  </div>
+            <div
+              className={planeDragOver ? `${styles.plane} ${styles.planeDropTarget}` : styles.plane}
+              ref={(el) => {
+                planeRef.current = el
+                setPlaneDropRef(el)
+              }}
+            >
+              <Bot size={18} />
+              <div>
+                <div className={styles.planeTitle}>
+                  {teamName ? t('ws.leadTeam', { team: teamName }) : t('ws.controlPlane')}
                 </div>
-              ))}
-            </div>
-          ) : null}
-
-          {teammates.length > 0 ? (
-            <div className={styles.teammatesArea}>{teammates.map(renderCard)}</div>
-          ) : null}
-
-          <div className={styles.cardsArea}>
-            {nodes.length === 0 ? (
-              <div className={styles.empty}>
-                <div>{t('ws.noSubagentYet')}</div>
-                <div className={styles.testPrompt}>
-                  <code>{TEST_PROMPT}</code>
-                  <button type="button" className={styles.clearButton} onClick={copyTestPrompt}>
-                    <ClipboardCopy size={13} />
-                    {copied ? t('ws.copied') : t('ws.copy')}
-                  </button>
+                <div className={styles.planeSubtitle}>
+                  {session ? session.folder : t('ws.claudeMainSession')}
                 </div>
-              </div>
-            ) : (
-              subagentGroups.map(([type, cards]) => {
-                const Icon = personaIconFor(type)
-                return (
-                  <div
-                    key={type}
-                    className={styles.agentGroup}
-                    style={{ ['--agent-color' as string]: colorFor(type) }}
-                  >
-                    <div
-                      className={styles.agentGroupHeader}
-                      ref={(el) => {
-                        if (el) cardRefs.current.set(`group:${type}`, el)
-                        else cardRefs.current.delete(`group:${type}`)
-                      }}
-                    >
-                      <Icon size={13} />
-                      <span className={styles.agentGroupName}>{type}</span>
-                      <span className={styles.agentGroupCount}>{cards.length}</span>
-                    </div>
-                    <div className={styles.agentGroupCards}>{cards.map(renderCard)}</div>
+                {leadCost ? (
+                  <div className={styles.cardCost}>
+                    {shortModel(leadCost.model) ? (
+                      <span className={styles.cardCostModel}>{shortModel(leadCost.model)}</span>
+                    ) : null}
+                    <span className={styles.cardCostTokens}>
+                      {fmtTokens(leadCost.total_tokens)} {t('ws.tokens')}
+                    </span>
+                    {leadCost.cost_usd != null ? (
+                      <span className={`${styles.cardCostUsd} ${costClassFor(leadCost.cost_usd)}`}>
+                        {fmtUsd(leadCost.cost_usd)}
+                      </span>
+                    ) : null}
                   </div>
-                )
-              })
-            )}
-          </div>
-
-          {/* camada de tasks do time como DAG — cada task liga ao teammate dono */}
-          {taskList.length > 0 ? (
-            <div className={styles.tasksLayer}>
-              <div className={styles.tasksLayerTitle}>
-                <ListTodo size={13} /> {t('ws.tasksTitle')}
-                {teamName ? ` · ${teamName}` : ''}
+                ) : null}
               </div>
-              <div className={styles.tasksLayerGrid}>
-                {taskList.map((task) => (
-                  <div
-                    key={task.id}
-                    ref={(el) => {
-                      if (el) taskRefs.current.set(task.id, el)
-                      else taskRefs.current.delete(task.id)
-                    }}
-                    className={
-                      task.status === 'completed'
-                        ? `${styles.taskNode} ${styles.taskNodeDone}`
-                        : styles.taskNode
+              <span className={running > 0 ? styles.planeDotActive : styles.planeDot} />
+            </div>
+
+            {/* agents instalados no projeto (idle até o claude delegar) */}
+            {installed.length > 0 ? (
+              <div className={styles.installedRow}>
+                {installed.map((agent) => (
+                  <AgentChip
+                    key={agent.name}
+                    name={agent.name}
+                    installed
+                    foreign={!agent.from_alethe}
+                    action={
+                      <button
+                        type="button"
+                        className={styles.chipAction}
+                        title={t('ws.removeFromProject')}
+                        onClick={() => uninstallAgent(agent)}
+                        aria-label={t('ws.removeAgent', { name: agent.name })}
+                      >
+                        <X size={13} />
+                      </button>
                     }
+                  />
+                ))}
+              </div>
+            ) : null}
+
+            {/* codex workers — terminais codex reais, clicar expande */}
+            {codexWorkers.length > 0 ? (
+              <div className={styles.codexRow}>
+                {codexWorkers.map((w) => (
+                  <div
+                    key={w.ptyId}
+                    ref={(el) => {
+                      if (el) cardRefs.current.set(w.ptyId, el)
+                      else cardRefs.current.delete(w.ptyId)
+                    }}
+                    className={styles.codexCard}
+                    role="button"
+                    tabIndex={0}
+                    onClick={() => setExpandedCodexId(w.ptyId)}
+                    onKeyDown={(e) => {
+                      if (e.key === 'Enter' || e.key === ' ') setExpandedCodexId(w.ptyId)
+                    }}
                   >
-                    <div className={styles.taskNodeHead}>
+                    <div className={styles.cardHeader}>
+                      <span className={styles.codexType}>
+                        <CodexIcon size={15} /> codex
+                      </span>
                       <span
-                        className={
-                          task.status === 'completed'
-                            ? styles.taskDotDone
-                            : task.status === 'in_progress'
-                              ? styles.taskDotActive
-                              : styles.taskDot
-                        }
-                      />
-                      <span className={styles.taskNodeSubject}>{task.subject}</span>
+                        className={w.exitedCode !== null ? styles.statusDone : styles.statusRunning}
+                      >
+                        {w.exitedCode !== null ? `exit ${w.exitedCode}` : 'running'}
+                      </span>
                     </div>
-                    <div className={styles.taskNodeMeta}>
-                      #{task.id}
-                      {task.owner ? ` · ${task.owner}` : ''} ·{' '}
-                      {task.status === 'completed'
-                        ? t('ws.taskCompleted')
-                        : task.status === 'in_progress'
-                          ? t('ws.taskInProgress')
-                          : t('ws.taskPending')}
+                    <div className={styles.cardPrompt}>{w.title}</div>
+                    {w.result ? <div className={styles.codexResult}>{w.result}</div> : null}
+                    <div className={styles.codexCardFooter}>
+                      <span className={styles.cardId}>{w.ptyId}</span>
+                      <span className={styles.codexExpandHint}>
+                        <Maximize2 size={11} /> {t('ws.openTerminal')}
+                      </span>
                     </div>
                   </div>
                 ))}
               </div>
+            ) : null}
+
+            {teammates.length > 0 ? (
+              <div className={styles.teammatesArea}>{teammates.map(renderCard)}</div>
+            ) : null}
+
+            <div className={styles.cardsArea}>
+              {nodes.length === 0 ? (
+                <div className={styles.empty}>
+                  <div>{t('ws.noSubagentYet')}</div>
+                  <div className={styles.testPrompt}>
+                    <code>{TEST_PROMPT}</code>
+                    <button type="button" className={styles.clearButton} onClick={copyTestPrompt}>
+                      <ClipboardCopy size={13} />
+                      {copied ? t('ws.copied') : t('ws.copy')}
+                    </button>
+                  </div>
+                </div>
+              ) : (
+                subagentGroups.map(([type, cards]) => {
+                  const Icon = personaIconFor(type)
+                  return (
+                    <div
+                      key={type}
+                      className={styles.agentGroup}
+                      style={{ ['--agent-color' as string]: colorFor(type) }}
+                    >
+                      <div
+                        className={styles.agentGroupHeader}
+                        ref={(el) => {
+                          if (el) cardRefs.current.set(`group:${type}`, el)
+                          else cardRefs.current.delete(`group:${type}`)
+                        }}
+                      >
+                        <Icon size={13} />
+                        <span className={styles.agentGroupName}>{type}</span>
+                        <span className={styles.agentGroupCount}>{cards.length}</span>
+                      </div>
+                      <div className={styles.agentGroupCards}>{cards.map(renderCard)}</div>
+                    </div>
+                  )
+                })
+              )}
             </div>
-          ) : null}
+
+            {/* camada de tasks do time como DAG — cada task liga ao teammate dono */}
+            {taskList.length > 0 ? (
+              <div className={styles.tasksLayer}>
+                <div className={styles.tasksLayerTitle}>
+                  <ListTodo size={13} /> {t('ws.tasksTitle')}
+                  {teamName ? ` · ${teamName}` : ''}
+                </div>
+                <div className={styles.tasksLayerGrid}>
+                  {taskList.map((task) => (
+                    <div
+                      key={task.id}
+                      ref={(el) => {
+                        if (el) taskRefs.current.set(task.id, el)
+                        else taskRefs.current.delete(task.id)
+                      }}
+                      className={
+                        task.status === 'completed'
+                          ? `${styles.taskNode} ${styles.taskNodeDone}`
+                          : styles.taskNode
+                      }
+                    >
+                      <div className={styles.taskNodeHead}>
+                        <span
+                          className={
+                            task.status === 'completed'
+                              ? styles.taskDotDone
+                              : task.status === 'in_progress'
+                                ? styles.taskDotActive
+                                : styles.taskDot
+                          }
+                        />
+                        <span className={styles.taskNodeSubject}>{task.subject}</span>
+                      </div>
+                      <div className={styles.taskNodeMeta}>
+                        #{task.id}
+                        {task.owner ? ` · ${task.owner}` : ''} ·{' '}
+                        {task.status === 'completed'
+                          ? t('ws.taskCompleted')
+                          : task.status === 'in_progress'
+                            ? t('ws.taskInProgress')
+                            : t('ws.taskPending')}
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            ) : null}
           </div>
         </div>
       </div>
@@ -1726,11 +1759,15 @@ function AgentCanvasInner() {
               <span className={styles.economyHint}>{t('ws.agentsChangedRestart')}</span>
             ) : null}
             {claudeExited !== null ? (
-              <span className={styles.terminalExited}>{t('ws.exitedCode', { code: claudeExited })}</span>
+              <span className={styles.terminalExited}>
+                {t('ws.exitedCode', { code: claudeExited })}
+              </span>
             ) : null}
             <button
               type="button"
-              className={economyOn ? `${styles.clearButton} ${styles.economyOn}` : styles.clearButton}
+              className={
+                economyOn ? `${styles.clearButton} ${styles.economyOn}` : styles.clearButton
+              }
               onClick={toggleEconomy}
               title={t('ws.economyModeTitle')}
             >
@@ -1788,7 +1825,9 @@ function AgentCanvasInner() {
                 </span>
                 <span className={styles.terminalCwd}>{w.title}</span>
                 {w.exitedCode !== null ? (
-                  <span className={styles.terminalExited}>{t('ws.exitedCode', { code: w.exitedCode })}</span>
+                  <span className={styles.terminalExited}>
+                    {t('ws.exitedCode', { code: w.exitedCode })}
+                  </span>
                 ) : null}
                 <button
                   type="button"
@@ -1814,7 +1853,9 @@ function AgentCanvasInner() {
                   cwd={w.cwd}
                   extraArgs={w.args}
                   terminalTheme={terminalTheme}
-                  onSpawned={(id) => console.log('[AgentCanvasPOC] codex worker spawnado, pty:', id)}
+                  onSpawned={(id) =>
+                    console.log('[AgentCanvasPOC] codex worker spawnado, pty:', id)
+                  }
                   onExit={(code) => {
                     console.log('[AgentCanvasPOC] codex worker saiu, code:', code)
                     setCodexWorkers((prev) =>

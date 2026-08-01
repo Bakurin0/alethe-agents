@@ -14,8 +14,17 @@ import { AgentCompletionMonitor } from '../../lib/agentCompletionMonitor'
 import { preparePtyRuntimeLaunch } from '../../lib/agentRuntimeAdapter'
 import { recordAgentActivityInput } from '../../lib/activityTracker'
 import { buildAgentLaunch } from '../../lib/sessionLaunch'
-import { claimDiscoveredSession, claimMostRecentSession, registerSessionClaim } from '../../lib/sessionDiscovery'
-import { consumeSession, removeSession, savedConversationIdFor, saveSession } from '../../lib/sessionResume'
+import {
+  claimDiscoveredSession,
+  claimMostRecentSession,
+  registerSessionClaim,
+} from '../../lib/sessionDiscovery'
+import {
+  consumeSession,
+  removeSession,
+  savedConversationIdFor,
+  saveSession,
+} from '../../lib/sessionResume'
 import { waitForSessionHint } from '../../lib/sessionWatch'
 import { acquireSpawnSlot, releaseSpawnSlot } from '../../lib/spawnQueue'
 import { readScopedStorage, writeScopedStorage } from '../../lib/storageNamespace'
@@ -44,7 +53,12 @@ import {
   writePty,
 } from '../../lib/tauri'
 import { getLocale, translate, useT } from '../../lib/i18n'
-import { agentCliCommand, type AgentRuntimeProfile, type AgentType, type Theme } from '../../lib/types'
+import {
+  agentCliCommand,
+  type AgentRuntimeProfile,
+  type AgentType,
+  type Theme,
+} from '../../lib/types'
 import { useProjectsStore } from '../../stores/projectsStore'
 import { useTerminalsStore } from '../../stores/terminalsStore'
 import { useUiStore } from '../../stores/uiStore'
@@ -297,11 +311,7 @@ function loadPromptHistory(ptyId: string): string[] {
   return history
 }
 
-async function writePtyChunked(
-  id: string,
-  text: string,
-  bracketed: boolean,
-): Promise<void> {
+async function writePtyChunked(id: string, text: string, bracketed: boolean): Promise<void> {
   // Bracketed paste (DECSET 2004): quando a app liga, envolvemos a colagem
   // inteira nos marcadores 200~/201~ pra ela tratar como um bloco único. Sem
   // isso, cada \r interno vira Enter e TUIs como o Claude submetem só a
@@ -354,7 +364,7 @@ export function XTermView({
   const linkActionsRef = useRef<LinkActionState | null>(null)
 
   const cliPathOverride = useProjectsStore((s) =>
-    command && command !== 'shell' ? s.cliPaths[command] ?? null : null,
+    command && command !== 'shell' ? (s.cliPaths[command] ?? null) : null,
   )
   const setCliPath = useProjectsStore((s) => s.setCliPath)
 
@@ -395,40 +405,31 @@ export function XTermView({
 
   // Clique no link abre um menu compacto junto ao cursor. A posição usa uma
   // estimativa conservadora do tamanho para nunca cortar o menu na viewport.
-  const showLinkActionsMenu = useCallback(
-    (event: MouseEvent, link: DetectedTerminalLink) => {
-      event.preventDefault()
-      event.stopPropagation()
-      // O xterm inicia seleção no pointerdown antes de chamar `activate` no
-      // clique. Limpa esse gesto residual para o menu não parecer estar
-      // "segurando" e selecionando o conteúdo que ficou atrás dele.
-      terminalRef.current?.clearSelection()
-      window.getSelection()?.removeAllRanges()
+  const showLinkActionsMenu = useCallback((event: MouseEvent, link: DetectedTerminalLink) => {
+    event.preventDefault()
+    event.stopPropagation()
+    // O xterm inicia seleção no pointerdown antes de chamar `activate` no
+    // clique. Limpa esse gesto residual para o menu não parecer estar
+    // "segurando" e selecionando o conteúdo que ficou atrás dele.
+    terminalRef.current?.clearSelection()
+    window.getSelection()?.removeAllRanges()
 
-      const maxLeft = window.innerWidth - LINK_MENU_WIDTH - LINK_MENU_MARGIN
-      const x = Math.max(
-        LINK_MENU_MARGIN,
-        Math.min(event.clientX + LINK_MENU_OFFSET, maxLeft),
-      )
-      const below = event.clientY + LINK_MENU_OFFSET
-      const y =
-        below + LINK_MENU_MAX_HEIGHT <= window.innerHeight - LINK_MENU_MARGIN
-          ? below
-          : Math.max(
-              LINK_MENU_MARGIN,
-              event.clientY - LINK_MENU_MAX_HEIGHT - LINK_MENU_OFFSET,
-            )
+    const maxLeft = window.innerWidth - LINK_MENU_WIDTH - LINK_MENU_MARGIN
+    const x = Math.max(LINK_MENU_MARGIN, Math.min(event.clientX + LINK_MENU_OFFSET, maxLeft))
+    const below = event.clientY + LINK_MENU_OFFSET
+    const y =
+      below + LINK_MENU_MAX_HEIGHT <= window.innerHeight - LINK_MENU_MARGIN
+        ? below
+        : Math.max(LINK_MENU_MARGIN, event.clientY - LINK_MENU_MAX_HEIGHT - LINK_MENU_OFFSET)
 
-      setLinkActions({
-        text: link.text,
-        kind: link.kind,
-        fileKind: link.fileKind,
-        x,
-        y,
-      })
-    },
-    [],
-  )
+    setLinkActions({
+      text: link.text,
+      kind: link.kind,
+      fileKind: link.fileKind,
+      x,
+      y,
+    })
+  }, [])
 
   // Espelha o estado num ref pro listener do xterm, criado uma vez por PTY.
   useEffect(() => {
@@ -889,17 +890,19 @@ export function XTermView({
       if (!id) return
       const chunk = queuedInput
       queuedInput = ''
-      inputWriteChain = inputWriteChain.then(() => writePty(id, chunk)).catch((error) => {
-        console.warn(`[pty-input] falha ao escrever em ${id}; solicitando recuperaÃ§Ã£o`, error)
-        if (disposed || writeRecoveryPending) return
-        writeRecoveryPending = true
-        window.dispatchEvent(
-          new CustomEvent('alethe:terminal-restart-request', { detail: { ptyId: id } }),
-        )
-        window.setTimeout(() => {
-          writeRecoveryPending = false
-        }, 5_000)
-      })
+      inputWriteChain = inputWriteChain
+        .then(() => writePty(id, chunk))
+        .catch((error) => {
+          console.warn(`[pty-input] falha ao escrever em ${id}; solicitando recuperaÃ§Ã£o`, error)
+          if (disposed || writeRecoveryPending) return
+          writeRecoveryPending = true
+          window.dispatchEvent(
+            new CustomEvent('alethe:terminal-restart-request', { detail: { ptyId: id } }),
+          )
+          window.setTimeout(() => {
+            writeRecoveryPending = false
+          }, 5_000)
+        })
     }
     const queueInput = (id: string, data: string) => {
       if (id !== ptyIdRef.current || !data) return
@@ -973,8 +976,7 @@ export function XTermView({
           agent: command,
           label: command,
           cwd,
-          onStatusChange: (status) =>
-            useTerminalsStore.getState().setStatus(existingId, status),
+          onStatusChange: (status) => useTerminalsStore.getState().setStatus(existingId, status),
           onComplete: () => onAgentCompleteRef.current?.(),
         })
       }
@@ -1072,9 +1074,13 @@ export function XTermView({
             console.info(`[pty-launch] ${command} usando override: ${cliPathOverride}`)
           } else {
             const auto = await findCliLauncher(agentCliCommand(command) ?? command)
-            console.info(`[pty-launch] ${command} findCliLauncher → ${auto ?? 'null (NÃO ENCONTRADO)'}`)
+            console.info(
+              `[pty-launch] ${command} findCliLauncher → ${auto ?? 'null (NÃO ENCONTRADO)'}`,
+            )
             if (!auto) {
-              console.warn(`[pty-launch] ${command} não resolvido — mostrando overlay "not found" e ficando offline`)
+              console.warn(
+                `[pty-launch] ${command} não resolvido — mostrando overlay "not found" e ficando offline`,
+              )
               setCommandNotFound(command)
               useTerminalsStore.getState().setStatus(ptyId, 'offline')
               return
@@ -1084,9 +1090,10 @@ export function XTermView({
 
         // projects.json é a fonte principal. O marcador de crash no localStorage
         // serve apenas de fallback para arquivos antigos que ainda não tinham ID.
-        const savedSession = command && RESUMABLE_AGENTS.includes(command)
-          ? consumeSession(sessionPersistenceKey)
-          : null
+        const savedSession =
+          command && RESUMABLE_AGENTS.includes(command)
+            ? consumeSession(sessionPersistenceKey)
+            : null
         const savedConversationId = savedConversationIdFor(savedSession, command, cwd)
         let resumeId = sessionId ?? savedConversationId
         // Fallback: se a tentativa anterior morreu no nascimento usando resume,
@@ -1099,18 +1106,22 @@ export function XTermView({
         // podem ficar órfãos após limpeza de histórico ou sincronização entre PCs;
         // nesse caso removemos o vínculo e iniciamos uma conversa limpa.
         if (
-          (command === 'claude' || command === 'codex' || command === 'antigravity' || command === 'opencode')
-          && resumeId
-          && cwd
+          (command === 'claude' ||
+            command === 'codex' ||
+            command === 'antigravity' ||
+            command === 'opencode') &&
+          resumeId &&
+          cwd
         ) {
           try {
-            const existing = command === 'claude'
-              ? await snapshotClaudeSessions(cwd)
-              : command === 'codex'
-                ? await snapshotCodexSessions(cwd)
-                : command === 'antigravity'
-                  ? await snapshotAntigravitySessions(cwd)
-                  : await snapshotOpenCodeSessions(cwd)
+            const existing =
+              command === 'claude'
+                ? await snapshotClaudeSessions(cwd)
+                : command === 'codex'
+                  ? await snapshotCodexSessions(cwd)
+                  : command === 'antigravity'
+                    ? await snapshotAntigravitySessions(cwd)
+                    : await snapshotOpenCodeSessions(cwd)
             if (!existing.some((session) => session.id === resumeId)) {
               console.warn(`[pty-launch] ${command} ignorando sessão órfã ${resumeId}`)
               resumeId = undefined
@@ -1147,7 +1158,10 @@ export function XTermView({
         // Claude recebe `--mcp-config`; Codex/OpenCode recebem por merge no config
         // do projeto (não têm flag), escrito antes do spawn.
         let graphifyMcpPath: string | undefined
-        if (graphifyRepo && (command === 'claude' || command === 'codex' || command === 'opencode')) {
+        if (
+          graphifyRepo &&
+          (command === 'claude' || command === 'codex' || command === 'opencode')
+        ) {
           void graphifyEnsureGraph(graphifyRepo).catch(() => undefined)
           if (command === 'claude') {
             graphifyMcpPath = await graphifyMcpConfigPath(graphifyRepo).catch(() => undefined)
@@ -1174,15 +1188,16 @@ export function XTermView({
 
         // Snapshot leve antes do spawn para identificar e persistir o ID novo
         // de agentes que não permitem escolher o ID no nascimento.
-        const discoveredSessionsBeforePromise = cwd && !launch.sessionId
-          ? command === 'codex'
-            ? snapshotCodexSessions(cwd).catch(() => [])
-            : command === 'antigravity'
-              ? snapshotAntigravitySessions(cwd).catch(() => [])
-              : command === 'opencode'
-                ? snapshotOpenCodeSessions(cwd).catch(() => [])
-                : null
-          : null
+        const discoveredSessionsBeforePromise =
+          cwd && !launch.sessionId
+            ? command === 'codex'
+              ? snapshotCodexSessions(cwd).catch(() => [])
+              : command === 'antigravity'
+                ? snapshotAntigravitySessions(cwd).catch(() => [])
+                : command === 'opencode'
+                  ? snapshotOpenCodeSessions(cwd).catch(() => [])
+                  : null
+            : null
 
         // Serializa spawns globalmente — sem isso, abrir grupo com N×M terminais
         // dispara muitos spawn_pty em paralelo e trava o app.
@@ -1227,8 +1242,7 @@ export function XTermView({
             agent: command,
             label: command,
             cwd,
-            onStatusChange: (status) =>
-              useTerminalsStore.getState().setStatus(response.id, status),
+            onStatusChange: (status) => useTerminalsStore.getState().setStatus(response.id, status),
             onComplete: () => onAgentCompleteRef.current?.(),
           })
         }
@@ -1250,7 +1264,11 @@ export function XTermView({
           // Codex, Antigravity e OpenCode não permitem escolher o ID no
           // nascimento — precisam do ID específico descoberto depois do spawn
           // pra não misturar conversas de panes diferentes no próximo boot.
-          if ((command === 'codex' || command === 'antigravity' || command === 'opencode') && cwd && discoveredSessionsBeforePromise) {
+          if (
+            (command === 'codex' || command === 'antigravity' || command === 'opencode') &&
+            cwd &&
+            discoveredSessionsBeforePromise
+          ) {
             const detectCreatedSession = async () => {
               const before = new Set((await discoveredSessionsBeforePromise).map((s) => s.id))
               // Janela ~30s (10×3s): o Codex às vezes leva a escrever o arquivo de
@@ -1266,12 +1284,19 @@ export function XTermView({
                   await new Promise((resolve) => setTimeout(resolve, 3000))
                 }
                 if (disposed) return
-                const sessions = command === 'codex'
-                  ? await snapshotCodexSessions(cwd).catch(() => [])
-                  : command === 'antigravity'
-                    ? await snapshotAntigravitySessions(cwd).catch(() => [])
-                    : await snapshotOpenCodeSessions(cwd).catch(() => [])
-                const newSession = claimDiscoveredSession(command, cwd, before, sessions, response.id)
+                const sessions =
+                  command === 'codex'
+                    ? await snapshotCodexSessions(cwd).catch(() => [])
+                    : command === 'antigravity'
+                      ? await snapshotAntigravitySessions(cwd).catch(() => [])
+                      : await snapshotOpenCodeSessions(cwd).catch(() => [])
+                const newSession = claimDiscoveredSession(
+                  command,
+                  cwd,
+                  before,
+                  sessions,
+                  response.id,
+                )
                 if (newSession) {
                   saveSession(sessionPersistenceKey, {
                     sessionId: response.id,
@@ -1324,7 +1349,10 @@ export function XTermView({
             return
           }
           const isAgent =
-            command === 'claude' || command === 'codex' || command === 'opencode' || command === 'antigravity'
+            command === 'claude' ||
+            command === 'codex' ||
+            command === 'opencode' ||
+            command === 'antigravity'
           const elapsed = Date.now() - spawnedAtRef.current
           // Fallback 1: agent morreu no nascimento COM resume → sessão órfã.
           // Limpa e reabre uma vez com sessão nova, em vez de deixar o pane cinza.
@@ -1472,11 +1500,11 @@ export function XTermView({
       ? t('term.bootPreparing')
       : bootPhase === 'queued'
         ? t('term.bootQueued')
-      : bootPhase === 'spawning'
-        ? t('term.bootSpawning')
-        : bootPhase === 'attaching'
-          ? t('term.bootAttaching')
-          : null
+        : bootPhase === 'spawning'
+          ? t('term.bootSpawning')
+          : bootPhase === 'attaching'
+            ? t('term.bootAttaching')
+            : null
 
   return (
     <>
@@ -1572,11 +1600,7 @@ export function XTermView({
             >
               <ExternalLink size={15} />
               <span>
-                {t(
-                  linkActions.kind === 'url'
-                    ? 'xterm.openInBrowser'
-                    : 'xterm.openInDefaultApp',
-                )}
+                {t(linkActions.kind === 'url' ? 'xterm.openInBrowser' : 'xterm.openInDefaultApp')}
               </span>
             </button>
             {linkActions.kind === 'path' ? (

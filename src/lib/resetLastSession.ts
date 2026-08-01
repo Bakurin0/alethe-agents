@@ -59,9 +59,7 @@ function pickSessionId(
 ): string | null {
   const candidates = sessions.filter((s) => s.id !== exclude.id)
   if (candidates.length === 0) return null
-  const older = exclude.before
-    ? candidates.filter((s) => s.modified_at_ms < exclude.before!)
-    : []
+  const older = exclude.before ? candidates.filter((s) => s.modified_at_ms < exclude.before!) : []
   const pool = older.length > 0 ? older : candidates
   return pool.reduce((a, b) => (b.modified_at_ms > a.modified_at_ms ? b : a)).id
 }
@@ -89,7 +87,8 @@ async function latestSessionId(
       }
       return null
     }
-    if (agent === 'antigravity') return pickSessionId(await snapshotAntigravitySessions(cwd), exclude)
+    if (agent === 'antigravity')
+      return pickSessionId(await snapshotAntigravitySessions(cwd), exclude)
   } catch {
     return null
   }
@@ -114,7 +113,9 @@ function buildResumeArgs(agent: AgentType, baseArgs: string[], sessionId: string
     return sessionId ? ['resume', sessionId, ...clean] : ['resume', '--last', ...clean]
   }
   if (agent === 'antigravity') {
-    const clean = stripFlagWithValue(baseArgs, '--conversation').filter((a) => a !== '--continue' && a !== '-c')
+    const clean = stripFlagWithValue(baseArgs, '--conversation').filter(
+      (a) => a !== '--continue' && a !== '-c',
+    )
     return sessionId ? ['--conversation', sessionId, ...clean] : ['--continue', ...clean]
   }
   // opencode: `--session <id>` quando conhecemos o ID, senão `--continue`
@@ -204,8 +205,7 @@ export async function resetLastSession(): Promise<ResetLastSessionResult> {
               : active?.claudeSessionId,
         before: active?.timestamp,
       }
-      const savedOpenCodeId =
-        target.agent === 'opencode' ? active?.opencodeSessionId : undefined
+      const savedOpenCodeId = target.agent === 'opencode' ? active?.opencodeSessionId : undefined
       const sessionId = await latestSessionId(target.agent, cwd, exclude, savedOpenCodeId)
       const extraArgs = buildResumeArgs(target.agent, target.extraArgs, sessionId)
 
@@ -226,9 +226,9 @@ export async function resetLastSession(): Promise<ResetLastSessionResult> {
       // Re-arma o resume automático pra que o próximo boot também retome.
       saveSession(target.ptyId, {
         sessionId: target.ptyId,
-        claudeSessionId: target.agent === 'claude' ? sessionId ?? undefined : undefined,
-        codexSessionId: target.agent === 'codex' ? sessionId ?? undefined : undefined,
-        opencodeSessionId: target.agent === 'opencode' ? sessionId ?? undefined : undefined,
+        claudeSessionId: target.agent === 'claude' ? (sessionId ?? undefined) : undefined,
+        codexSessionId: target.agent === 'codex' ? (sessionId ?? undefined) : undefined,
+        opencodeSessionId: target.agent === 'opencode' ? (sessionId ?? undefined) : undefined,
         cwd,
         agent: target.agent,
         timestamp: Date.now(),

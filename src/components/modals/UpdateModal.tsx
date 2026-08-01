@@ -42,12 +42,7 @@ export function UpdateModal() {
       title={t('update.availableTitle', { version: info.version })}
       footer={
         <>
-          <button
-            type="button"
-            className={controls.btn}
-            onClick={closeModal}
-            disabled={installing}
-          >
+          <button type="button" className={controls.btn} onClick={closeModal} disabled={installing}>
             {t('update.later')}
           </button>
           <button

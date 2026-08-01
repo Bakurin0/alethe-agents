@@ -123,11 +123,7 @@ export function UserProfile() {
             <Users size={13} />
             <span>{t('profile.manageAccounts')}</span>
           </button>
-          <button
-            type="button"
-            className={`${styles.item} ${styles.dangerItem}`}
-            onClick={logout}
-          >
+          <button type="button" className={`${styles.item} ${styles.dangerItem}`} onClick={logout}>
             <LogOut size={13} />
             <span>{t('profile.logout')}</span>
           </button>

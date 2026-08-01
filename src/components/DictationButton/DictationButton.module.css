@@ -13,7 +13,10 @@
   color: var(--fg-muted, var(--fg));
   cursor: pointer;
   box-shadow: 0 6px 20px rgba(0, 0, 0, 0.28);
-  transition: color 0.12s, border-color 0.12s, background 0.12s;
+  transition:
+    color 0.12s,
+    border-color 0.12s,
+    background 0.12s;
 }
 
 .btn:hover:not(:disabled) {
@@ -35,9 +38,13 @@
 
 @keyframes audioRadarPulse {
   0% {
-    box-shadow: 0 0 0 0px color-mix(in srgb, var(--status-offline) 60%, transparent), 0 6px 20px rgba(0, 0, 0, 0.35);
+    box-shadow:
+      0 0 0 0px color-mix(in srgb, var(--status-offline) 60%, transparent),
+      0 6px 20px rgba(0, 0, 0, 0.35);
   }
   100% {
-    box-shadow: 0 0 0 16px color-mix(in srgb, var(--status-offline) 0%, transparent), 0 6px 20px rgba(0, 0, 0, 0.35);
+    box-shadow:
+      0 0 0 16px color-mix(in srgb, var(--status-offline) 0%, transparent),
+      0 6px 20px rgba(0, 0, 0, 0.35);
   }
 }

@@ -53,7 +53,8 @@ import type { EventBusPayload, MetricData, PluginManifest, PlanningCommit } from
 import controls from './controls.module.css'
 import styles from './PreferencesModal.module.css'
 
-type CategoryId = 'account' | 'appearance' | 'features' | 'terminal' | 'integrations' | 'multiagent' | 'about'
+type CategoryId =
+  'account' | 'appearance' | 'features' | 'terminal' | 'integrations' | 'multiagent' | 'about'
 
 type Category = {
   id: CategoryId
@@ -101,36 +102,174 @@ export function PreferencesModal() {
 
   const categories = useMemo<Category[]>(
     () => [
-      { id: 'account', label: t('prefs.categoryAccount'), description: t('prefs.categoryAccountDesc'), Icon: UserRound },
-      { id: 'appearance', label: t('prefs.categoryAppearance'), description: t('prefs.categoryAppearanceDesc'), Icon: Palette },
-      { id: 'features', label: t('prefs.features'), description: t('prefs.featuresDesc'), Icon: Blocks },
-      { id: 'terminal', label: t('prefs.categoryTerminal'), description: t('prefs.categoryTerminalDesc'), Icon: TerminalSquare },
-      { id: 'integrations', label: t('prefs.categoryIntegrations'), description: t('prefs.categoryIntegrationsDesc'), Icon: Plug },
-      { id: 'multiagent', label: 'Multi-Agent & Telemetry', description: 'Real-time metrics, event traces, and structured logs.', Icon: Activity },
-      { id: 'about', label: t('prefs.categoryAbout'), description: t('prefs.categoryAboutDesc'), Icon: Info },
+      {
+        id: 'account',
+        label: t('prefs.categoryAccount'),
+        description: t('prefs.categoryAccountDesc'),
+        Icon: UserRound,
+      },
+      {
+        id: 'appearance',
+        label: t('prefs.categoryAppearance'),
+        description: t('prefs.categoryAppearanceDesc'),
+        Icon: Palette,
+      },
+      {
+        id: 'features',
+        label: t('prefs.features'),
+        description: t('prefs.featuresDesc'),
+        Icon: Blocks,
+      },
+      {
+        id: 'terminal',
+        label: t('prefs.categoryTerminal'),
+        description: t('prefs.categoryTerminalDesc'),
+        Icon: TerminalSquare,
+      },
+      {
+        id: 'integrations',
+        label: t('prefs.categoryIntegrations'),
+        description: t('prefs.categoryIntegrationsDesc'),
+        Icon: Plug,
+      },
+      {
+        id: 'multiagent',
+        label: 'Multi-Agent & Telemetry',
+        description: 'Real-time metrics, event traces, and structured logs.',
+        Icon: Activity,
+      },
+      {
+        id: 'about',
+        label: t('prefs.categoryAbout'),
+        description: t('prefs.categoryAboutDesc'),
+        Icon: Info,
+      },
     ],
     [t],
   )
 
   const searchItems = useMemo<SearchItem[]>(
     () => [
-      { category: 'account', target: 'profile', label: t('prefs.profile'), description: t('prefs.profileDesc'), keywords: 'avatar photo name nome perfil account conta' },
-      { category: 'account', target: 'language', label: t('prefs.language'), description: t('prefs.languageDesc'), keywords: 'language idioma português english' },
-      { category: 'account', target: 'local-accounts', label: t('prefs.localAccounts'), description: t('prefs.localAccountsDesc'), keywords: 'account profile conta perfil local switch trocar' },
-      { category: 'appearance', target: 'ui-theme', label: t('prefs.uiTheme'), description: t('prefs.uiThemeDesc'), keywords: 'theme tema colors cores light dark claro escuro' },
-      { category: 'appearance', target: 'ui-zoom', label: t('prefs.uiZoom'), description: t('prefs.uiZoomDesc'), keywords: 'zoom scale escala tamanho interface' },
-      { category: 'appearance', target: 'window-opacity', label: t('prefs.windowOpacity'), description: t('prefs.windowOpacityDesc'), keywords: 'opacity opacidade transparency transparência desktop window janela' },
-      { category: 'features', target: 'optional-features', label: t('prefs.features'), description: t('prefs.featuresDesc'), keywords: 'features recursos modules módulos todo task tarefa git source control sidebar' },
-      { category: 'terminal', target: 'terminal-theme', label: t('prefs.terminalTheme'), description: t('prefs.terminalThemeDesc'), keywords: 'terminal theme tema colors cores' },
-      { category: 'terminal', target: 'resource-policy', label: t('prefs.resourcePolicy'), description: t('prefs.resourcePolicyDesc'), keywords: 'memory ram performance budget limit lru suspend memória desempenho limite' },
-      { category: 'terminal', target: 'spawn-concurrency', label: t('prefs.spawnConcurrency'), description: t('prefs.spawnConcurrencyDesc'), keywords: 'spawn concurrency parallel paralelo fila queue performance pty' },
-      { category: 'terminal', target: 'agents', label: t('prefs.agentsTitle'), description: t('prefs.agentsDesc'), keywords: 'agents agentes claude codex opencode shell' },
-      { category: 'terminal', target: 'reset-session', label: t('prefs.resetSession'), description: t('prefs.resetSessionDesc'), keywords: 'reset session resume retomar resetar sessão última last recover recuperar resume crash boot' },
-      { category: 'integrations', target: 'spotify', label: t('prefs.spotify'), description: t('prefs.spotifyDesc'), keywords: 'spotify music música client id secret' },
-      { category: 'integrations', target: 'discord', label: t('prefs.discordPresence'), description: t('prefs.discordPresenceHint'), keywords: 'discord rich presence status integração' },
-      { category: 'integrations', target: 'dictation', label: t('prefs.dictation'), description: t('prefs.dictationDesc'), keywords: 'dictation voice mic microphone ditado voz microfone handy speech' },
-      { category: 'about', target: 'app-version', label: t('prefs.aboutVersionTitle'), description: t('prefs.aboutVersionDesc'), keywords: 'version versão about sobre build info app' },
-      { category: 'about', target: 'app-updates', label: t('prefs.aboutUpdatesTitle'), description: t('prefs.aboutUpdatesDesc'), keywords: 'update atualização atualizar upgrade nova versão release check' },
+      {
+        category: 'account',
+        target: 'profile',
+        label: t('prefs.profile'),
+        description: t('prefs.profileDesc'),
+        keywords: 'avatar photo name nome perfil account conta',
+      },
+      {
+        category: 'account',
+        target: 'language',
+        label: t('prefs.language'),
+        description: t('prefs.languageDesc'),
+        keywords: 'language idioma português english',
+      },
+      {
+        category: 'account',
+        target: 'local-accounts',
+        label: t('prefs.localAccounts'),
+        description: t('prefs.localAccountsDesc'),
+        keywords: 'account profile conta perfil local switch trocar',
+      },
+      {
+        category: 'appearance',
+        target: 'ui-theme',
+        label: t('prefs.uiTheme'),
+        description: t('prefs.uiThemeDesc'),
+        keywords: 'theme tema colors cores light dark claro escuro',
+      },
+      {
+        category: 'appearance',
+        target: 'ui-zoom',
+        label: t('prefs.uiZoom'),
+        description: t('prefs.uiZoomDesc'),
+        keywords: 'zoom scale escala tamanho interface',
+      },
+      {
+        category: 'appearance',
+        target: 'window-opacity',
+        label: t('prefs.windowOpacity'),
+        description: t('prefs.windowOpacityDesc'),
+        keywords: 'opacity opacidade transparency transparência desktop window janela',
+      },
+      {
+        category: 'features',
+        target: 'optional-features',
+        label: t('prefs.features'),
+        description: t('prefs.featuresDesc'),
+        keywords: 'features recursos modules módulos todo task tarefa git source control sidebar',
+      },
+      {
+        category: 'terminal',
+        target: 'terminal-theme',
+        label: t('prefs.terminalTheme'),
+        description: t('prefs.terminalThemeDesc'),
+        keywords: 'terminal theme tema colors cores',
+      },
+      {
+        category: 'terminal',
+        target: 'resource-policy',
+        label: t('prefs.resourcePolicy'),
+        description: t('prefs.resourcePolicyDesc'),
+        keywords: 'memory ram performance budget limit lru suspend memória desempenho limite',
+      },
+      {
+        category: 'terminal',
+        target: 'spawn-concurrency',
+        label: t('prefs.spawnConcurrency'),
+        description: t('prefs.spawnConcurrencyDesc'),
+        keywords: 'spawn concurrency parallel paralelo fila queue performance pty',
+      },
+      {
+        category: 'terminal',
+        target: 'agents',
+        label: t('prefs.agentsTitle'),
+        description: t('prefs.agentsDesc'),
+        keywords: 'agents agentes claude codex opencode shell',
+      },
+      {
+        category: 'terminal',
+        target: 'reset-session',
+        label: t('prefs.resetSession'),
+        description: t('prefs.resetSessionDesc'),
+        keywords:
+          'reset session resume retomar resetar sessão última last recover recuperar resume crash boot',
+      },
+      {
+        category: 'integrations',
+        target: 'spotify',
+        label: t('prefs.spotify'),
+        description: t('prefs.spotifyDesc'),
+        keywords: 'spotify music música client id secret',
+      },
+      {
+        category: 'integrations',
+        target: 'discord',
+        label: t('prefs.discordPresence'),
+        description: t('prefs.discordPresenceHint'),
+        keywords: 'discord rich presence status integração',
+      },
+      {
+        category: 'integrations',
+        target: 'dictation',
+        label: t('prefs.dictation'),
+        description: t('prefs.dictationDesc'),
+        keywords: 'dictation voice mic microphone ditado voz microfone handy speech',
+      },
+      {
+        category: 'about',
+        target: 'app-version',
+        label: t('prefs.aboutVersionTitle'),
+        description: t('prefs.aboutVersionDesc'),
+        keywords: 'version versão about sobre build info app',
+      },
+      {
+        category: 'about',
+        target: 'app-updates',
+        label: t('prefs.aboutUpdatesTitle'),
+        description: t('prefs.aboutUpdatesDesc'),
+        keywords: 'update atualização atualizar upgrade nova versão release check',
+      },
     ],
     [t],
   )
@@ -210,14 +349,19 @@ export function PreferencesModal() {
           aria-describedby={undefined}
           onOpenAutoFocus={(event) => {
             event.preventDefault()
-            const input = dialogRef.current?.querySelector<HTMLInputElement>('[data-settings-search]')
+            const input =
+              dialogRef.current?.querySelector<HTMLInputElement>('[data-settings-search]')
             input?.focus()
           }}
         >
           <Dialog.Title className={styles.srOnly}>{t('prefs.title')}</Dialog.Title>
 
           <aside className={styles.sidebar}>
-            <button type="button" className={styles.profileButton} onClick={() => setCategory('account')}>
+            <button
+              type="button"
+              className={styles.profileButton}
+              onClick={() => setCategory('account')}
+            >
               <Avatar url={avatarUrl} initial={initial} />
               <span className={styles.profileCopy}>
                 <strong>{displayName}</strong>
@@ -238,7 +382,11 @@ export function PreferencesModal() {
                 aria-expanded={Boolean(query)}
               />
               {query ? (
-                <button type="button" onClick={() => setQuery('')} aria-label={t('prefs.clearSearch')}>
+                <button
+                  type="button"
+                  onClick={() => setQuery('')}
+                  aria-label={t('prefs.clearSearch')}
+                >
                   <X size={13} />
                 </button>
               ) : null}
@@ -246,20 +394,24 @@ export function PreferencesModal() {
 
             {query ? (
               <div className={styles.searchResults} role="listbox">
-                {results.length > 0 ? results.map((item, index) => (
-                  <button
-                    key={`${item.category}:${item.target}`}
-                    type="button"
-                    role="option"
-                    aria-selected={index === resultCursor}
-                    className={index === resultCursor ? styles.searchResultActive : undefined}
-                    onMouseEnter={() => setResultCursor(index)}
-                    onClick={() => openSearchResult(item)}
-                  >
-                    <strong>{item.label}</strong>
-                    <span>{categories.find((entry) => entry.id === item.category)?.label}</span>
-                  </button>
-                )) : <div className={styles.searchEmpty}>{t('prefs.noSearchResults')}</div>}
+                {results.length > 0 ? (
+                  results.map((item, index) => (
+                    <button
+                      key={`${item.category}:${item.target}`}
+                      type="button"
+                      role="option"
+                      aria-selected={index === resultCursor}
+                      className={index === resultCursor ? styles.searchResultActive : undefined}
+                      onMouseEnter={() => setResultCursor(index)}
+                      onClick={() => openSearchResult(item)}
+                    >
+                      <strong>{item.label}</strong>
+                      <span>{categories.find((entry) => entry.id === item.category)?.label}</span>
+                    </button>
+                  ))
+                ) : (
+                  <div className={styles.searchEmpty}>{t('prefs.noSearchResults')}</div>
+                )}
               </div>
             ) : (
               <nav className={styles.nav} aria-label={t('prefs.title')}>
@@ -364,7 +516,11 @@ function AccountPage({
         </div>
       </SettingsSection>
 
-      <SettingsSection id="language" title={t('prefs.language')} description={t('prefs.languageDesc')}>
+      <SettingsSection
+        id="language"
+        title={t('prefs.language')}
+        description={t('prefs.languageDesc')}
+      >
         <div className={styles.choiceGrid}>
           {LOCALES.map((locale) => (
             <button
@@ -380,7 +536,11 @@ function AccountPage({
         </div>
       </SettingsSection>
 
-      <SettingsSection id="local-accounts" title={t('prefs.localAccounts')} description={t('prefs.localAccountsDesc')}>
+      <SettingsSection
+        id="local-accounts"
+        title={t('prefs.localAccounts')}
+        description={t('prefs.localAccountsDesc')}
+      >
         <button type="button" className={styles.secondaryButton} onClick={onManageAccounts}>
           <UserRound size={15} />
           {t('profile.manageAccounts')}
@@ -399,7 +559,11 @@ function AppearancePage() {
   const setPreferences = useProjectsStore((state) => state.setPreferences)
   return (
     <>
-      <SettingsSection id="ui-theme" title={t('prefs.uiTheme')} description={t('prefs.uiThemeDesc')}>
+      <SettingsSection
+        id="ui-theme"
+        title={t('prefs.uiTheme')}
+        description={t('prefs.uiThemeDesc')}
+      >
         <div className={styles.themeGrid}>
           {THEME_OPTIONS.map((theme) => {
             const active = preferences.uiTheme === theme.id
@@ -411,7 +575,9 @@ function AppearancePage() {
                 onClick={() => setUiTheme(theme.id)}
               >
                 <span className={styles.swatches} aria-hidden>
-                  {theme.colors.map((color) => <span key={color} style={{ background: color }} />)}
+                  {theme.colors.map((color) => (
+                    <span key={color} style={{ background: color }} />
+                  ))}
                 </span>
                 <span className={styles.themeName}>
                   <strong>{themeLabel(t, theme.id)}</strong>
@@ -431,24 +597,34 @@ function AppearancePage() {
             onClick={() => setUiZoom(preferences.uiZoom - UI_ZOOM_LIMITS.step)}
             disabled={preferences.uiZoom <= UI_ZOOM_LIMITS.min}
             aria-label={t('prefs.zoomDecrease')}
-          ><Minus size={15} /></button>
+          >
+            <Minus size={15} />
+          </button>
           <strong>{Math.round(preferences.uiZoom * 100)}%</strong>
           <button
             type="button"
             onClick={() => setUiZoom(preferences.uiZoom + UI_ZOOM_LIMITS.step)}
             disabled={preferences.uiZoom >= UI_ZOOM_LIMITS.max}
             aria-label={t('prefs.zoomIncrease')}
-          ><Plus size={15} /></button>
+          >
+            <Plus size={15} />
+          </button>
           <button
             type="button"
             onClick={() => setUiZoom(1)}
             disabled={preferences.uiZoom === 1}
             aria-label={t('prefs.zoomReset')}
-          ><RotateCcw size={15} /></button>
+          >
+            <RotateCcw size={15} />
+          </button>
         </div>
       </SettingsSection>
 
-      <SettingsSection id="window-opacity" title={t('prefs.windowOpacity')} description={t('prefs.windowOpacityDesc')}>
+      <SettingsSection
+        id="window-opacity"
+        title={t('prefs.windowOpacity')}
+        description={t('prefs.windowOpacityDesc')}
+      >
         <div className={styles.opacityControl}>
           <input
             type="range"
@@ -456,7 +632,9 @@ function AppearancePage() {
             max="100"
             step="5"
             value={Math.round(preferences.windowOpacity * 100)}
-            onChange={(event) => setPreferences({ windowOpacity: Number(event.target.value) / 100 })}
+            onChange={(event) =>
+              setPreferences({ windowOpacity: Number(event.target.value) / 100 })
+            }
             aria-label={t('prefs.windowOpacity')}
           />
           <strong>{Math.round(preferences.windowOpacity * 100)}%</strong>
@@ -465,11 +643,12 @@ function AppearancePage() {
             onClick={() => setPreferences({ windowOpacity: 1 })}
             disabled={preferences.windowOpacity === 1}
             aria-label={t('prefs.opacityReset')}
-          ><RotateCcw size={15} /></button>
+          >
+            <RotateCcw size={15} />
+          </button>
         </div>
         <p className={styles.experimentalHint}>{t('prefs.windowOpacityHint')}</p>
       </SettingsSection>
-
     </>
   )
 }
@@ -500,14 +679,14 @@ function FeaturesPage() {
                     ...preferences.enabledFeatures,
                     [feature.id]: !enabled,
                   },
-                  ...(feature.id === 'todos' && !enabled
-                    ? { rightSidebarVisible: true }
-                    : {}),
+                  ...(feature.id === 'todos' && !enabled ? { rightSidebarVisible: true } : {}),
                 })
               }
               aria-pressed={enabled}
             >
-              <span className={styles.featureIcon}><FeatureIcon size={17} /></span>
+              <span className={styles.featureIcon}>
+                <FeatureIcon size={17} />
+              </span>
               <span className={styles.featureCopy}>
                 <strong>{t(feature.titleKey)}</strong>
                 <span>{t(feature.descriptionKey)}</span>
@@ -540,9 +719,7 @@ function TerminalPage({ enabledCount }: { enabledCount: number }) {
     resourcePolicy.automaticParkingOptIn === true && resourcePolicy.mode === 'smart-lru'
       ? 'smart-lru'
       : 'manual'
-  const setResourcePolicy = (
-    patch: Partial<typeof resourcePolicy>,
-  ) => {
+  const setResourcePolicy = (patch: Partial<typeof resourcePolicy>) => {
     const next = { ...resourcePolicy, ...patch }
     next.memoryBudgetMb = Math.min(8192, Math.max(768, Math.round(next.memoryBudgetMb)))
     next.warningThresholdMb = Math.min(
@@ -588,7 +765,10 @@ function TerminalPage({ enabledCount }: { enabledCount: number }) {
       if (total === 0) {
         pushToast({ title: t('prefs.resetSessionEmpty'), body: t('prefs.resetSessionEmptyBody') })
       } else {
-        pushToast({ title: t('prefs.resetSessionDone'), body: t('prefs.resetSessionDoneBody', { count: resumed }) })
+        pushToast({
+          title: t('prefs.resetSessionDone'),
+          body: t('prefs.resetSessionDoneBody', { count: resumed }),
+        })
       }
     } catch (err) {
       pushToast({ title: t('prefs.resetSessionFailed'), body: String(err) })
@@ -599,81 +779,178 @@ function TerminalPage({ enabledCount }: { enabledCount: number }) {
 
   return (
     <>
-      <SettingsSection id="resource-policy" title={t('prefs.resourcePolicy')} description={t('prefs.resourcePolicyDesc')}>
+      <SettingsSection
+        id="resource-policy"
+        title={t('prefs.resourcePolicy')}
+        description={t('prefs.resourcePolicyDesc')}
+      >
         <div className={styles.resourceControls}>
           <div className={styles.segmented}>
-            <button type="button" className={effectiveResourceMode === 'smart-lru' ? styles.segmentActive : undefined} onClick={() => setResourcePolicy({ mode: 'smart-lru', automaticParkingOptIn: true })}>{t('prefs.resourcePolicySmart')}</button>
-            <button type="button" className={effectiveResourceMode === 'manual' ? styles.segmentActive : undefined} onClick={() => setResourcePolicy({ mode: 'manual', automaticParkingOptIn: false })}>{t('prefs.resourcePolicyManual')}</button>
+            <button
+              type="button"
+              className={effectiveResourceMode === 'smart-lru' ? styles.segmentActive : undefined}
+              onClick={() => setResourcePolicy({ mode: 'smart-lru', automaticParkingOptIn: true })}
+            >
+              {t('prefs.resourcePolicySmart')}
+            </button>
+            <button
+              type="button"
+              className={effectiveResourceMode === 'manual' ? styles.segmentActive : undefined}
+              onClick={() => setResourcePolicy({ mode: 'manual', automaticParkingOptIn: false })}
+            >
+              {t('prefs.resourcePolicyManual')}
+            </button>
           </div>
           <div className={styles.resourceGrid}>
             <label>
               <span>{t('prefs.resourceBudget')}</span>
-              <input type="number" min={768} max={8192} step={128} value={resourcePolicy.memoryBudgetMb} onChange={(event) => setResourcePolicy({ memoryBudgetMb: Number(event.target.value) })} />
+              <input
+                type="number"
+                min={768}
+                max={8192}
+                step={128}
+                value={resourcePolicy.memoryBudgetMb}
+                onChange={(event) =>
+                  setResourcePolicy({ memoryBudgetMb: Number(event.target.value) })
+                }
+              />
             </label>
             <label>
               <span>{t('prefs.resourceWarning')}</span>
-              <input type="number" min={512} max={resourcePolicy.memoryBudgetMb - 64} step={64} value={resourcePolicy.warningThresholdMb} onChange={(event) => setResourcePolicy({ warningThresholdMb: Number(event.target.value) })} />
+              <input
+                type="number"
+                min={512}
+                max={resourcePolicy.memoryBudgetMb - 64}
+                step={64}
+                value={resourcePolicy.warningThresholdMb}
+                onChange={(event) =>
+                  setResourcePolicy({ warningThresholdMb: Number(event.target.value) })
+                }
+              />
             </label>
             <label>
               <span>{t('prefs.resourceRecovery')}</span>
-              <input type="number" min={384} max={resourcePolicy.warningThresholdMb - 64} step={64} value={resourcePolicy.recoveryTargetMb} onChange={(event) => setResourcePolicy({ recoveryTargetMb: Number(event.target.value) })} />
+              <input
+                type="number"
+                min={384}
+                max={resourcePolicy.warningThresholdMb - 64}
+                step={64}
+                value={resourcePolicy.recoveryTargetMb}
+                onChange={(event) =>
+                  setResourcePolicy({ recoveryTargetMb: Number(event.target.value) })
+                }
+              />
             </label>
             <label>
               <span>{t('prefs.resourceAgentIdle')}</span>
-              <input type="number" min={5} max={240} step={5} value={resourcePolicy.hiddenAgentIdleMinutes} onChange={(event) => setResourcePolicy({ hiddenAgentIdleMinutes: Number(event.target.value) })} />
+              <input
+                type="number"
+                min={5}
+                max={240}
+                step={5}
+                value={resourcePolicy.hiddenAgentIdleMinutes}
+                onChange={(event) =>
+                  setResourcePolicy({ hiddenAgentIdleMinutes: Number(event.target.value) })
+                }
+              />
             </label>
             <label>
               <span>{t('prefs.resourceShellIdle')}</span>
-              <input type="number" min={5} max={480} step={5} value={resourcePolicy.hiddenShellIdleMinutes} onChange={(event) => setResourcePolicy({ hiddenShellIdleMinutes: Number(event.target.value) })} />
+              <input
+                type="number"
+                min={5}
+                max={480}
+                step={5}
+                value={resourcePolicy.hiddenShellIdleMinutes}
+                onChange={(event) =>
+                  setResourcePolicy({ hiddenShellIdleMinutes: Number(event.target.value) })
+                }
+              />
             </label>
           </div>
-          <p className={styles.resourceHint}>{effectiveResourceMode === 'smart-lru' ? t('prefs.resourcePolicySmartHint') : t('prefs.resourcePolicyManualHint')}</p>
+          <p className={styles.resourceHint}>
+            {effectiveResourceMode === 'smart-lru'
+              ? t('prefs.resourcePolicySmartHint')
+              : t('prefs.resourcePolicyManualHint')}
+          </p>
         </div>
       </SettingsSection>
 
-      <SettingsSection id="spawn-concurrency" title={t('prefs.spawnConcurrency')} description={t('prefs.spawnConcurrencyDesc')}>
+      <SettingsSection
+        id="spawn-concurrency"
+        title={t('prefs.spawnConcurrency')}
+        description={t('prefs.spawnConcurrencyDesc')}
+      >
         <div className={styles.zoomControl}>
           <button
             type="button"
             onClick={() => setConcurrency(concurrency - SPAWN_CONCURRENCY_LIMITS.step)}
             disabled={concurrency <= SPAWN_CONCURRENCY_LIMITS.min}
             aria-label={t('prefs.spawnConcurrencyDecrease')}
-          ><Minus size={15} /></button>
+          >
+            <Minus size={15} />
+          </button>
           <strong>{concurrency}</strong>
           <button
             type="button"
             onClick={() => setConcurrency(concurrency + SPAWN_CONCURRENCY_LIMITS.step)}
             disabled={concurrency >= SPAWN_CONCURRENCY_LIMITS.max}
             aria-label={t('prefs.spawnConcurrencyIncrease')}
-          ><Plus size={15} /></button>
+          >
+            <Plus size={15} />
+          </button>
           <button
             type="button"
             onClick={() => setConcurrency(3)}
             disabled={concurrency === 3}
             aria-label={t('prefs.spawnConcurrencyReset')}
-          ><RotateCcw size={15} /></button>
+          >
+            <RotateCcw size={15} />
+          </button>
         </div>
       </SettingsSection>
 
-      <SettingsSection id="terminal-theme" title={t('prefs.terminalTheme')} description={t('prefs.terminalThemeDesc')}>
+      <SettingsSection
+        id="terminal-theme"
+        title={t('prefs.terminalTheme')}
+        description={t('prefs.terminalThemeDesc')}
+      >
         <select
           className={styles.select}
           value={preferences.terminalTheme ?? ''}
-          onChange={(event) => setTerminalTheme(event.target.value ? event.target.value as typeof preferences.uiTheme : null)}
+          onChange={(event) =>
+            setTerminalTheme(
+              event.target.value ? (event.target.value as typeof preferences.uiTheme) : null,
+            )
+          }
         >
           <option value="">{t('common.followUi')}</option>
-          {THEME_OPTIONS.map((theme) => <option key={theme.id} value={theme.id}>{themeLabel(t, theme.id)}</option>)}
+          {THEME_OPTIONS.map((theme) => (
+            <option key={theme.id} value={theme.id}>
+              {themeLabel(t, theme.id)}
+            </option>
+          ))}
         </select>
       </SettingsSection>
 
-      <SettingsSection id="agents" title={t('prefs.enabledAgents', { count: enabledCount })} description={t('prefs.agentsDesc')}>
+      <SettingsSection
+        id="agents"
+        title={t('prefs.enabledAgents', { count: enabledCount })}
+        description={t('prefs.agentsDesc')}
+      >
         <div className={styles.agentList}>
           {AGENTS.map((agent) => {
             const checked = preferences.enabledAgents[agent.id]
             const disabled = checked && enabledCount === 1
             return (
               <label key={agent.id} className={disabled ? styles.agentDisabled : undefined}>
-                <span className={styles.agentIcon}><AgentIcon type={agent.id} size={20} theme={preferences.terminalTheme ?? preferences.uiTheme} /></span>
+                <span className={styles.agentIcon}>
+                  <AgentIcon
+                    type={agent.id}
+                    size={20}
+                    theme={preferences.terminalTheme ?? preferences.uiTheme}
+                  />
+                </span>
                 <span className={styles.agentCopy}>
                   <strong>{agent.label}</strong>
                   <span>{t(`agent.${agent.id}.desc`)}</span>
@@ -690,10 +967,26 @@ function TerminalPage({ enabledCount }: { enabledCount: number }) {
         </div>
       </SettingsSection>
 
-      <SettingsSection id="limit-reset-notify" title={t('prefs.limitResetNotify')} description={t('prefs.limitResetNotifyDesc')}>
+      <SettingsSection
+        id="limit-reset-notify"
+        title={t('prefs.limitResetNotify')}
+        description={t('prefs.limitResetNotifyDesc')}
+      >
         <div className={styles.segmented}>
-          <button type="button" className={preferences.notifyOnLimitReset ? styles.segmentActive : undefined} onClick={() => setPreferences({ notifyOnLimitReset: true })}>{t('prefs.limitResetNotifyOn')}</button>
-          <button type="button" className={!preferences.notifyOnLimitReset ? styles.segmentActive : undefined} onClick={() => setPreferences({ notifyOnLimitReset: false })}>{t('prefs.limitResetNotifyOff')}</button>
+          <button
+            type="button"
+            className={preferences.notifyOnLimitReset ? styles.segmentActive : undefined}
+            onClick={() => setPreferences({ notifyOnLimitReset: true })}
+          >
+            {t('prefs.limitResetNotifyOn')}
+          </button>
+          <button
+            type="button"
+            className={!preferences.notifyOnLimitReset ? styles.segmentActive : undefined}
+            onClick={() => setPreferences({ notifyOnLimitReset: false })}
+          >
+            {t('prefs.limitResetNotifyOff')}
+          </button>
         </div>
       </SettingsSection>
 
@@ -725,7 +1018,11 @@ function TerminalPage({ enabledCount }: { enabledCount: number }) {
         </SettingsSection>
       ) : null}
 
-      <SettingsSection id="reset-session" title={t('prefs.resetSession')} description={t('prefs.resetSessionDesc')}>
+      <SettingsSection
+        id="reset-session"
+        title={t('prefs.resetSession')}
+        description={t('prefs.resetSessionDesc')}
+      >
         <button
           type="button"
           className={styles.secondaryButton}
@@ -748,23 +1045,78 @@ function IntegrationsPage() {
     <>
       <SettingsSection id="spotify" title={t('prefs.spotify')} description={t('prefs.spotifyDesc')}>
         <div className={styles.integrationFields}>
-          <label><span>Client ID</span><input className={controls.input} value={preferences.spotifyClientId} onChange={(event) => setPreferences({ spotifyClientId: event.target.value })} spellCheck={false} /></label>
-          <label><span>Client Secret</span><input className={controls.input} type="password" value={preferences.spotifyClientSecret} onChange={(event) => setPreferences({ spotifyClientSecret: event.target.value })} spellCheck={false} /></label>
-          <p>{t('prefs.spotifyHint', { redirect: 'http://127.0.0.1:8888/callback', idEnv: 'SPOTIFY_CLIENT_ID', secretEnv: 'SPOTIFY_CLIENT_SECRET' })}</p>
+          <label>
+            <span>Client ID</span>
+            <input
+              className={controls.input}
+              value={preferences.spotifyClientId}
+              onChange={(event) => setPreferences({ spotifyClientId: event.target.value })}
+              spellCheck={false}
+            />
+          </label>
+          <label>
+            <span>Client Secret</span>
+            <input
+              className={controls.input}
+              type="password"
+              value={preferences.spotifyClientSecret}
+              onChange={(event) => setPreferences({ spotifyClientSecret: event.target.value })}
+              spellCheck={false}
+            />
+          </label>
+          <p>
+            {t('prefs.spotifyHint', {
+              redirect: 'http://127.0.0.1:8888/callback',
+              idEnv: 'SPOTIFY_CLIENT_ID',
+              secretEnv: 'SPOTIFY_CLIENT_SECRET',
+            })}
+          </p>
         </div>
       </SettingsSection>
 
-      <SettingsSection id="discord" title={t('prefs.discordPresence')} description={t('prefs.discordPresenceHint')}>
+      <SettingsSection
+        id="discord"
+        title={t('prefs.discordPresence')}
+        description={t('prefs.discordPresenceHint')}
+      >
         <div className={styles.segmented}>
-          <button type="button" className={preferences.discordRichPresenceEnabled ? styles.segmentActive : undefined} onClick={() => setPreferences({ discordRichPresenceEnabled: true })}>{t('prefs.discordPresenceEnabled')}</button>
-          <button type="button" className={!preferences.discordRichPresenceEnabled ? styles.segmentActive : undefined} onClick={() => setPreferences({ discordRichPresenceEnabled: false })}>{t('prefs.discordPresenceDisabled')}</button>
+          <button
+            type="button"
+            className={preferences.discordRichPresenceEnabled ? styles.segmentActive : undefined}
+            onClick={() => setPreferences({ discordRichPresenceEnabled: true })}
+          >
+            {t('prefs.discordPresenceEnabled')}
+          </button>
+          <button
+            type="button"
+            className={!preferences.discordRichPresenceEnabled ? styles.segmentActive : undefined}
+            onClick={() => setPreferences({ discordRichPresenceEnabled: false })}
+          >
+            {t('prefs.discordPresenceDisabled')}
+          </button>
         </div>
       </SettingsSection>
 
-      <SettingsSection id="dictation" title={t('prefs.dictation')} description={t('prefs.dictationDesc')}>
+      <SettingsSection
+        id="dictation"
+        title={t('prefs.dictation')}
+        description={t('prefs.dictationDesc')}
+      >
         <div className={styles.segmented}>
-          <button type="button" className={preferences.dictationEnabled ? styles.segmentActive : undefined} onClick={() => setPreferences({ dictationEnabled: true })}>{t('prefs.dictationOn')}</button>
-          <button type="button" className={!preferences.dictationEnabled ? styles.segmentActive : undefined} onClick={() => setPreferences({ dictationEnabled: false })}>{t('prefs.dictationOff')}</button>
+          <button
+            type="button"
+            className={preferences.dictationEnabled ? styles.segmentActive : undefined}
+            onClick={() => setPreferences({ dictationEnabled: true })}
+          >
+            {t('prefs.dictationOn')}
+          </button>
+          <button
+            type="button"
+            className={!preferences.dictationEnabled ? styles.segmentActive : undefined}
+            onClick={() => setPreferences({ dictationEnabled: false })}
+          >
+            {t('prefs.dictationOff')}
+          </button>
         </div>
         <p>{t('prefs.dictationHandyHint')}</p>
       </SettingsSection>
@@ -871,7 +1223,7 @@ function MultiagentPage() {
   }
 
   const handleInstallPlugin = async () => {
-    const raw = prompt("Cole o JSON do Manifest do plugin:")?.trim()
+    const raw = prompt('Cole o JSON do Manifest do plugin:')?.trim()
     if (!raw) return
     try {
       const manifest = JSON.parse(raw) as PluginManifest
@@ -880,10 +1232,10 @@ function MultiagentPage() {
         return
       }
       await pluginInstall(manifest)
-      alert("Plugin instalado com sucesso!")
+      alert('Plugin instalado com sucesso!')
       void loadPlugins()
     } catch (err) {
-      alert("Erro ao instalar plugin: " + err)
+      alert('Erro ao instalar plugin: ' + err)
     }
   }
 
@@ -891,10 +1243,10 @@ function MultiagentPage() {
     if (confirm(`Tem certeza que deseja desinstalar o plugin "${id}"?`)) {
       try {
         await pluginUninstall(id)
-        alert("Plugin desinstalado!")
+        alert('Plugin desinstalado!')
         void loadPlugins()
       } catch (err) {
-        alert("Erro ao desinstalar plugin: " + err)
+        alert('Erro ao desinstalar plugin: ' + err)
       }
     }
   }
@@ -910,19 +1262,30 @@ function MultiagentPage() {
 
   const getStatusColor = (status: string) => {
     switch (status) {
-      case 'pending': return 'var(--fg-muted)'
-      case 'ready': return 'var(--status-ready-fg, #38bdf8)'
-      case 'running': return 'var(--status-running-fg, #f59e0b)'
-      case 'completed': return 'var(--status-completed-fg, #10b981)'
-      case 'failed': return 'var(--status-failed-fg, #ef4444)'
-      case 'blocked': return '#6b7280'
-      default: return 'var(--fg)'
+      case 'pending':
+        return 'var(--fg-muted)'
+      case 'ready':
+        return 'var(--status-ready-fg, #38bdf8)'
+      case 'running':
+        return 'var(--status-running-fg, #f59e0b)'
+      case 'completed':
+        return 'var(--status-completed-fg, #10b981)'
+      case 'failed':
+        return 'var(--status-failed-fg, #ef4444)'
+      case 'blocked':
+        return '#6b7280'
+      default:
+        return 'var(--fg)'
     }
   }
 
   return (
     <>
-      <SettingsSection id="multiagent-scheduler" title="Scheduler & task queue" description="Manage execution waves (Task DAG) per project.">
+      <SettingsSection
+        id="multiagent-scheduler"
+        title="Scheduler & task queue"
+        description="Manage execution waves (Task DAG) per project."
+      >
         <div style={{ display: 'flex', gap: 10, marginBottom: 12 }}>
           <select
             className={controls.input}
@@ -932,7 +1295,9 @@ function MultiagentPage() {
           >
             <option value="">-- Select a project --</option>
             {projects.map((p) => (
-              <option key={p.id} value={p.id}>{p.name}</option>
+              <option key={p.id} value={p.id}>
+                {p.name}
+              </option>
             ))}
           </select>
 
@@ -950,13 +1315,23 @@ function MultiagentPage() {
 
         {selectedProjectId ? (
           schedulerStore.loading ? (
-            <div style={{ fontSize: 11, color: 'var(--fg-muted)' }}>Carregando fila do projeto...</div>
+            <div style={{ fontSize: 11, color: 'var(--fg-muted)' }}>
+              Carregando fila do projeto...
+            </div>
           ) : schedulerStore.tasks.length === 0 ? (
             <div style={{ fontSize: 11, color: 'var(--fg-muted)', fontStyle: 'italic' }}>
               Nenhuma tarefa de planejamento (GSD) encontrada em `.planning/`.
             </div>
           ) : (
-            <div style={{ display: 'flex', flexDirection: 'column', gap: 8, maxHeight: 220, overflowY: 'auto' }}>
+            <div
+              style={{
+                display: 'flex',
+                flexDirection: 'column',
+                gap: 8,
+                maxHeight: 220,
+                overflowY: 'auto',
+              }}
+            >
               {schedulerStore.tasks.map((task) => (
                 <div
                   key={task.id}
@@ -973,14 +1348,28 @@ function MultiagentPage() {
                 >
                   <div style={{ overflow: 'hidden', marginRight: 12 }}>
                     <div style={{ fontWeight: 600, display: 'flex', alignItems: 'center', gap: 6 }}>
-                      <span>#{task.id}: {task.title}</span>
-                      <span style={{ fontSize: 9, padding: '2px 6px', borderRadius: 4, background: 'var(--border)', color: getStatusColor(task.status), fontWeight: 700 }}>
+                      <span>
+                        #{task.id}: {task.title}
+                      </span>
+                      <span
+                        style={{
+                          fontSize: 9,
+                          padding: '2px 6px',
+                          borderRadius: 4,
+                          background: 'var(--border)',
+                          color: getStatusColor(task.status),
+                          fontWeight: 700,
+                        }}
+                      >
                         {task.status.toUpperCase()}
                       </span>
                     </div>
                     {task.dependencies.length > 0 && (
                       <div style={{ fontSize: 9, color: 'var(--fg-muted)', marginTop: 2 }}>
-                        Depende de: <span style={{ fontFamily: 'monospace' }}>{task.dependencies.join(', ')}</span>
+                        Depende de:{' '}
+                        <span style={{ fontFamily: 'monospace' }}>
+                          {task.dependencies.join(', ')}
+                        </span>
                       </div>
                     )}
                     {task.assignedAgentId && (
@@ -1018,18 +1407,40 @@ function MultiagentPage() {
         )}
       </SettingsSection>
 
-      <SettingsSection id="multiagent-metrics" title="Execution metrics (phases 1/2)" description="Accumulated global counters from the internal event bus.">
+      <SettingsSection
+        id="multiagent-metrics"
+        title="Execution metrics (phases 1/2)"
+        description="Accumulated global counters from the internal event bus."
+      >
         {loadingTelemetry ? (
           <div style={{ fontSize: 11, color: 'var(--fg-muted)' }}>Loading metrics...</div>
         ) : Object.keys(metrics).length === 0 ? (
-          <div style={{ fontSize: 11, color: 'var(--fg-muted)', fontStyle: 'italic' }}>No accumulated event metrics.</div>
+          <div style={{ fontSize: 11, color: 'var(--fg-muted)', fontStyle: 'italic' }}>
+            No accumulated event metrics.
+          </div>
         ) : (
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(130px, 1fr))', gap: 8 }}>
+          <div
+            style={{
+              display: 'grid',
+              gridTemplateColumns: 'repeat(auto-fill, minmax(130px, 1fr))',
+              gap: 8,
+            }}
+          >
             {Object.entries(metrics).map(([key, data]) => {
-              const name = key.replace('alethe_event_', '').toUpperCase();
+              const name = key.replace('alethe_event_', '').toUpperCase()
               return (
-                <div key={key} style={{ padding: '8px 10px', borderRadius: 'var(--radius-sm)', background: 'var(--bg-active)', border: '1px solid var(--border)' }}>
-                  <div style={{ fontSize: 10, color: 'var(--fg-muted)', fontWeight: 600 }}>{name}</div>
+                <div
+                  key={key}
+                  style={{
+                    padding: '8px 10px',
+                    borderRadius: 'var(--radius-sm)',
+                    background: 'var(--bg-active)',
+                    border: '1px solid var(--border)',
+                  }}
+                >
+                  <div style={{ fontSize: 10, color: 'var(--fg-muted)', fontWeight: 600 }}>
+                    {name}
+                  </div>
                   <div style={{ fontSize: 18, fontWeight: 700, marginTop: 4 }}>{data.count}</div>
                   {data.last_value > 0 && (
                     <div style={{ fontSize: 9, color: 'var(--accent)', marginTop: 2 }}>
@@ -1037,25 +1448,68 @@ function MultiagentPage() {
                     </div>
                   )}
                 </div>
-              );
+              )
             })}
           </div>
         )}
       </SettingsSection>
 
-      <SettingsSection id="multiagent-traces" title="Recent event history" description="Real-time tracking of structured Event Bus logs.">
+      <SettingsSection
+        id="multiagent-traces"
+        title="Recent event history"
+        description="Real-time tracking of structured Event Bus logs."
+      >
         {loadingTelemetry ? (
           <div style={{ fontSize: 11, color: 'var(--fg-muted)' }}>Loading traces...</div>
         ) : traces.length === 0 ? (
-          <div style={{ fontSize: 11, color: 'var(--fg-muted)', fontStyle: 'italic' }}>No recent events recorded.</div>
+          <div style={{ fontSize: 11, color: 'var(--fg-muted)', fontStyle: 'italic' }}>
+            No recent events recorded.
+          </div>
         ) : (
-          <div style={{ display: 'flex', flexDirection: 'column', gap: 6, maxHeight: 180, overflowY: 'auto', border: '1px solid var(--border)', borderRadius: 'var(--radius-sm)', padding: 8, background: 'var(--bg-active)' }}>
+          <div
+            style={{
+              display: 'flex',
+              flexDirection: 'column',
+              gap: 6,
+              maxHeight: 180,
+              overflowY: 'auto',
+              border: '1px solid var(--border)',
+              borderRadius: 'var(--radius-sm)',
+              padding: 8,
+              background: 'var(--bg-active)',
+            }}
+          >
             {traces.map((trace, idx) => (
-              <div key={idx} style={{ display: 'flex', justifyContent: 'space-between', fontSize: 10, paddingBottom: 4, borderBottom: '1px solid color-mix(in srgb, var(--border) 40%, transparent)' }}>
+              <div
+                key={idx}
+                style={{
+                  display: 'flex',
+                  justifyContent: 'space-between',
+                  fontSize: 10,
+                  paddingBottom: 4,
+                  borderBottom: '1px solid color-mix(in srgb, var(--border) 40%, transparent)',
+                }}
+              >
                 <div style={{ overflow: 'hidden', marginRight: 12 }}>
-                  <span style={{ fontWeight: 600, color: 'var(--accent)' }}>{trace.event_type}</span>
-                  {trace.task_id && <span style={{ color: 'var(--fg-muted)', marginLeft: 6 }}>Task: {trace.task_id}</span>}
-                  <div style={{ color: 'var(--fg-muted)', fontSize: 9, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>CorrId: {trace.correlation_id}</div>
+                  <span style={{ fontWeight: 600, color: 'var(--accent)' }}>
+                    {trace.event_type}
+                  </span>
+                  {trace.task_id && (
+                    <span style={{ color: 'var(--fg-muted)', marginLeft: 6 }}>
+                      Task: {trace.task_id}
+                    </span>
+                  )}
+                  <div
+                    style={{
+                      color: 'var(--fg-muted)',
+                      fontSize: 9,
+                      whiteSpace: 'nowrap',
+                      overflow: 'hidden',
+                      textOverflow: 'ellipsis',
+                    }}
+                  >
+                    CorrId: {trace.correlation_id}
+                  </div>
                 </div>
                 <div style={{ textAlign: 'right', color: 'var(--fg-muted)', flexShrink: 0 }}>
                   {new Date(trace.timestamp_ms).toLocaleTimeString()}
@@ -1066,7 +1520,11 @@ function MultiagentPage() {
         )}
       </SettingsSection>
 
-      <SettingsSection id="multiagent-plugins" title="Plugin manager" description="View and install orchestrator plugins and custom tools.">
+      <SettingsSection
+        id="multiagent-plugins"
+        title="Plugin manager"
+        description="View and install orchestrator plugins and custom tools."
+      >
         <button
           type="button"
           className={styles.secondaryButton}
@@ -1099,9 +1557,13 @@ function MultiagentPage() {
                 }}
               >
                 <div>
-                  <div style={{ fontWeight: 600 }}>{plug.name} (v{plug.version})</div>
+                  <div style={{ fontWeight: 600 }}>
+                    {plug.name} (v{plug.version})
+                  </div>
                   <div style={{ fontSize: 9, color: 'var(--fg-muted)' }}>Tipo: {plug.kind}</div>
-                  <div style={{ fontSize: 10, color: 'var(--fg-muted)', marginTop: 2 }}>{plug.description}</div>
+                  <div style={{ fontSize: 10, color: 'var(--fg-muted)', marginTop: 2 }}>
+                    {plug.description}
+                  </div>
                 </div>
                 <button
                   type="button"
@@ -1124,7 +1586,11 @@ function MultiagentPage() {
         )}
       </SettingsSection>
 
-      <SettingsSection id="multiagent-gsd-audit" title="GSD audit & autocommit" description="Monitor task changes in `.planning/` and configure automatic audit commits.">
+      <SettingsSection
+        id="multiagent-gsd-audit"
+        title="GSD audit & autocommit"
+        description="Monitor task changes in `.planning/` and configure automatic audit commits."
+      >
         <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 12 }}>
           <input
             type="checkbox"
@@ -1133,24 +1599,57 @@ function MultiagentPage() {
             onChange={(e) => handleToggleAutocommit(e.target.checked)}
             style={{ cursor: 'pointer' }}
           />
-          <label htmlFor="planningAutocommit" style={{ fontSize: 11, cursor: 'pointer', userSelect: 'none' }}>
+          <label
+            htmlFor="planningAutocommit"
+            style={{ fontSize: 11, cursor: 'pointer', userSelect: 'none' }}
+          >
             Ativar Auto-commit de Auditoria (Opt-in)
           </label>
         </div>
 
         {selectedProjectId ? (
           loadingAudit ? (
-            <div style={{ fontSize: 11, color: 'var(--fg-muted)' }}>Carregando logs de auditoria...</div>
+            <div style={{ fontSize: 11, color: 'var(--fg-muted)' }}>
+              Carregando logs de auditoria...
+            </div>
           ) : auditLogs.length === 0 ? (
             <div style={{ fontSize: 11, color: 'var(--fg-muted)', fontStyle: 'italic' }}>
               No changes recorded in `.planning/` through Git.
             </div>
           ) : (
-            <div style={{ display: 'flex', flexDirection: 'column', gap: 6, maxHeight: 180, overflowY: 'auto', border: '1px solid var(--border)', borderRadius: 'var(--radius-sm)', padding: 8, background: 'var(--bg-active)' }}>
+            <div
+              style={{
+                display: 'flex',
+                flexDirection: 'column',
+                gap: 6,
+                maxHeight: 180,
+                overflowY: 'auto',
+                border: '1px solid var(--border)',
+                borderRadius: 'var(--radius-sm)',
+                padding: 8,
+                background: 'var(--bg-active)',
+              }}
+            >
               {auditLogs.map((log) => (
-                <div key={log.hash} style={{ display: 'flex', justifyContent: 'space-between', fontSize: 10, paddingBottom: 4, borderBottom: '1px solid color-mix(in srgb, var(--border) 40%, transparent)' }}>
+                <div
+                  key={log.hash}
+                  style={{
+                    display: 'flex',
+                    justifyContent: 'space-between',
+                    fontSize: 10,
+                    paddingBottom: 4,
+                    borderBottom: '1px solid color-mix(in srgb, var(--border) 40%, transparent)',
+                  }}
+                >
                   <div>
-                    <span style={{ fontFamily: 'monospace', fontWeight: 600, color: 'var(--accent)', marginRight: 6 }}>
+                    <span
+                      style={{
+                        fontFamily: 'monospace',
+                        fontWeight: 600,
+                        color: 'var(--accent)',
+                        marginRight: 6,
+                      }}
+                    >
                       {log.hash.slice(0, 7)}
                     </span>
                     <span>{log.subject}</span>
@@ -1158,7 +1657,14 @@ function MultiagentPage() {
                       Autor: {log.author} {log.agentId ? `· Agente: ${log.agentId}` : ''}
                     </div>
                   </div>
-                  <div style={{ textAlign: 'right', color: 'var(--fg-muted)', fontSize: 9, flexShrink: 0 }}>
+                  <div
+                    style={{
+                      textAlign: 'right',
+                      color: 'var(--fg-muted)',
+                      fontSize: 9,
+                      flexShrink: 0,
+                    }}
+                  >
                     {new Date(log.timestampMs).toLocaleString()}
                   </div>
                 </div>
@@ -1187,7 +1693,9 @@ function AboutPage() {
   const [error, setError] = useState('')
 
   useEffect(() => {
-    void getVersion().then(setVersion).catch(() => setVersion(''))
+    void getVersion()
+      .then(setVersion)
+      .catch(() => setVersion(''))
   }, [])
 
   const onCheck = async () => {
@@ -1223,33 +1731,90 @@ function AboutPage() {
 
   return (
     <>
-      <SettingsSection id="app-version" title={t('prefs.aboutVersionTitle')} description={t('prefs.aboutVersionDesc')}>
-        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '12px 14px', borderRadius: 'var(--radius-md)', border: '1px solid var(--border)', background: 'var(--bg-sunken)' }}>
+      <SettingsSection
+        id="app-version"
+        title={t('prefs.aboutVersionTitle')}
+        description={t('prefs.aboutVersionDesc')}
+      >
+        <div
+          style={{
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'space-between',
+            padding: '12px 14px',
+            borderRadius: 'var(--radius-md)',
+            border: '1px solid var(--border)',
+            background: 'var(--bg-sunken)',
+          }}
+        >
           <div style={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
             <strong style={{ fontSize: 14 }}>Alethe</strong>
             <span style={{ fontSize: 11, color: 'var(--fg-muted)' }}>com.kc1t.alethe</span>
           </div>
-          <span style={{ fontSize: 15, fontWeight: 700, fontVariantNumeric: 'tabular-nums', color: 'var(--fg)' }}>
+          <span
+            style={{
+              fontSize: 15,
+              fontWeight: 700,
+              fontVariantNumeric: 'tabular-nums',
+              color: 'var(--fg)',
+            }}
+          >
             {version ? `v${version}` : '—'}
           </span>
         </div>
       </SettingsSection>
 
-      <SettingsSection id="app-updates" title={t('prefs.aboutUpdatesTitle')} description={t('prefs.aboutUpdatesDesc')}>
+      <SettingsSection
+        id="app-updates"
+        title={t('prefs.aboutUpdatesTitle')}
+        description={t('prefs.aboutUpdatesDesc')}
+      >
         {updateInfo ? (
           <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
             <div style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 13 }}>
               <DownloadCloud size={16} style={{ color: 'var(--status-working)', flexShrink: 0 }} />
-              <span>{t('prefs.aboutUpdateAvailable', { version: updateInfo.version, current: updateInfo.currentVersion })}</span>
+              <span>
+                {t('prefs.aboutUpdateAvailable', {
+                  version: updateInfo.version,
+                  current: updateInfo.currentVersion,
+                })}
+              </span>
             </div>
             {updateInfo.notes ? (
-              <div style={{ fontSize: 12, color: 'var(--fg-muted)', whiteSpace: 'pre-wrap', maxHeight: 160, overflowY: 'auto', padding: '8px 10px', border: '1px solid var(--border)', borderRadius: 'var(--radius-sm)', background: 'var(--bg-active)' }}>
+              <div
+                style={{
+                  fontSize: 12,
+                  color: 'var(--fg-muted)',
+                  whiteSpace: 'pre-wrap',
+                  maxHeight: 160,
+                  overflowY: 'auto',
+                  padding: '8px 10px',
+                  border: '1px solid var(--border)',
+                  borderRadius: 'var(--radius-sm)',
+                  background: 'var(--bg-active)',
+                }}
+              >
                 {updateInfo.notes}
               </div>
             ) : null}
             {installing ? (
-              <div style={{ height: 6, borderRadius: 3, background: 'var(--bg-active)', overflow: 'hidden' }} aria-hidden>
-                <div style={{ height: '100%', width: `${percent}%`, background: 'var(--accent)', transition: 'width 0.2s ease' }} />
+              <div
+                style={{
+                  height: 6,
+                  borderRadius: 3,
+                  background: 'var(--bg-active)',
+                  overflow: 'hidden',
+                }}
+                aria-hidden
+              >
+                <div
+                  style={{
+                    height: '100%',
+                    width: `${percent}%`,
+                    background: 'var(--accent)',
+                    transition: 'width 0.2s ease',
+                  }}
+                />
               </div>
             ) : null}
             <button
@@ -1275,12 +1840,21 @@ function AboutPage() {
               {checking ? t('prefs.aboutChecking') : t('prefs.aboutCheckUpdates')}
             </button>
             {checkedUpToDate ? (
-              <span style={{ fontSize: 12, color: 'var(--fg-muted)' }}>{t('prefs.aboutUpToDate', { version })}</span>
+              <span style={{ fontSize: 12, color: 'var(--fg-muted)' }}>
+                {t('prefs.aboutUpToDate', { version })}
+              </span>
             ) : null}
           </div>
         )}
         {error ? (
-          <p style={{ fontSize: 12, color: 'var(--status-failed-fg, #ef4444)', marginTop: 8, wordBreak: 'break-word' }}>
+          <p
+            style={{
+              fontSize: 12,
+              color: 'var(--status-failed-fg, #ef4444)',
+              marginTop: 8,
+              wordBreak: 'break-word',
+            }}
+          >
             {t('update.error', { error })}
           </p>
         ) : null}
@@ -1289,19 +1863,49 @@ function AboutPage() {
   )
 }
 
-function SettingsSection({ id, title, description, children }: { id: string; title: string; description: string; children: React.ReactNode }) {
+function SettingsSection({
+  id,
+  title,
+  description,
+  children,
+}: {
+  id: string
+  title: string
+  description: string
+  children: React.ReactNode
+}) {
   return (
     <section className={styles.section} data-setting-id={id} tabIndex={-1}>
-      <div className={styles.sectionHeading}><h2>{title}</h2><p>{description}</p></div>
+      <div className={styles.sectionHeading}>
+        <h2>{title}</h2>
+        <p>{description}</p>
+      </div>
       <div className={styles.sectionBody}>{children}</div>
     </section>
   )
 }
 
-function Avatar({ url, initial, large = false }: { url: string | null; initial: string; large?: boolean }) {
+function Avatar({
+  url,
+  initial,
+  large = false,
+}: {
+  url: string | null
+  initial: string
+  large?: boolean
+}) {
   return url ? (
-    <img src={url} alt="" draggable={false} className={`${styles.avatar} ${large ? styles.avatarLarge : ''}`} />
+    <img
+      src={url}
+      alt=""
+      draggable={false}
+      className={`${styles.avatar} ${large ? styles.avatarLarge : ''}`}
+    />
   ) : (
-    <span className={`${styles.avatar} ${styles.avatarFallback} ${large ? styles.avatarLarge : ''}`}>{initial}</span>
+    <span
+      className={`${styles.avatar} ${styles.avatarFallback} ${large ? styles.avatarLarge : ''}`}
+    >
+      {initial}
+    </span>
   )
 }

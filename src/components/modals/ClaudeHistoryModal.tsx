@@ -141,9 +141,7 @@ export function ClaudeHistoryModal({
           <div className={styles.empty}>{t('mod.loadingSessions')}</div>
         ) : filtered && filtered.length === 0 ? (
           <div className={styles.empty}>
-            {sessions.length === 0
-              ? t('mod.noSessionsForCwd')
-              : t('mod.noSessionsMatchFilter')}
+            {sessions.length === 0 ? t('mod.noSessionsForCwd') : t('mod.noSessionsMatchFilter')}
           </div>
         ) : (
           filtered?.map((session) => {

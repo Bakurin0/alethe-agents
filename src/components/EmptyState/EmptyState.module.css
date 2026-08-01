@@ -84,7 +84,11 @@
   font-size: 13px;
   font-weight: 600;
   cursor: pointer;
-  transition: transform 140ms ease, background 140ms ease, border-color 140ms ease, opacity 140ms ease;
+  transition:
+    transform 140ms ease,
+    background 140ms ease,
+    border-color 140ms ease,
+    opacity 140ms ease;
 }
 
 .actions button:hover:not(:disabled) {

@@ -38,7 +38,14 @@ import { preparePtyRuntimeLaunch } from '../../lib/agentRuntimeAdapter'
 import { useT } from '../../lib/i18n'
 import { formatShortcut } from '../../lib/platform'
 import { buildAgentLaunch } from '../../lib/sessionLaunch'
-import { agentCliCommand, type AgentType, type Group, type LayoutMode, type Project, type Terminal } from '../../lib/types'
+import {
+  agentCliCommand,
+  type AgentType,
+  type Group,
+  type LayoutMode,
+  type Project,
+  type Terminal,
+} from '../../lib/types'
 import { getPtyCwd, gitStatus, openInFileExplorer, openInVscode, restartPty } from '../../lib/tauri'
 import {
   selectActiveContainer,
@@ -79,39 +86,41 @@ export function ProjectSidebar() {
   const showGitControl = useProjectsStore((s) => s.preferences.enabledFeatures.git)
 
   // --- action selectors (stable refs, grouped for readability) ---
-  const actions = useProjectsStore(useShallow((s) => ({
-    setActiveProject: s.setActiveProject,
-    openGroupScope: s.openGroupScope,
-    openProjectWorkspace: s.openProjectWorkspace,
-    addProjectToWorkspace: s.addProjectToWorkspace,
-    openGroupWorkspace: s.openGroupWorkspace,
-    openTerminalWorkspace: s.openTerminalWorkspace,
-    addTerminalToWorkspace: s.addTerminalToWorkspace,
-    focusWorkspaceTerminal: s.focusWorkspaceTerminal,
-    toggleProjectCollapsed: s.toggleProjectCollapsed,
-    toggleGroupCollapsed: s.toggleGroupCollapsed,
-    renameProject: s.renameProject,
-    deleteProject: s.deleteProject,
-    renameGroup: s.renameGroup,
-    deleteGroup: s.deleteGroup,
-    resumeGroup: s.resumeGroup,
-    setProjectDisabled: s.setProjectDisabled,
-    renameTerminal: s.renameTerminal,
-    killTerminal: s.killTerminal,
-    deleteTerminal: s.deleteTerminal,
-    setTerminalDisabled: s.setTerminalDisabled,
-    moveTerminal: s.moveTerminal,
-    moveProjectToGroup: s.moveProjectToGroup,
-    moveGroupToParent: s.moveGroupToParent,
-    reorderProjectInGroup: s.reorderProjectInGroup,
-    reorderUngrouped: s.reorderUngrouped,
-    reorderGroups: s.reorderGroups,
-    togglePane: s.togglePane,
-    setLaneVisible: s.setLaneVisible,
-    setSubTabCompletionUnread: s.setSubTabCompletionUnread,
-    createFilePane: s.createFilePane,
-    createGraphifyPane: s.createGraphifyPane,
-  })))
+  const actions = useProjectsStore(
+    useShallow((s) => ({
+      setActiveProject: s.setActiveProject,
+      openGroupScope: s.openGroupScope,
+      openProjectWorkspace: s.openProjectWorkspace,
+      addProjectToWorkspace: s.addProjectToWorkspace,
+      openGroupWorkspace: s.openGroupWorkspace,
+      openTerminalWorkspace: s.openTerminalWorkspace,
+      addTerminalToWorkspace: s.addTerminalToWorkspace,
+      focusWorkspaceTerminal: s.focusWorkspaceTerminal,
+      toggleProjectCollapsed: s.toggleProjectCollapsed,
+      toggleGroupCollapsed: s.toggleGroupCollapsed,
+      renameProject: s.renameProject,
+      deleteProject: s.deleteProject,
+      renameGroup: s.renameGroup,
+      deleteGroup: s.deleteGroup,
+      resumeGroup: s.resumeGroup,
+      setProjectDisabled: s.setProjectDisabled,
+      renameTerminal: s.renameTerminal,
+      killTerminal: s.killTerminal,
+      deleteTerminal: s.deleteTerminal,
+      setTerminalDisabled: s.setTerminalDisabled,
+      moveTerminal: s.moveTerminal,
+      moveProjectToGroup: s.moveProjectToGroup,
+      moveGroupToParent: s.moveGroupToParent,
+      reorderProjectInGroup: s.reorderProjectInGroup,
+      reorderUngrouped: s.reorderUngrouped,
+      reorderGroups: s.reorderGroups,
+      togglePane: s.togglePane,
+      setLaneVisible: s.setLaneVisible,
+      setSubTabCompletionUnread: s.setSubTabCompletionUnread,
+      createFilePane: s.createFilePane,
+      createGraphifyPane: s.createGraphifyPane,
+    })),
+  )
 
   const requestPaneFocus = useUiStore((s) => s.requestPaneFocus)
   const openModal = useUiStore((s) => s.openModal_)
@@ -137,10 +146,7 @@ export function ProjectSidebar() {
     return map
   }, [containers])
 
-  const projectsById = useMemo(
-    () => new Map(projects.map((p) => [p.id, p])),
-    [projects],
-  )
+  const projectsById = useMemo(() => new Map(projects.map((p) => [p.id, p])), [projects])
   const activeProject = useMemo(
     () => projectsById.get(activeProjectId ?? '') ?? projects[0] ?? null,
     [activeProjectId, projects, projectsById],
@@ -148,17 +154,22 @@ export function ProjectSidebar() {
   const selectedTerminal = useMemo(() => {
     if (!activeProject) return null
     if (activeTerminalRef?.projectId === activeProject.id) {
-      const selected = activeProject.terminals.find((terminal) => terminal.id === activeTerminalRef.terminalId)
+      const selected = activeProject.terminals.find(
+        (terminal) => terminal.id === activeTerminalRef.terminalId,
+      )
       if (selected) return selected
     }
     const activeContainer = containers.find((container) => container.projectId === activeProject.id)
     const visible = new Set(activeContainer?.paneIds ?? [])
-    return [...activeProject.terminals]
-      .filter((terminal) => visible.size === 0 || visible.has(terminal.id))
-      .sort((a, b) => (b.lastUsedAt ?? 0) - (a.lastUsedAt ?? 0))[0] ?? null
+    return (
+      [...activeProject.terminals]
+        .filter((terminal) => visible.size === 0 || visible.has(terminal.id))
+        .sort((a, b) => (b.lastUsedAt ?? 0) - (a.lastUsedAt ?? 0))[0] ?? null
+    )
   }, [activeProject, activeTerminalRef, containers])
-  const selectedSubTab = selectedTerminal?.tabs.find((tab) => tab.id === selectedTerminal.activeTabId)
-    ?? selectedTerminal?.tabs[0]
+  const selectedSubTab =
+    selectedTerminal?.tabs.find((tab) => tab.id === selectedTerminal.activeTabId) ??
+    selectedTerminal?.tabs[0]
 
   const sensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 8 } }))
 
@@ -314,7 +325,10 @@ export function ProjectSidebar() {
           window.alert(t('ui.sidebar.createGroupFirst'))
         } else {
           const list = groups.map((g, i) => `${i + 1}. ${g.name}`).join('\n')
-          const pick = window.prompt(t('ui.sidebar.moveProjectToWhichGroup', { name: project.name, list }), '1')
+          const pick = window.prompt(
+            t('ui.sidebar.moveProjectToWhichGroup', { name: project.name, list }),
+            '1',
+          )
           const idx = pick ? Number(pick) - 1 : -1
           if (idx >= 0 && idx < groups.length) {
             actions.moveProjectToGroup(project.id, groups[idx].id)
@@ -324,12 +338,14 @@ export function ProjectSidebar() {
     },
     {
       kind: 'item',
-      label: project.terminals.length > 0 && project.terminals.every((term) => term.disabled)
-        ? t('ui.sidebar.reactivateProject')
-        : t('ui.sidebar.disableProject'),
+      label:
+        project.terminals.length > 0 && project.terminals.every((term) => term.disabled)
+          ? t('ui.sidebar.reactivateProject')
+          : t('ui.sidebar.disableProject'),
       icon: <Power size={14} />,
       onClick: () => {
-        const allDisabled = project.terminals.length > 0 && project.terminals.every((term) => term.disabled)
+        const allDisabled =
+          project.terminals.length > 0 && project.terminals.every((term) => term.disabled)
         actions.setProjectDisabled(project.id, !allDisabled)
       },
     },
@@ -342,7 +358,10 @@ export function ProjectSidebar() {
       onClick: () => {
         if (
           window.confirm(
-            t('ui.sidebar.confirmDeleteProject', { name: project.name, count: project.terminals.length }),
+            t('ui.sidebar.confirmDeleteProject', {
+              name: project.name,
+              count: project.terminals.length,
+            }),
           )
         ) {
           actions.deleteProject(project.id)
@@ -402,15 +421,16 @@ export function ProjectSidebar() {
           // pick parent — exclude self and descendants
           const allGroups = useProjectsStore.getState().groups
           const descendants = collectDescendants(group.id, allGroups)
-          const candidates = allGroups.filter(
-            (g) => g.id !== group.id && !descendants.has(g.id),
-          )
+          const candidates = allGroups.filter((g) => g.id !== group.id && !descendants.has(g.id))
           if (candidates.length === 0) {
             window.alert(t('ui.sidebar.noEligibleParentGroups'))
             return
           }
           const list = candidates.map((g, i) => `${i + 1}. ${g.name}`).join('\n')
-          const pick = window.prompt(t('ui.sidebar.moveGroupAsSubgroupOf', { name: group.name, list }), '1')
+          const pick = window.prompt(
+            t('ui.sidebar.moveGroupAsSubgroupOf', { name: group.name, list }),
+            '1',
+          )
           const idx = pick ? Number(pick) - 1 : -1
           if (idx >= 0 && idx < candidates.length) {
             actions.moveGroupToParent(group.id, candidates[idx].id)
@@ -447,7 +467,10 @@ export function ProjectSidebar() {
       onClick: () => {
         if (
           window.confirm(
-            t('ui.sidebar.confirmDeleteGroupCascade', { name: group.name, count: group.projectIds.length }),
+            t('ui.sidebar.confirmDeleteGroupCascade', {
+              name: group.name,
+              count: group.projectIds.length,
+            }),
           )
         ) {
           actions.deleteGroup(group.id, 'cascade')
@@ -508,7 +531,9 @@ export function ProjectSidebar() {
         new CustomEvent('alethe:terminal-resize-request', { detail: { ptyId: activeTab.ptyId } }),
       )
     } catch (err) {
-      window.alert(t('ui.terminal.openFailed', { label: t('ui.terminal.restart'), error: String(err) }))
+      window.alert(
+        t('ui.terminal.openFailed', { label: t('ui.terminal.restart'), error: String(err) }),
+      )
     }
   }
 
@@ -536,12 +561,14 @@ export function ProjectSidebar() {
         },
       },
       ...(activeTab?.ptyId && isTerminalPane && !term.disabled
-        ? [{
-            kind: 'item' as const,
-            label: t('ui.terminal.restart'),
-            icon: <Power size={14} />,
-            onClick: () => void restartTerminal(term),
-          }]
+        ? [
+            {
+              kind: 'item' as const,
+              label: t('ui.terminal.restart'),
+              icon: <Power size={14} />,
+              onClick: () => void restartTerminal(term),
+            },
+          ]
         : []),
       ...(isTerminalPane
         ? [
@@ -574,7 +601,9 @@ export function ProjectSidebar() {
         ? [
             {
               kind: 'item' as const,
-              label: effectiveLaneVisible ? t('ui.terminal.hideTabsLane') : t('ui.terminal.showTabsLane'),
+              label: effectiveLaneVisible
+                ? t('ui.terminal.hideTabsLane')
+                : t('ui.terminal.showTabsLane'),
               onClick: () =>
                 actions.setLaneVisible(projectId, term.id, effectiveLaneVisible ? false : true),
             },
@@ -681,9 +710,7 @@ export function ProjectSidebar() {
         requestPaneFocus(t.id)
         setActiveView('workspace')
       }}
-      onProjectMenu={(e) =>
-        setMenu({ x: e.clientX, y: e.clientY, items: projectMenu(p) })
-      }
+      onProjectMenu={(e) => setMenu({ x: e.clientX, y: e.clientY, items: projectMenu(p) })}
       onTerminalMenu={(t, e) =>
         setMenu({ x: e.clientX, y: e.clientY, items: terminalMenu(p.id, t) })
       }
@@ -896,7 +923,10 @@ export function ProjectSidebar() {
                 icon={<GitBranch size={18} />}
                 title={t('git.empty.noTerminal')}
                 description={t('git.empty.noTerminalDesc')}
-                primaryAction={{ label: t('ui.sidebar.emptyAction'), onClick: () => openModal('newProject') }}
+                primaryAction={{
+                  label: t('ui.sidebar.emptyAction'),
+                  onClick: () => openModal('newProject'),
+                }}
               />
             </div>
           )}
@@ -1024,7 +1054,10 @@ function GroupBadge({ name, iconUrl, color }: { name: string; iconUrl?: string; 
 
 /** Iniciais (1–2 letras) pro monograma do projeto/grupo. */
 function initialsOf(name: string): string {
-  const parts = name.trim().split(/[\s\-_./\\]+/).filter(Boolean)
+  const parts = name
+    .trim()
+    .split(/[\s\-_./\\]+/)
+    .filter(Boolean)
   if (parts.length === 0) return '?'
   if (parts.length === 1) return parts[0].slice(0, 2).toLowerCase()
   return (parts[0][0] + parts[1][0]).toLowerCase()
@@ -1046,7 +1079,9 @@ const branchInflight = new Map<string, Promise<void>>()
 
 /** Lê o branch do repo no cwd via gitStatus (já existente). Defensivo: null se não for repo. */
 function useProjectBranch(cwd?: string): string | null {
-  const [branch, setBranch] = useState<string | null>(() => (cwd ? branchCache.get(cwd) ?? null : null))
+  const [branch, setBranch] = useState<string | null>(() =>
+    cwd ? (branchCache.get(cwd) ?? null) : null,
+  )
   useEffect(() => {
     let alive = true
     if (!cwd) {
@@ -1093,12 +1128,24 @@ function Monogram({
   size?: number
 }) {
   if (iconUrl) {
-    return <img src={iconUrl} alt="" className={styles.projectIcon} style={{ width: size, height: size }} />
+    return (
+      <img
+        src={iconUrl}
+        alt=""
+        className={styles.projectIcon}
+        style={{ width: size, height: size }}
+      />
+    )
   }
   return (
     <span
       className={styles.monogram}
-      style={{ width: size, height: size, background: color || 'var(--panel-hover)', fontSize: Math.round(size * 0.46) }}
+      style={{
+        width: size,
+        height: size,
+        background: color || 'var(--panel-hover)',
+        fontSize: Math.round(size * 0.46),
+      }}
       aria-hidden
     >
       {initialsOf(name)}
@@ -1199,7 +1246,11 @@ function GroupNode({
           e.stopPropagation()
           onOpenOnly()
         }}
-        title={group.suspended ? t('ui.sidebar.groupSuspendedHint') : t('ui.sidebar.openAllGroupProjects')}
+        title={
+          group.suspended
+            ? t('ui.sidebar.groupSuspendedHint')
+            : t('ui.sidebar.openAllGroupProjects')
+        }
         {...draggable.attributes}
         {...draggable.listeners}
       >
@@ -1258,7 +1309,6 @@ function collectDescendants(rootId: string, allGroups: Group[]): Set<string> {
   return result
 }
 
-
 /* ------------ Project ------------ */
 
 type ProjectNodeProps = {
@@ -1298,13 +1348,16 @@ function ProjectNode({
     draggable.setNodeRef(node)
   }
 
-  const allDisabled = project.terminals.length > 0 && project.terminals.every((term) => term.disabled)
+  const allDisabled =
+    project.terminals.length > 0 && project.terminals.every((term) => term.disabled)
   const branch = useProjectBranch(projectRepresentativeCwd(project))
   const runningCount = useTerminalsStore((state) =>
     project.terminals.reduce(
       (n, term) =>
         n +
-        (term.tabs.some((tab) => tab.ptyId && state.byPtyId[tab.ptyId]?.status === 'working') ? 1 : 0),
+        (term.tabs.some((tab) => tab.ptyId && state.byPtyId[tab.ptyId]?.status === 'working')
+          ? 1
+          : 0),
       0,
     ),
   )
@@ -1473,7 +1526,15 @@ type TerminalNodeProps = {
   onMenu: (e: React.MouseEvent) => void
 }
 
-function TerminalNode({ project, terminal, selected, focused, onClick, onDoubleClick, onMenu }: TerminalNodeProps) {
+function TerminalNode({
+  project,
+  terminal,
+  selected,
+  focused,
+  onClick,
+  onDoubleClick,
+  onMenu,
+}: TerminalNodeProps) {
   const t = useT()
   const terminalTheme = useProjectsStore(
     (s) => s.preferences.terminalTheme ?? s.preferences.uiTheme,

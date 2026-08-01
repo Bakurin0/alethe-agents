@@ -24,9 +24,10 @@ const AGENTS: { type: AgentType; label: string }[] = [
 export function NewSubTabModal() {
   const t = useT()
   const open = useUiStore((s) => s.openModal === 'newSubTab')
-  const context = useUiStore((s) => s.modalContext) as
-    | { projectId?: string; terminalId?: string }
-    | null
+  const context = useUiStore((s) => s.modalContext) as {
+    projectId?: string
+    terminalId?: string
+  } | null
   const closeModal = useUiStore((s) => s.closeModal)
   const createSubTab = useProjectsStore((s) => s.createSubTab)
   const enabled = useProjectsStore((s) => s.preferences.enabledAgents)
@@ -54,7 +55,8 @@ export function NewSubTabModal() {
 
   const visibleAgents = AGENTS.filter((a) => enabled[a.type])
   const inheritedCwd = useMemo(() => {
-    const activeTab = terminal?.tabs.find((item) => item.id === terminal.activeTabId) ?? terminal?.tabs[0]
+    const activeTab =
+      terminal?.tabs.find((item) => item.id === terminal.activeTabId) ?? terminal?.tabs[0]
     return activeTab?.cwd?.trim() || terminal?.cwd?.trim() || ''
   }, [terminal])
 
@@ -67,7 +69,15 @@ export function NewSubTabModal() {
     setType('shell')
     setRuntimeProfile('lean')
     setCwd('')
-    setUnrestricted({ shell: false, claude: false, codex: false, antigravity: false, opencode: false, freebuff: false, mimo: false })
+    setUnrestricted({
+      shell: false,
+      claude: false,
+      codex: false,
+      antigravity: false,
+      opencode: false,
+      freebuff: false,
+      mimo: false,
+    })
   }
 
   const submit = () => {
@@ -157,10 +167,16 @@ export function NewSubTabModal() {
                       setType(a.type)
                       void browse()
                     }}
-                    title={active && (cwd || inheritedCwd) ? cwd || inheritedCwd : t('term.chooseFolder')}
+                    title={
+                      active && (cwd || inheritedCwd) ? cwd || inheritedCwd : t('term.chooseFolder')
+                    }
                     aria-label={t('term.chooseFolder')}
                   >
-                    {active && (cwd || inheritedCwd) ? <FolderCheck size={14} /> : <Folder size={14} />}
+                    {active && (cwd || inheritedCwd) ? (
+                      <FolderCheck size={14} />
+                    ) : (
+                      <Folder size={14} />
+                    )}
                   </button>
                 </span>
               </button>
@@ -185,7 +201,9 @@ export function NewSubTabModal() {
             ))}
           </div>
           <span className={controls.hint}>
-            {type === 'opencode' ? t('term.runtimeProfile.opencodeNote') : t(`term.runtimeProfile.${runtimeProfile}.desc`)}
+            {type === 'opencode'
+              ? t('term.runtimeProfile.opencodeNote')
+              : t(`term.runtimeProfile.${runtimeProfile}.desc`)}
           </span>
         </div>
       ) : null}

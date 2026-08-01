@@ -44,9 +44,7 @@ export const ProjectContainer = memo(function ProjectContainer({
   const setGraphifyEnabled = useProjectsStore((s) => s.setGraphifyEnabled)
   const setWorkspaceGridLayout = useProjectsStore((s) => s.setWorkspaceGridLayout)
   const setGroupGridLayout = useProjectsStore((s) => s.setGroupGridLayout)
-  const workspaceGridLayout = useProjectsStore(
-    (s) => s.preferences.workspaceGridLayout,
-  )
+  const workspaceGridLayout = useProjectsStore((s) => s.preferences.workspaceGridLayout)
   const activeGroupGrid = useMemo(() => {
     if (!group) return null
     if (group.layoutMode !== 'grid' || !group.gridLayout) return null
@@ -63,7 +61,11 @@ export const ProjectContainer = memo(function ProjectContainer({
     const grid = workspaceGridLayout
       ? { kind: 'workspace' as const, layout: workspaceGridLayout }
       : activeGroupGrid
-        ? { kind: 'group' as const, groupId: activeGroupGrid.groupId, layout: activeGroupGrid.layout }
+        ? {
+            kind: 'group' as const,
+            groupId: activeGroupGrid.groupId,
+            layout: activeGroupGrid.layout,
+          }
         : null
     if (!grid) return
     const cell = grid.layout.cells[project.id]
@@ -80,13 +82,15 @@ export const ProjectContainer = memo(function ProjectContainer({
     if (!gridEl) return
 
     const rect = gridEl.getBoundingClientRect()
-    const initialCols = (grid.layout.colSizes && grid.layout.colSizes.length === grid.layout.cols
-      ? grid.layout.colSizes
-      : Array(grid.layout.cols).fill(1)
+    const initialCols = (
+      grid.layout.colSizes && grid.layout.colSizes.length === grid.layout.cols
+        ? grid.layout.colSizes
+        : Array(grid.layout.cols).fill(1)
     ).slice()
-    const initialRows = (grid.layout.rowSizes && grid.layout.rowSizes.length === grid.layout.rows
-      ? grid.layout.rowSizes
-      : Array(grid.layout.rows).fill(1)
+    const initialRows = (
+      grid.layout.rowSizes && grid.layout.rowSizes.length === grid.layout.rows
+        ? grid.layout.rowSizes
+        : Array(grid.layout.rows).fill(1)
     ).slice()
     const totalColUnits = initialCols.reduce((a, b) => a + b, 0)
     const totalRowUnits = initialRows.reduce((a, b) => a + b, 0)
@@ -113,20 +117,14 @@ export const ProjectContainer = memo(function ProjectContainer({
       if (canResizeX) {
         const deltaFr = (dx * totalColUnits) / rect.width
         const combined = initialCols[lastColIdx] + initialCols[nextColIdx]
-        const grown = Math.max(
-          minFr,
-          Math.min(combined - minFr, initialCols[lastColIdx] + deltaFr),
-        )
+        const grown = Math.max(minFr, Math.min(combined - minFr, initialCols[lastColIdx] + deltaFr))
         colSizes[lastColIdx] = grown
         colSizes[nextColIdx] = combined - grown
       }
       if (canResizeY) {
         const deltaFr = (dy * totalRowUnits) / rect.height
         const combined = initialRows[lastRowIdx] + initialRows[nextRowIdx]
-        const grown = Math.max(
-          minFr,
-          Math.min(combined - minFr, initialRows[lastRowIdx] + deltaFr),
-        )
+        const grown = Math.max(minFr, Math.min(combined - minFr, initialRows[lastRowIdx] + deltaFr))
         rowSizes[lastRowIdx] = grown
         rowSizes[nextRowIdx] = combined - grown
       }
@@ -159,12 +157,12 @@ export const ProjectContainer = memo(function ProjectContainer({
 
   const terminals = useMemo<Terminal[]>(() => {
     const map = new Map(project.terminals.map((t) => [t.id, t]))
-    return container.paneIds
-      .map((id) => map.get(id))
-      .filter((t): t is Terminal => Boolean(t))
+    return container.paneIds.map((id) => map.get(id)).filter((t): t is Terminal => Boolean(t))
   }, [project.terminals, container.paneIds])
   const graphifyPaneOpen = terminals.some((terminal) => terminal.kind === 'graphify')
-  const graphifyCwd = terminals.find((terminal) => terminal.kind !== 'graphify' && terminal.cwd)?.cwd
+  const graphifyCwd = terminals.find(
+    (terminal) => terminal.kind !== 'graphify' && terminal.cwd,
+  )?.cwd
 
   // Cor do container = cor do PROJETO (cada projeto fica visualmente único).
   // Cor do grupo fica reservada pro bullet/tag na sidebar (organização).
@@ -199,87 +197,89 @@ export const ProjectContainer = memo(function ProjectContainer({
       }`}
       style={{ ['--container-accent' as string]: accent }}
     >
-      {showHeader ? <div className={styles.tag}>
-        {!isFullscreen ? (
-          <button
-            type="button"
-            className={styles.dragHandle}
-            {...draggable.attributes}
-            {...draggable.listeners}
-            title={t('ws.dragToReorderContainer')}
-            aria-label={t('ws.dragContainer')}
-          >
-            <GripVertical size={11} />
-          </button>
-        ) : null}
-        {project.iconUrl ? (
-          <img src={project.iconUrl} alt="" className={styles.projectIcon} />
-        ) : (
-          <span className={styles.bullet} style={{ background: accent }} />
-        )}
-        <span className={styles.tagName} title={project.name}>
-          {project.name}
-        </span>
-        <span className={styles.tagCount}>{container.paneIds.length}</span>
-        <div className={styles.tagActions}>
-          {!graphifyPaneOpen && graphifyCwd ? (
+      {showHeader ? (
+        <div className={styles.tag}>
+          {!isFullscreen ? (
+            <button
+              type="button"
+              className={styles.dragHandle}
+              {...draggable.attributes}
+              {...draggable.listeners}
+              title={t('ws.dragToReorderContainer')}
+              aria-label={t('ws.dragContainer')}
+            >
+              <GripVertical size={11} />
+            </button>
+          ) : null}
+          {project.iconUrl ? (
+            <img src={project.iconUrl} alt="" className={styles.projectIcon} />
+          ) : (
+            <span className={styles.bullet} style={{ background: accent }} />
+          )}
+          <span className={styles.tagName} title={project.name}>
+            {project.name}
+          </span>
+          <span className={styles.tagCount}>{container.paneIds.length}</span>
+          <div className={styles.tagActions}>
+            {!graphifyPaneOpen && graphifyCwd ? (
+              <button
+                type="button"
+                className={styles.tagBtn}
+                onClick={(e) => {
+                  e.stopPropagation()
+                  setGraphifyEnabled(project.id, true)
+                  createGraphifyPane(project.id, graphifyCwd)
+                }}
+                title={t('graphify.startInProject')}
+                aria-label={t('graphify.startInProject')}
+              >
+                <Network size={11} />
+              </button>
+            ) : null}
             <button
               type="button"
               className={styles.tagBtn}
               onClick={(e) => {
                 e.stopPropagation()
-                setGraphifyEnabled(project.id, true)
-                createGraphifyPane(project.id, graphifyCwd)
+                setCollapsed(project.id, true)
               }}
-              title={t('graphify.startInProject')}
-              aria-label={t('graphify.startInProject')}
+              title={t('ws.collapseContainer')}
+              aria-label={t('ws.collapse')}
             >
-              <Network size={11} />
+              <ChevronRight size={11} />
             </button>
-          ) : null}
-          <button
-            type="button"
-            className={styles.tagBtn}
-            onClick={(e) => {
-              e.stopPropagation()
-              setCollapsed(project.id, true)
-            }}
-            title={t('ws.collapseContainer')}
-            aria-label={t('ws.collapse')}
-          >
-            <ChevronRight size={11} />
-          </button>
-          <button
-            type="button"
-            className={styles.tagBtn}
-            onClick={(e) => {
-              e.stopPropagation()
-              if (isFullscreen) {
-                setFullscreen(null)
-                return
-              }
-              setWorkspaceFlat(false)
-              setFullscreen(project.id)
-            }}
-            title={isFullscreen ? t('ws.exitFullscreen') : t('ws.containerFullscreen')}
-            aria-label={t('ws.toggleFullscreen')}
-          >
-            {isFullscreen ? <Minimize2 size={11} /> : <Maximize2 size={11} />}
-          </button>
-          <button
-            type="button"
-            className={styles.tagBtn}
-            onClick={(e) => {
-              e.stopPropagation()
-              closeContainer(project.id)
-            }}
-            title={t('ws.closeContainer')}
-            aria-label={t('ws.close')}
-          >
-            <Minus size={11} />
-          </button>
+            <button
+              type="button"
+              className={styles.tagBtn}
+              onClick={(e) => {
+                e.stopPropagation()
+                if (isFullscreen) {
+                  setFullscreen(null)
+                  return
+                }
+                setWorkspaceFlat(false)
+                setFullscreen(project.id)
+              }}
+              title={isFullscreen ? t('ws.exitFullscreen') : t('ws.containerFullscreen')}
+              aria-label={t('ws.toggleFullscreen')}
+            >
+              {isFullscreen ? <Minimize2 size={11} /> : <Maximize2 size={11} />}
+            </button>
+            <button
+              type="button"
+              className={styles.tagBtn}
+              onClick={(e) => {
+                e.stopPropagation()
+                closeContainer(project.id)
+              }}
+              title={t('ws.closeContainer')}
+              aria-label={t('ws.close')}
+            >
+              <Minus size={11} />
+            </button>
+          </div>
         </div>
-      </div> : null}
+      ) : null}
       <div className={styles.body}>
         {terminals.length === 0 ? (
           <div className={styles.emptyShell}>

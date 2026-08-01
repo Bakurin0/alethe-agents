@@ -28,9 +28,7 @@ export function Modal({ open, onClose, title, children, footer, width = 440 }: P
           onOpenAutoFocus={(e) => {
             // foca o primeiro input ao invés do botão close
             const root = e.currentTarget as HTMLElement | null
-            const input = root?.querySelector<HTMLElement>(
-              'input,textarea,[data-autofocus]',
-            )
+            const input = root?.querySelector<HTMLElement>('input,textarea,[data-autofocus]')
             if (input) {
               e.preventDefault()
               input.focus()

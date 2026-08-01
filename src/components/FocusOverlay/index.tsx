@@ -25,10 +25,5 @@ export function FocusOverlay() {
 
   if (!focusedTerminalId) return null
 
-  return (
-    <div
-      className={styles.backdrop}
-      onClick={() => setFocusedTerminal(null)}
-    />
-  )
+  return <div className={styles.backdrop} onClick={() => setFocusedTerminal(null)} />
 }

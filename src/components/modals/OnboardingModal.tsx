@@ -47,7 +47,9 @@ export function OnboardingModal() {
   const [photoUrl, setPhotoUrl] = useState(preferences.profileImageUrl)
   const [showPhoto, setShowPhoto] = useState(Boolean(preferences.profileImageUrl.trim()))
   const [imgFailed, setImgFailed] = useState(false)
-  const [agentAvailability, setAgentAvailability] = useState<Partial<Record<CodingAgent, boolean>>>({})
+  const [agentAvailability, setAgentAvailability] = useState<Partial<Record<CodingAgent, boolean>>>(
+    {},
+  )
   const [detectingAgents, setDetectingAgents] = useState(true)
   const contentRef = useRef<HTMLDivElement | null>(null)
   const agentDetectionStartedRef = useRef(false)
@@ -161,14 +163,21 @@ export function OnboardingModal() {
             <section className={styles.main}>
               <header className={styles.mainHeader}>
                 <div className={styles.compactBrand}>
-                  <img className={styles.brandLogo} src={aletheLogo} alt="Alethe" draggable={false} />
+                  <img
+                    className={styles.brandLogo}
+                    src={aletheLogo}
+                    alt="Alethe"
+                    draggable={false}
+                  />
                   <div>
                     <div className={styles.eyebrow}>{t('onboarding.kicker')}</div>
                     <h1 className={styles.headline}>{t('onboarding.title')}</h1>
                   </div>
                 </div>
                 <div className={styles.progressMeta}>
-                  <div className={styles.progressStep}>{t('onboarding.step', { current: step + 1, total: STEP_COUNT })}</div>
+                  <div className={styles.progressStep}>
+                    {t('onboarding.step', { current: step + 1, total: STEP_COUNT })}
+                  </div>
                   <div className={styles.progressDots} aria-hidden>
                     {Array.from({ length: STEP_COUNT }, (_, index) => (
                       <span key={index} data-active={index <= step} />
@@ -206,15 +215,20 @@ export function OnboardingModal() {
                           </div>
 
                           <div className={styles.previewText}>
-                            <div className={styles.previewName}>{trimmedName || t('onboarding.namePlaceholder')}</div>
-                            <div className={styles.previewHint}>{t('onboarding.profilePreviewHint')}</div>
+                            <div className={styles.previewName}>
+                              {trimmedName || t('onboarding.namePlaceholder')}
+                            </div>
+                            <div className={styles.previewHint}>
+                              {t('onboarding.profilePreviewHint')}
+                            </div>
                           </div>
                         </div>
 
                         <div className={styles.formCard}>
                           <div className={styles.field}>
                             <div className={styles.fieldLabel}>
-                              <Globe size={12} style={{ verticalAlign: '-2px' }} /> {t('language.title')}
+                              <Globe size={12} style={{ verticalAlign: '-2px' }} />{' '}
+                              {t('language.title')}
                             </div>
                             <div className={styles.languageGrid}>
                               {LOCALES.map((locale) => {
@@ -232,14 +246,18 @@ export function OnboardingModal() {
                                     onClick={() => setLanguage(locale.id)}
                                   >
                                     <span className={styles.languageCardBody}>
-                                      <span className={styles.languageCardTitle}>{locale.nativeName}</span>
+                                      <span className={styles.languageCardTitle}>
+                                        {locale.nativeName}
+                                      </span>
                                       <span className={styles.languageCardMeta}>
                                         {locale.id === 'en'
                                           ? t('onboarding.languageEnglishHint')
                                           : t('onboarding.languagePortugueseHint')}
                                       </span>
                                     </span>
-                                    {active ? <Check size={16} className={styles.checkMark} /> : null}
+                                    {active ? (
+                                      <Check size={16} className={styles.checkMark} />
+                                    ) : null}
                                   </button>
                                 )
                               })}
@@ -326,7 +344,9 @@ export function OnboardingModal() {
                                   <span>{themeLabel(t, theme.id)}</span>
                                   {active ? <Check size={15} className={styles.checkMark} /> : null}
                                 </div>
-                                <div className={styles.themeOptionDesc}>{themeDescription(t, theme.id)}</div>
+                                <div className={styles.themeOptionDesc}>
+                                  {themeDescription(t, theme.id)}
+                                </div>
                               </div>
                             </button>
                           )
@@ -344,7 +364,11 @@ export function OnboardingModal() {
 
                       <div className={styles.agentSummary}>
                         <span>{t('onboarding.agentsCount', { count: enabledCount })}</span>
-                        <span>{detectingAgents ? t('onboarding.agentsDetecting') : t('onboarding.agentsDetected')}</span>
+                        <span>
+                          {detectingAgents
+                            ? t('onboarding.agentsDetecting')
+                            : t('onboarding.agentsDetected')}
+                        </span>
                       </div>
 
                       <div className={styles.agentGrid}>
@@ -367,20 +391,32 @@ export function OnboardingModal() {
                               data-autofocus={active ? 'true' : undefined}
                             >
                               <div className={styles.agentIconWrap}>
-                                <AgentIcon type={agent.id} size={20} theme={preferences.terminalTheme ?? preferences.uiTheme} />
+                                <AgentIcon
+                                  type={agent.id}
+                                  size={20}
+                                  theme={preferences.terminalTheme ?? preferences.uiTheme}
+                                />
                               </div>
                               <div className={styles.agentOptionBody}>
                                 <div className={styles.agentNameRow}>
                                   <span className={styles.agentName}>{agent.label}</span>
                                   {detectingAgents ? (
-                                    <span className={styles.agentStatus}>{t('onboarding.agentChecking')}</span>
+                                    <span className={styles.agentStatus}>
+                                      {t('onboarding.agentChecking')}
+                                    </span>
                                   ) : installed ? (
-                                    active ? <Check size={15} className={styles.checkMark} /> : null
+                                    active ? (
+                                      <Check size={15} className={styles.checkMark} />
+                                    ) : null
                                   ) : (
-                                    <span className={styles.agentStatus}>{t('onboarding.agentNotInstalled')}</span>
+                                    <span className={styles.agentStatus}>
+                                      {t('onboarding.agentNotInstalled')}
+                                    </span>
                                   )}
                                 </div>
-                                <div className={styles.agentDesc}>{t(`agent.${agent.id}.desc`)}</div>
+                                <div className={styles.agentDesc}>
+                                  {t(`agent.${agent.id}.desc`)}
+                                </div>
                               </div>
                             </button>
                           )
@@ -403,7 +439,10 @@ export function OnboardingModal() {
                             <button
                               key={feature.id}
                               type="button"
-                              className={[styles.agentOption, active ? styles.agentOptionActive : '']
+                              className={[
+                                styles.agentOption,
+                                active ? styles.agentOptionActive : '',
+                              ]
                                 .filter(Boolean)
                                 .join(' ')}
                               onClick={() =>
@@ -419,7 +458,9 @@ export function OnboardingModal() {
                               }
                               data-autofocus={active ? 'true' : undefined}
                             >
-                              <div className={styles.agentIconWrap}><FeatureIcon size={20} /></div>
+                              <div className={styles.agentIconWrap}>
+                                <FeatureIcon size={20} />
+                              </div>
                               <div className={styles.agentOptionBody}>
                                 <div className={styles.agentNameRow}>
                                   <span className={styles.agentName}>{t(feature.titleKey)}</span>
@@ -440,7 +481,11 @@ export function OnboardingModal() {
                 <div className={styles.footerLeft}>{t('onboarding.footerNote')}</div>
                 <div className={styles.footerActions}>
                   {step > 0 ? (
-                    <button type="button" className={`${styles.button} ${styles.buttonSecondary}`} onClick={back}>
+                    <button
+                      type="button"
+                      className={`${styles.button} ${styles.buttonSecondary}`}
+                      onClick={back}
+                    >
                       {t('common.back')}
                     </button>
                   ) : null}

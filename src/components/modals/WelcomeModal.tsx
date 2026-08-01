@@ -34,10 +34,7 @@ export function WelcomeModal() {
     <Dialog.Root open={open} onOpenChange={(v) => !v && closeModal()}>
       <Dialog.Portal>
         <Dialog.Overlay className={styles.overlay} />
-        <Dialog.Content
-          className={styles.content}
-          aria-describedby={undefined}
-        >
+        <Dialog.Content className={styles.content} aria-describedby={undefined}>
           <Dialog.Close asChild>
             <button type="button" aria-label={t('common.close')} className={styles.close}>
               <X size={16} />
@@ -66,23 +63,13 @@ export function WelcomeModal() {
               {t('welcome.greeting', { name: displayName })}
             </Dialog.Title>
 
-            <p className={styles.subtitle}>
-              {t('welcome.subtitle')}
-            </p>
+            <p className={styles.subtitle}>{t('welcome.subtitle')}</p>
 
             <div className={styles.actions}>
-              <button
-                type="button"
-                className={styles.secondary}
-                onClick={closeModal}
-              >
+              <button type="button" className={styles.secondary} onClick={closeModal}>
                 {t('common.skip')}
               </button>
-              <button
-                type="button"
-                className={styles.primary}
-                onClick={closeModal}
-              >
+              <button type="button" className={styles.primary} onClick={closeModal}>
                 {t('common.start')}
               </button>
             </div>

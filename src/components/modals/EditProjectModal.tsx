@@ -38,7 +38,7 @@ export function EditProjectModal() {
   const merge = useMergeStore()
 
   const project = useProjectsStore((s) =>
-    context?.projectId ? s.projects.find((p) => p.id === context.projectId) ?? null : null,
+    context?.projectId ? (s.projects.find((p) => p.id === context.projectId) ?? null) : null,
   )
 
   const [name, setName] = useState('')
@@ -170,7 +170,10 @@ export function EditProjectModal() {
       setWorktreeMode(project.id, worktreeMode)
     }
 
-    const cmds = validationCommandsStr.split('\n').map((c) => c.trim()).filter(Boolean)
+    const cmds = validationCommandsStr
+      .split('\n')
+      .map((c) => c.trim())
+      .filter(Boolean)
     const originalCmds = project.validationCommands ?? []
     if (JSON.stringify(cmds) !== JSON.stringify(originalCmds)) {
       setValidationCommands(project.id, cmds)
@@ -313,7 +316,15 @@ export function EditProjectModal() {
       <div className={controls.field}>
         <label className={controls.label}>Default worktree mode</label>
         <div style={{ display: 'flex', gap: 16, marginTop: 4 }}>
-          <label style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 12, cursor: 'pointer' }}>
+          <label
+            style={{
+              display: 'flex',
+              alignItems: 'center',
+              gap: 6,
+              fontSize: 12,
+              cursor: 'pointer',
+            }}
+          >
             <input
               type="radio"
               name="worktreeMode"
@@ -323,7 +334,15 @@ export function EditProjectModal() {
             />
             Git worktree (fast)
           </label>
-          <label style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 12, cursor: 'pointer' }}>
+          <label
+            style={{
+              display: 'flex',
+              alignItems: 'center',
+              gap: 6,
+              fontSize: 12,
+              cursor: 'pointer',
+            }}
+          >
             <input
               type="radio"
               name="worktreeMode"
@@ -340,7 +359,13 @@ export function EditProjectModal() {
         <label className={controls.label}>Validation commands (one per line)</label>
         <textarea
           className={controls.input}
-          style={{ height: 60, fontFamily: 'monospace', fontSize: 11, padding: '6px 8px', resize: 'vertical' }}
+          style={{
+            height: 60,
+            fontFamily: 'monospace',
+            fontSize: 11,
+            padding: '6px 8px',
+            resize: 'vertical',
+          }}
           placeholder="Ex: npm run build&#10;npm test"
           value={validationCommandsStr}
           onChange={(e) => setValidationCommandsStr(e.target.value)}
@@ -361,7 +386,10 @@ export function EditProjectModal() {
         </select>
       </div>
 
-      <div className={controls.field} style={{ display: 'flex', alignItems: 'center', gap: 8, marginTop: 8 }}>
+      <div
+        className={controls.field}
+        style={{ display: 'flex', alignItems: 'center', gap: 8, marginTop: 8 }}
+      >
         <input
           type="checkbox"
           id="autoWorktree"
@@ -369,12 +397,19 @@ export function EditProjectModal() {
           onChange={(e) => setAutoWorktreeState(e.target.checked)}
           style={{ cursor: 'pointer' }}
         />
-        <label htmlFor="autoWorktree" className={controls.label} style={{ margin: 0, cursor: 'pointer', fontWeight: 'normal' }}>
+        <label
+          htmlFor="autoWorktree"
+          className={controls.label}
+          style={{ margin: 0, cursor: 'pointer', fontWeight: 'normal' }}
+        >
           {t('multiAgent.autoWorktree')}
         </label>
       </div>
 
-      <div className={controls.field} style={{ display: 'flex', alignItems: 'center', gap: 8, marginTop: 8 }}>
+      <div
+        className={controls.field}
+        style={{ display: 'flex', alignItems: 'center', gap: 8, marginTop: 8 }}
+      >
         <input
           type="checkbox"
           id="graphifyEnabled"
@@ -382,12 +417,19 @@ export function EditProjectModal() {
           onChange={(e) => setGraphifyEnabledState(e.target.checked)}
           style={{ cursor: 'pointer' }}
         />
-        <label htmlFor="graphifyEnabled" className={controls.label} style={{ margin: 0, cursor: 'pointer', fontWeight: 'normal' }}>
+        <label
+          htmlFor="graphifyEnabled"
+          className={controls.label}
+          style={{ margin: 0, cursor: 'pointer', fontWeight: 'normal' }}
+        >
           {t('project.graphifyEnabled')}
         </label>
       </div>
 
-      <div className={controls.field} style={{ display: 'flex', alignItems: 'center', gap: 8, marginTop: 8 }}>
+      <div
+        className={controls.field}
+        style={{ display: 'flex', alignItems: 'center', gap: 8, marginTop: 8 }}
+      >
         <input
           type="checkbox"
           id="gsdWatcher"
@@ -395,14 +437,20 @@ export function EditProjectModal() {
           onChange={(e) => setGsdWatcherEnabledState(e.target.checked)}
           style={{ cursor: 'pointer' }}
         />
-        <label htmlFor="gsdWatcher" className={controls.label} style={{ margin: 0, cursor: 'pointer', fontWeight: 'normal' }}>
+        <label
+          htmlFor="gsdWatcher"
+          className={controls.label}
+          style={{ margin: 0, cursor: 'pointer', fontWeight: 'normal' }}
+        >
           Ativar Monitoramento do Planejamento GSD (Watch `.planning/`)
         </label>
       </div>
 
       {/* --- RFC-003 Worktrees Ativos --- */}
       <hr style={{ margin: '20px 0 16px', border: 'none', borderTop: '1px solid var(--border)' }} />
-      <h3 style={{ fontSize: 13, fontWeight: 600, marginBottom: 12 }}>Ambientes de Agentes Ativos (Worktrees)</h3>
+      <h3 style={{ fontSize: 13, fontWeight: 600, marginBottom: 12 }}>
+        Ambientes de Agentes Ativos (Worktrees)
+      </h3>
 
       {loadingWorktrees ? (
         <div style={{ fontSize: 11, color: 'var(--fg-muted)' }}>Carregando worktrees...</div>
@@ -411,7 +459,15 @@ export function EditProjectModal() {
           No active worktrees or copies for this project.
         </div>
       ) : (
-        <div style={{ display: 'flex', flexDirection: 'column', gap: 8, maxHeight: 150, overflowY: 'auto' }}>
+        <div
+          style={{
+            display: 'flex',
+            flexDirection: 'column',
+            gap: 8,
+            maxHeight: 150,
+            overflowY: 'auto',
+          }}
+        >
           {worktrees.map((wt) => (
             <div
               key={wt.agentId}
@@ -427,7 +483,9 @@ export function EditProjectModal() {
               }}
             >
               <div style={{ overflow: 'hidden', marginRight: 12 }}>
-                <div style={{ fontWeight: 600 }}>Agent: {wt.agentId} ({wt.mode === 'gitWorktree' ? 'Worktree' : 'Copy'})</div>
+                <div style={{ fontWeight: 600 }}>
+                  Agent: {wt.agentId} ({wt.mode === 'gitWorktree' ? 'Worktree' : 'Copy'})
+                </div>
                 <div
                   style={{
                     fontSize: 10,
@@ -438,7 +496,8 @@ export function EditProjectModal() {
                   }}
                   title={wt.path}
                 >
-                  Ramo: <span style={{ fontFamily: 'monospace' }}>{wt.branch}</span> | Path: {wt.path}
+                  Ramo: <span style={{ fontFamily: 'monospace' }}>{wt.branch}</span> | Path:{' '}
+                  {wt.path}
                 </div>
               </div>
               <button
@@ -561,7 +620,9 @@ export function EditProjectModal() {
                 style={{ cursor: 'pointer' }}
               >
                 {branches.map((b) => (
-                  <option key={b} value={b}>{b}</option>
+                  <option key={b} value={b}>
+                    {b}
+                  </option>
                 ))}
               </select>
             </div>
@@ -574,7 +635,9 @@ export function EditProjectModal() {
                 style={{ cursor: 'pointer' }}
               >
                 {branches.map((b) => (
-                  <option key={b} value={b}>{b}</option>
+                  <option key={b} value={b}>
+                    {b}
+                  </option>
                 ))}
               </select>
             </div>
@@ -584,7 +647,12 @@ export function EditProjectModal() {
             <button
               type="button"
               className={controls.btn}
-              disabled={!mergeSource || !mergeTarget || mergeSource === mergeTarget || merge.phase === 'analyzing'}
+              disabled={
+                !mergeSource ||
+                !mergeTarget ||
+                mergeSource === mergeTarget ||
+                merge.phase === 'analyzing'
+              }
               onClick={() => {
                 const repoPath = project.terminals[0]?.cwd
                 if (repoPath) void merge.analyze(project, repoPath, mergeSource, mergeTarget)
@@ -596,9 +664,13 @@ export function EditProjectModal() {
               type="button"
               className={`${controls.btn} ${controls.btnPrimary}`}
               disabled={
-                !mergeSource || !mergeTarget || mergeSource === mergeTarget ||
-                merge.phase === 'preparing' || merge.phase === 'resolving' ||
-                merge.phase === 'finalizing_commit' || merge.phase === 'branch_diverged' ||
+                !mergeSource ||
+                !mergeTarget ||
+                mergeSource === mergeTarget ||
+                merge.phase === 'preparing' ||
+                merge.phase === 'resolving' ||
+                merge.phase === 'finalizing_commit' ||
+                merge.phase === 'branch_diverged' ||
                 merge.phase === 'rebase_attempt'
               }
               onClick={() => {
@@ -650,8 +722,17 @@ export function EditProjectModal() {
                 </button>
               </>
             )}
-            {(merge.phase === 'finalizing_commit' || merge.phase === 'branch_diverged' || merge.phase === 'rebase_attempt') && (
-              <div style={{ display: 'flex', alignItems: 'center', fontSize: 11, color: 'var(--fg-muted)' }}>
+            {(merge.phase === 'finalizing_commit' ||
+              merge.phase === 'branch_diverged' ||
+              merge.phase === 'rebase_attempt') && (
+              <div
+                style={{
+                  display: 'flex',
+                  alignItems: 'center',
+                  fontSize: 11,
+                  color: 'var(--fg-muted)',
+                }}
+              >
                 {t('merge.finalizing')}
               </div>
             )}
@@ -675,7 +756,9 @@ export function EditProjectModal() {
               {!merge.analysis.clean && (
                 <div style={{ marginTop: 4, fontFamily: 'monospace', fontSize: 10 }}>
                   {merge.analysis.conflicts.slice(0, 8).map((c) => (
-                    <div key={c.path}>{c.path} · {c.class}</div>
+                    <div key={c.path}>
+                      {c.path} · {c.class}
+                    </div>
                   ))}
                 </div>
               )}
@@ -683,7 +766,13 @@ export function EditProjectModal() {
           )}
 
           {merge.phase === 'resolving' && (
-            <div style={{ marginTop: 8, fontSize: 11, color: 'var(--status-working, var(--fg-muted))' }}>
+            <div
+              style={{
+                marginTop: 8,
+                fontSize: 11,
+                color: 'var(--status-working, var(--fg-muted))',
+              }}
+            >
               {t('merge.resolvingHint')}
             </div>
           )}
@@ -708,7 +797,9 @@ export function EditProjectModal() {
             </div>
           )}
           {merge.error && (
-            <div style={{ marginTop: 8, fontSize: 11, color: 'var(--status-stopped)' }}>{merge.error}</div>
+            <div style={{ marginTop: 8, fontSize: 11, color: 'var(--status-stopped)' }}>
+              {merge.error}
+            </div>
           )}
         </>
       )}

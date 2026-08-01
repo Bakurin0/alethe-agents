@@ -63,20 +63,14 @@ export function useGridResize(
       if (canResizeX) {
         const deltaFr = (dx * totalColUnits) / rect.width
         const combined = initialCols[lastColIdx] + initialCols[nextColIdx]
-        const grown = Math.max(
-          minFr,
-          Math.min(combined - minFr, initialCols[lastColIdx] + deltaFr),
-        )
+        const grown = Math.max(minFr, Math.min(combined - minFr, initialCols[lastColIdx] + deltaFr))
         colSizes[lastColIdx] = grown
         colSizes[nextColIdx] = combined - grown
       }
       if (canResizeY) {
         const deltaFr = (dy * totalRowUnits) / rect.height
         const combined = initialRows[lastRowIdx] + initialRows[nextRowIdx]
-        const grown = Math.max(
-          minFr,
-          Math.min(combined - minFr, initialRows[lastRowIdx] + deltaFr),
-        )
+        const grown = Math.max(minFr, Math.min(combined - minFr, initialRows[lastRowIdx] + deltaFr))
         rowSizes[lastRowIdx] = grown
         rowSizes[nextRowIdx] = combined - grown
       }

@@ -19,8 +19,9 @@ function stripFlagWithValue(args: string[], flags: ReadonlySet<string>): string[
 }
 
 function stripClaudeSessionArgs(args: string[]): string[] {
-  return stripFlagWithValue(args, new Set(['--resume', '-r', '--session-id']))
-    .filter((arg) => arg !== '--continue' && arg !== '-c')
+  return stripFlagWithValue(args, new Set(['--resume', '-r', '--session-id'])).filter(
+    (arg) => arg !== '--continue' && arg !== '-c',
+  )
 }
 
 function stripCodexSessionArgs(args: string[]): string[] {
@@ -31,13 +32,15 @@ function stripCodexSessionArgs(args: string[]): string[] {
 }
 
 function stripOpenCodeSessionArgs(args: string[]): string[] {
-  return stripFlagWithValue(args, new Set(['--session', '-s']))
-    .filter((arg) => arg !== '--continue' && arg !== '-c' && arg !== '--resume')
+  return stripFlagWithValue(args, new Set(['--session', '-s'])).filter(
+    (arg) => arg !== '--continue' && arg !== '-c' && arg !== '--resume',
+  )
 }
 
 function stripAntigravitySessionArgs(args: string[]): string[] {
-  return stripFlagWithValue(args, new Set(['--conversation']))
-    .filter((arg) => arg !== '--continue' && arg !== '-c')
+  return stripFlagWithValue(args, new Set(['--conversation'])).filter(
+    (arg) => arg !== '--continue' && arg !== '-c',
+  )
 }
 
 /**

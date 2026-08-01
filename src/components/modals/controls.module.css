@@ -70,7 +70,9 @@ select.input {
   border-radius: var(--radius-md);
   font-size: 13px;
   font-weight: 500;
-  transition: background 100ms, border-color 100ms;
+  transition:
+    background 100ms,
+    border-color 100ms;
 }
 .btn:hover:not(:disabled) {
   background: var(--panel-hover);
@@ -118,7 +120,9 @@ select.input {
   color: var(--fg);
   font-size: 13px;
   cursor: pointer;
-  transition: border-color 100ms, background 100ms;
+  transition:
+    border-color 100ms,
+    background 100ms;
 }
 .pill:hover {
   border-color: var(--border-strong);
@@ -146,7 +150,9 @@ select.input {
   border-radius: var(--radius-md);
   color: var(--fg);
   cursor: pointer;
-  transition: background 100ms, border-color 100ms;
+  transition:
+    background 100ms,
+    border-color 100ms;
 }
 .iconBtn:hover:not(:disabled) {
   background: var(--panel-hover);
@@ -187,7 +193,9 @@ select.input {
   color: var(--fg);
   text-align: left;
   cursor: pointer;
-  transition: border-color 100ms, background 100ms;
+  transition:
+    border-color 100ms,
+    background 100ms;
 }
 .themeCard:hover {
   border-color: var(--border-strong);

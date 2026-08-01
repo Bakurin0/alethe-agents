@@ -19,9 +19,7 @@ type DesignerChild = {
 }
 
 type Context =
-  | { kind: 'project'; id: string }
-  | { kind: 'group'; id: string }
-  | { kind: 'workspace' }
+  { kind: 'project'; id: string } | { kind: 'group'; id: string } | { kind: 'workspace' }
 
 export function LayoutDesignerModal() {
   const open = useUiStore((s) => s.openModal === 'layoutDesigner')
@@ -410,13 +408,16 @@ function DesignerInner({ context, onClose }: { context: Context; onClose: () => 
   }
 
   const save = () => {
-    const layout = reconcileGridLayout({
-      cols,
-      rows,
-      cells,
-      colSizes: colSizes.length === cols ? colSizes : undefined,
-      rowSizes: rowSizes.length === rows ? rowSizes : undefined,
-    }, childIds)
+    const layout = reconcileGridLayout(
+      {
+        cols,
+        rows,
+        cells,
+        colSizes: colSizes.length === cols ? colSizes : undefined,
+        rowSizes: rowSizes.length === rows ? rowSizes : undefined,
+      },
+      childIds,
+    )
     if (context.kind === 'project') setProjectGridLayout(context.id, layout)
     else if (context.kind === 'group') setGroupGridLayout(context.id, layout)
     else setWorkspaceGridLayout(layout)
@@ -483,9 +484,7 @@ function DesignerInner({ context, onClose }: { context: Context; onClose: () => 
               gridTemplateColumns: colSizes
                 .map((s) => `minmax(0, ${Math.max(0.05, s)}fr)`)
                 .join(' '),
-              gridTemplateRows: rowSizes
-                .map((s) => `minmax(0, ${Math.max(0.05, s)}fr)`)
-                .join(' '),
+              gridTemplateRows: rowSizes.map((s) => `minmax(0, ${Math.max(0.05, s)}fr)`).join(' '),
             }}
           >
             {/* slots de fundo (visual apenas — drop é pointer-based no box) */}
@@ -537,25 +536,18 @@ function DesignerInner({ context, onClose }: { context: Context; onClose: () => 
                     borderColor: isSelected ? 'var(--accent)' : undefined,
                   }}
                   onPointerDown={(e) => startDrag(child.id, e)}
-                  onClick={() =>
-                    setSelected((cur) => (cur === child.id ? null : child.id))
-                  }
+                  onClick={() => setSelected((cur) => (cur === child.id ? null : child.id))}
                 >
                   <div className={styles.boxHeader}>
                     {child.color ? (
-                      <span
-                        className={styles.colorChip}
-                        style={{ background: child.color }}
-                      />
+                      <span className={styles.colorChip} style={{ background: child.color }} />
                     ) : null}
                     <span className={styles.boxLabel}>{child.label}</span>
                     <span className={styles.boxSpanBadge}>
                       {cell.colSpan}×{cell.rowSpan}
                     </span>
                   </div>
-                  {child.hint ? (
-                    <div className={styles.boxHint}>{child.hint}</div>
-                  ) : null}
+                  {child.hint ? <div className={styles.boxHint}>{child.hint}</div> : null}
                   <div
                     className={styles.resizeHandle}
                     data-resize-handle="1"

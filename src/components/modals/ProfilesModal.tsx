@@ -1,4 +1,14 @@
-import { ArrowLeftRight, Check, Download, Loader2, PencilLine, Plus, ShieldCheck, Trash2, X } from 'lucide-react'
+import {
+  ArrowLeftRight,
+  Check,
+  Download,
+  Loader2,
+  PencilLine,
+  Plus,
+  ShieldCheck,
+  Trash2,
+  X,
+} from 'lucide-react'
 import { useEffect, useMemo, useState } from 'react'
 
 import { saveFile } from '../../lib/dialog'
@@ -78,23 +88,28 @@ export function ProfilesModal() {
   }, [open])
 
   const fallbackSummaries = useMemo<ProfileSummary[]>(
-    () => profiles.map((profile) => ({
-      id: profile.id,
-      name: profile.name,
-      created_at_ms: profile.created_at_ms,
-      last_used_at_ms: profile.last_used_at_ms,
-      project_count: profile.id === activeProfileId ? projects.length : 0,
-      terminal_count: profile.id === activeProfileId
-        ? projects.reduce((total, project) => total + project.terminals.length, 0)
-        : 0,
-      is_active: profile.id === activeProfileId,
-    })),
+    () =>
+      profiles.map((profile) => ({
+        id: profile.id,
+        name: profile.name,
+        created_at_ms: profile.created_at_ms,
+        last_used_at_ms: profile.last_used_at_ms,
+        project_count: profile.id === activeProfileId ? projects.length : 0,
+        terminal_count:
+          profile.id === activeProfileId
+            ? projects.reduce((total, project) => total + project.terminals.length, 0)
+            : 0,
+        is_active: profile.id === activeProfileId,
+      })),
     [activeProfileId, profiles, projects],
   )
   const items = summaries.length > 0 ? summaries : fallbackSummaries
-  const activeProfile = items.find((profile) => profile.is_active || profile.id === activeProfileId) ?? null
+  const activeProfile =
+    items.find((profile) => profile.is_active || profile.id === activeProfileId) ?? null
   const currentPtyIds = projects.flatMap((project) =>
-    project.terminals.flatMap((terminal) => terminal.tabs.map((tab) => tab.ptyId).filter(Boolean) as string[]),
+    project.terminals.flatMap(
+      (terminal) => terminal.tabs.map((tab) => tab.ptyId).filter(Boolean) as string[],
+    ),
   )
 
   const mapError = (err: unknown) => {
@@ -220,15 +235,25 @@ export function ProfilesModal() {
     <Modal open={open} onClose={closeModal} title={t('profiles.title')} width={760}>
       <div className={styles.root}>
         <div className={styles.intro}>
-          <div className={styles.introIcon}><ShieldCheck size={18} /></div>
+          <div className={styles.introIcon}>
+            <ShieldCheck size={18} />
+          </div>
           <div>
             <strong>{t('profiles.localTitle')}</strong>
             <p>{t('profiles.subtitle')}</p>
           </div>
         </div>
 
-        {error ? <div className={styles.feedbackError} role="alert">{error}</div> : null}
-        {notice ? <div className={styles.feedbackNotice} role="status">{notice}</div> : null}
+        {error ? (
+          <div className={styles.feedbackError} role="alert">
+            {error}
+          </div>
+        ) : null}
+        {notice ? (
+          <div className={styles.feedbackNotice} role="status">
+            {notice}
+          </div>
+        ) : null}
 
         <section className={styles.createCard}>
           <div>
@@ -241,11 +266,22 @@ export function ProfilesModal() {
               value={newName}
               onChange={(event) => setNewName(event.target.value)}
               placeholder={t('profiles.createPlaceholder')}
-              onKeyDown={(event) => { if (event.key === 'Enter') void create() }}
+              onKeyDown={(event) => {
+                if (event.key === 'Enter') void create()
+              }}
               disabled={busy !== null}
             />
-            <button type="button" className={`${controls.btn} ${controls.btnPrimary}`} onClick={() => void create()} disabled={busy !== null}>
-              {busy === 'create' ? <Loader2 size={14} className={styles.spin} /> : <Plus size={14} />}
+            <button
+              type="button"
+              className={`${controls.btn} ${controls.btnPrimary}`}
+              onClick={() => void create()}
+              disabled={busy !== null}
+            >
+              {busy === 'create' ? (
+                <Loader2 size={14} className={styles.spin} />
+              ) : (
+                <Plus size={14} />
+              )}
               {t('profiles.createButton')}
             </button>
           </div>
@@ -268,16 +304,31 @@ export function ProfilesModal() {
                 const isEditing = editingId === profile.id
                 const isBusy = busy !== null
                 return (
-                  <article key={profile.id} className={`${styles.profileCard} ${profile.is_active ? styles.profileCardActive : ''}`}>
+                  <article
+                    key={profile.id}
+                    className={`${styles.profileCard} ${profile.is_active ? styles.profileCardActive : ''}`}
+                  >
                     <div className={styles.profileMain}>
                       <div className={styles.profileTitleRow}>
                         <strong>{profile.name}</strong>
-                        {profile.is_active ? <span className={styles.currentBadge}><Check size={11} />{t('profiles.current')}</span> : null}
+                        {profile.is_active ? (
+                          <span className={styles.currentBadge}>
+                            <Check size={11} />
+                            {t('profiles.current')}
+                          </span>
+                        ) : null}
                       </div>
                       <div className={styles.stats}>
                         <span>{t('profiles.projects', { count: profile.project_count })}</span>
                         <span>{t('profiles.terminals', { count: profile.terminal_count })}</span>
-                        <span>{t('profiles.lastUsed', { date: formatDate(profile.last_used_at_ms, language === 'pt-BR' ? 'pt-BR' : 'en-US') })}</span>
+                        <span>
+                          {t('profiles.lastUsed', {
+                            date: formatDate(
+                              profile.last_used_at_ms,
+                              language === 'pt-BR' ? 'pt-BR' : 'en-US',
+                            ),
+                          })}
+                        </span>
                       </div>
                     </div>
                     {isEditing ? (
@@ -293,19 +344,64 @@ export function ProfilesModal() {
                             if (event.key === 'Escape') setEditingId(null)
                           }}
                         />
-                        <button type="button" className={`${controls.btn} ${controls.btnPrimary}`} onClick={() => void saveRename()} disabled={isBusy}><Check size={14} />{t('common.save')}</button>
-                        <button type="button" className={controls.btn} onClick={() => setEditingId(null)} disabled={isBusy}><X size={14} />{t('common.cancel')}</button>
+                        <button
+                          type="button"
+                          className={`${controls.btn} ${controls.btnPrimary}`}
+                          onClick={() => void saveRename()}
+                          disabled={isBusy}
+                        >
+                          <Check size={14} />
+                          {t('common.save')}
+                        </button>
+                        <button
+                          type="button"
+                          className={controls.btn}
+                          onClick={() => setEditingId(null)}
+                          disabled={isBusy}
+                        >
+                          <X size={14} />
+                          {t('common.cancel')}
+                        </button>
                       </div>
                     ) : (
                       <div className={styles.actions}>
                         {!profile.is_active ? (
-                          <button type="button" className={`${controls.btn} ${controls.btnPrimary}`} onClick={() => void switchProfile(profile)} disabled={isBusy}>
-                            {busy === 'switch' ? <Loader2 size={14} className={styles.spin} /> : <ArrowLeftRight size={14} />}
+                          <button
+                            type="button"
+                            className={`${controls.btn} ${controls.btnPrimary}`}
+                            onClick={() => void switchProfile(profile)}
+                            disabled={isBusy}
+                          >
+                            {busy === 'switch' ? (
+                              <Loader2 size={14} className={styles.spin} />
+                            ) : (
+                              <ArrowLeftRight size={14} />
+                            )}
                             {t('profiles.switchButton')}
                           </button>
                         ) : null}
-                        <button type="button" className={controls.btn} onClick={() => { setEditingId(profile.id); setEditingName(profile.name); setError(null) }} disabled={isBusy}><PencilLine size={14} />{t('profiles.renameButton')}</button>
-                        <button type="button" className={`${controls.btn} ${controls.btnDanger}`} onClick={() => startDelete(profile)} disabled={isBusy || items.length <= 1}><Trash2 size={14} />{t('profiles.deleteButton')}</button>
+                        <button
+                          type="button"
+                          className={controls.btn}
+                          onClick={() => {
+                            setEditingId(profile.id)
+                            setEditingName(profile.name)
+                            setError(null)
+                          }}
+                          disabled={isBusy}
+                        >
+                          <PencilLine size={14} />
+                          {t('profiles.renameButton')}
+                        </button>
+                        <button
+                          type="button"
+                          className={`${controls.btn} ${controls.btnDanger}`}
+                          onClick={() => startDelete(profile)}
+                          disabled={isBusy || items.length <= 1}
+                        >
+                          <Trash2 size={14} />
+                          {t('profiles.deleteButton')}
+                        </button>
                       </div>
                     )}
                   </article>
@@ -315,29 +411,78 @@ export function ProfilesModal() {
           )}
         </section>
 
-        {activeProfile ? <div className={styles.footerHint}>{t('profiles.activeHint', { name: activeProfile.name })}</div> : null}
+        {activeProfile ? (
+          <div className={styles.footerHint}>
+            {t('profiles.activeHint', { name: activeProfile.name })}
+          </div>
+        ) : null}
 
         {pendingDelete ? (
           <section className={styles.deletePanel}>
             <div className={styles.deleteHeader}>
               <div>
                 <h3>{t('profiles.deleteTitle', { name: pendingDelete.name })}</h3>
-                <p>{t('profiles.deleteDescription', { projects: pendingDelete.project_count, terminals: pendingDelete.terminal_count })}</p>
+                <p>
+                  {t('profiles.deleteDescription', {
+                    projects: pendingDelete.project_count,
+                    terminals: pendingDelete.terminal_count,
+                  })}
+                </p>
               </div>
-              <button type="button" className={styles.closeDelete} onClick={() => setPendingDelete(null)} aria-label={t('common.close')}><X size={15} /></button>
+              <button
+                type="button"
+                className={styles.closeDelete}
+                onClick={() => setPendingDelete(null)}
+                aria-label={t('common.close')}
+              >
+                <X size={15} />
+              </button>
             </div>
-            <button type="button" className={controls.btn} onClick={() => void exportPendingBackup()} disabled={busy !== null || backupReady}>
-              {busy === 'backup' ? <Loader2 size={14} className={styles.spin} /> : <Download size={14} />}
+            <button
+              type="button"
+              className={controls.btn}
+              onClick={() => void exportPendingBackup()}
+              disabled={busy !== null || backupReady}
+            >
+              {busy === 'backup' ? (
+                <Loader2 size={14} className={styles.spin} />
+              ) : (
+                <Download size={14} />
+              )}
               {backupReady ? t('profiles.backupDone') : t('profiles.exportBackup')}
             </button>
             <label className={controls.field}>
               <span className={controls.label}>{t('profiles.confirmDeleteInput')}</span>
-              <input className={controls.input} value={confirmName} onChange={(event) => setConfirmName(event.target.value)} placeholder={pendingDelete.name} disabled={!backupReady || busy !== null} />
+              <input
+                className={controls.input}
+                value={confirmName}
+                onChange={(event) => setConfirmName(event.target.value)}
+                placeholder={pendingDelete.name}
+                disabled={!backupReady || busy !== null}
+              />
             </label>
             <div className={styles.deleteActions}>
-              <button type="button" className={controls.btn} onClick={() => setPendingDelete(null)} disabled={busy !== null}>{t('common.cancel')}</button>
-              <button type="button" className={`${controls.btn} ${controls.btnDanger}`} onClick={() => void removeProfile()} disabled={!backupReady || confirmName.trim() !== pendingDelete.name || busy !== null}>
-                {busy === 'delete' ? <Loader2 size={14} className={styles.spin} /> : <Trash2 size={14} />}
+              <button
+                type="button"
+                className={controls.btn}
+                onClick={() => setPendingDelete(null)}
+                disabled={busy !== null}
+              >
+                {t('common.cancel')}
+              </button>
+              <button
+                type="button"
+                className={`${controls.btn} ${controls.btnDanger}`}
+                onClick={() => void removeProfile()}
+                disabled={
+                  !backupReady || confirmName.trim() !== pendingDelete.name || busy !== null
+                }
+              >
+                {busy === 'delete' ? (
+                  <Loader2 size={14} className={styles.spin} />
+                ) : (
+                  <Trash2 size={14} />
+                )}
                 {t('profiles.confirmDeleteButton')}
               </button>
             </div>

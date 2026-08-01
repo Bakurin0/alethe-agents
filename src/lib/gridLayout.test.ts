@@ -32,9 +32,7 @@ describe('reconcileGridLayout', () => {
     const layout: GridLayout = { cols: 2, rows: 1, cells: {} }
     const out = reconcileGridLayout(layout, ['a', 'b'])
     // ocupam slots distintos
-    const keys = new Set(
-      Object.values(out.cells).map((c) => `${c.row}:${c.col}`),
-    )
+    const keys = new Set(Object.values(out.cells).map((c) => `${c.row}:${c.col}`))
     expect(keys.size).toBe(2)
   })
 

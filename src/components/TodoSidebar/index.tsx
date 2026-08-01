@@ -87,7 +87,9 @@ export function TodoSidebar() {
                   styles.todoRow,
                   todo.completed ? styles.todoRowCompleted : '',
                   draggedId === todo.id ? styles.todoRowDragging : '',
-                ].filter(Boolean).join(' ')}
+                ]
+                  .filter(Boolean)
+                  .join(' ')}
                 draggable={!editing}
                 onDragStart={(event) => {
                   setDraggedId(todo.id)
@@ -160,7 +162,9 @@ export function TodoSidebar() {
                     {todo.tags.length > 0 ? (
                       <span className={styles.tags}>
                         {todo.tags.map((tag) => (
-                          <span key={tag} className={styles.tag}>#{tag}</span>
+                          <span key={tag} className={styles.tag}>
+                            #{tag}
+                          </span>
                         ))}
                       </span>
                     ) : null}
@@ -176,7 +180,9 @@ export function TodoSidebar() {
                       >
                         <option value="">{t('todo.noProject')}</option>
                         {projects.map((project) => (
-                          <option key={project.id} value={project.id}>{project.name}</option>
+                          <option key={project.id} value={project.id}>
+                            {project.name}
+                          </option>
                         ))}
                       </select>
                     </span>
@@ -258,7 +264,9 @@ export function TodoSidebar() {
         <div className={styles.heading}>
           <ListTodo size={15} />
           <span>{t('todo.title')}</span>
-          <span className={styles.pendingCount}>{t('todo.pendingCount', { count: active.length })}</span>
+          <span className={styles.pendingCount}>
+            {t('todo.pendingCount', { count: active.length })}
+          </span>
         </div>
         <div className={styles.headerActions}>
           <button
@@ -316,7 +324,9 @@ export function TodoSidebar() {
           >
             <option value="">{t('todo.noProject')}</option>
             {projects.map((project) => (
-              <option key={project.id} value={project.id}>{project.name}</option>
+              <option key={project.id} value={project.id}>
+                {project.name}
+              </option>
             ))}
           </select>
         </label>
@@ -334,7 +344,9 @@ export function TodoSidebar() {
       <div className={styles.content}>
         {todos.length === 0 ? (
           <div className={styles.empty}>
-            <div className={styles.emptyIcon}><ListTodo size={20} /></div>
+            <div className={styles.emptyIcon}>
+              <ListTodo size={20} />
+            </div>
             <strong>{t('todo.emptyTitle')}</strong>
             <span>{t('todo.emptyDescription')}</span>
           </div>
@@ -350,5 +362,8 @@ export function TodoSidebar() {
 }
 
 function parseTags(value: string): string[] {
-  return value.split(/[,#\s]+/).map((tag) => tag.trim()).filter(Boolean)
+  return value
+    .split(/[,#\s]+/)
+    .map((tag) => tag.trim())
+    .filter(Boolean)
 }

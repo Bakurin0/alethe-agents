@@ -111,18 +111,10 @@ export function MainMenu() {
         <span>{flat ? t('menu.groupByProject') : t('menu.flatMode')}</span>
       </button>
       <div className={styles.separator} />
-      <button
-        type="button"
-        className={styles.item}
-        onClick={() => void action(openDataFolder)}
-      >
+      <button type="button" className={styles.item} onClick={() => void action(openDataFolder)}>
         <FolderOpen size={14} /> <span>{t('menu.openDataFolder')}</span>
       </button>
-      <button
-        type="button"
-        className={styles.item}
-        onClick={() => void action(openSpawnLog)}
-      >
+      <button type="button" className={styles.item} onClick={() => void action(openSpawnLog)}>
         <FileText size={14} /> <span>{t('menu.openSpawnLog')}</span>
       </button>
       <button type="button" className={styles.item} onClick={() => void action(openLogsFolder)}>

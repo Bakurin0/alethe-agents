@@ -93,7 +93,9 @@
 .gripBtn {
   cursor: grab;
   opacity: 0.55;
-  transition: opacity 0.12s ease, background 0.12s ease;
+  transition:
+    opacity 0.12s ease,
+    background 0.12s ease;
 }
 .gripBtn:hover {
   opacity: 1;
@@ -185,7 +187,9 @@
   border-radius: 5px;
   color: var(--fg-faint);
   cursor: pointer;
-  transition: background 0.1s ease, color 0.1s ease;
+  transition:
+    background 0.1s ease,
+    color 0.1s ease;
 }
 .action:hover:not(:disabled) {
   background: var(--accent-soft);
@@ -228,7 +232,9 @@
   font-size: 12px;
   font-weight: 500;
   cursor: pointer;
-  transition: background 0.1s ease, border-color 0.1s ease;
+  transition:
+    background 0.1s ease,
+    border-color 0.1s ease;
 }
 .retryBtn:hover {
   background: var(--panel-hover);
@@ -285,9 +291,15 @@
   line-height: 1.3;
   margin: 1.4em 0 0.6em;
 }
-.markdownBody h1 { font-size: 1.7em; }
-.markdownBody h2 { font-size: 1.4em; }
-.markdownBody h3 { font-size: 1.18em; }
+.markdownBody h1 {
+  font-size: 1.7em;
+}
+.markdownBody h2 {
+  font-size: 1.4em;
+}
+.markdownBody h3 {
+  font-size: 1.18em;
+}
 .markdownBody h1,
 .markdownBody h2 {
   padding-bottom: 0.3em;

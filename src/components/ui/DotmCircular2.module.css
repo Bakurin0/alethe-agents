@@ -34,37 +34,46 @@
 }
 
 @keyframes circularChase {
-  0%, 8.333% {
+  0%,
+  8.333% {
     opacity: var(--dot-opacity-peak);
     transform: scale(1.12);
   }
-  16.666%, 25% {
+  16.666%,
+  25% {
     opacity: var(--dot-opacity-mid);
     transform: scale(1);
   }
-  25.001%, 33.333% {
+  25.001%,
+  33.333% {
     opacity: var(--dot-opacity-base);
   }
-  33.334%, 41.666% {
+  33.334%,
+  41.666% {
     opacity: var(--dot-opacity-peak);
     transform: scale(1.12);
   }
-  50%, 58.333% {
+  50%,
+  58.333% {
     opacity: var(--dot-opacity-mid);
     transform: scale(1);
   }
-  58.334%, 66.666% {
+  58.334%,
+  66.666% {
     opacity: var(--dot-opacity-base);
   }
-  66.667%, 75% {
+  66.667%,
+  75% {
     opacity: var(--dot-opacity-peak);
     transform: scale(1.12);
   }
-  83.333%, 91.666% {
+  83.333%,
+  91.666% {
     opacity: var(--dot-opacity-mid);
     transform: scale(1);
   }
-  91.667%, 100% {
+  91.667%,
+  100% {
     opacity: var(--dot-opacity-base);
   }
 }

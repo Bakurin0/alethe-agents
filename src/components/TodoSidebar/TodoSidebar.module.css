@@ -115,8 +115,13 @@
   padding-right: 14px;
 }
 
-.projectInputWrap select { font-size: 11px; }
-.projectInputWrap:focus-within { border-color: var(--border-strong); box-shadow: 0 0 0 2px var(--accent-ring); }
+.projectInputWrap select {
+  font-size: 11px;
+}
+.projectInputWrap:focus-within {
+  border-color: var(--border-strong);
+  box-shadow: 0 0 0 2px var(--accent-ring);
+}
 
 .tagInputWrap {
   min-width: 0;
@@ -331,7 +336,9 @@
   position: relative;
 }
 
-.projectLink select { font-size: 10px; }
+.projectLink select {
+  font-size: 10px;
+}
 
 .tags {
   display: flex;

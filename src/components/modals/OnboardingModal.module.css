@@ -196,7 +196,10 @@
   font-weight: 500;
 }
 
-.progressDots { display: flex; gap: 4px; }
+.progressDots {
+  display: flex;
+  gap: 4px;
+}
 .progressDots span {
   width: 18px;
   height: 3px;
@@ -204,7 +207,9 @@
   background: var(--border-strong);
   transition: background-color 160ms ease;
 }
-.progressDots span[data-active='true'] { background: var(--accent); }
+.progressDots span[data-active='true'] {
+  background: var(--accent);
+}
 
 .progressBar {
   width: min(200px, 100%);
@@ -361,7 +366,9 @@
   font: inherit;
   font-size: 14px;
   outline: none;
-  transition: border-color 120ms ease, box-shadow 120ms ease;
+  transition:
+    border-color 120ms ease,
+    box-shadow 120ms ease;
 }
 
 .input:focus {
@@ -392,7 +399,9 @@
   font-size: 12px;
   font-weight: 600;
   cursor: pointer;
-  transition: background 120ms ease, border-color 120ms ease;
+  transition:
+    background 120ms ease,
+    border-color 120ms ease;
 }
 
 .toggleButton:hover {
@@ -419,7 +428,9 @@
   color: var(--fg);
   text-align: left;
   cursor: pointer;
-  transition: border-color 120ms ease, background 120ms ease;
+  transition:
+    border-color 120ms ease,
+    background 120ms ease;
 }
 
 .languageCard:hover {
@@ -471,7 +482,9 @@
   text-align: left;
   color: var(--fg);
   cursor: pointer;
-  transition: border-color 120ms ease, background 120ms ease;
+  transition:
+    border-color 120ms ease,
+    background 120ms ease;
 }
 
 .themeOption:hover {
@@ -543,7 +556,10 @@
   color: var(--fg);
   text-align: left;
   cursor: pointer;
-  transition: border-color 120ms ease, background 120ms ease, opacity 120ms ease;
+  transition:
+    border-color 120ms ease,
+    background 120ms ease,
+    opacity 120ms ease;
 }
 
 .agentOption:hover:not(:disabled) {
@@ -643,7 +659,10 @@
   font-size: 13px;
   font-weight: 600;
   cursor: pointer;
-  transition: background 120ms ease, border-color 120ms ease, opacity 120ms ease;
+  transition:
+    background 120ms ease,
+    border-color 120ms ease,
+    opacity 120ms ease;
 }
 
 .button:disabled {
@@ -677,13 +696,23 @@
 }
 
 @keyframes fadeIn {
-  from { opacity: 0; }
-  to { opacity: 1; }
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
 }
 
 @keyframes pop {
-  from { opacity: 0; transform: scale(0.98); }
-  to { opacity: 1; transform: scale(1); }
+  from {
+    opacity: 0;
+    transform: scale(0.98);
+  }
+  to {
+    opacity: 1;
+    transform: scale(1);
+  }
 }
 
 @keyframes stepIn {
@@ -704,7 +733,9 @@
     max-height: calc(100vh - 24px);
   }
 
-  .main { max-height: calc(100vh - 24px); }
+  .main {
+    max-height: calc(100vh - 24px);
+  }
 
   .shell {
     grid-template-columns: 1fr;

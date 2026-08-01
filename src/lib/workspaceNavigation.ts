@@ -15,9 +15,7 @@ function cloneGrid(layout: GridLayout | undefined): GridLayout | undefined {
   if (!layout) return undefined
   return {
     ...layout,
-    cells: Object.fromEntries(
-      Object.entries(layout.cells).map(([id, cell]) => [id, { ...cell }]),
-    ),
+    cells: Object.fromEntries(Object.entries(layout.cells).map(([id, cell]) => [id, { ...cell }])),
     colSizes: layout.colSizes ? [...layout.colSizes] : undefined,
     rowSizes: layout.rowSizes ? [...layout.rowSizes] : undefined,
   }
@@ -76,7 +74,7 @@ export function sanitizeWorkspaceSnapshot(
     activeProjectId:
       snapshot.activeProjectId && visibleProjectIds.has(snapshot.activeProjectId)
         ? snapshot.activeProjectId
-        : containers[0]?.projectId ?? null,
+        : (containers[0]?.projectId ?? null),
     focusedTerminalId:
       snapshot.focusedTerminalId && visibleTerminalIds.has(snapshot.focusedTerminalId)
         ? snapshot.focusedTerminalId

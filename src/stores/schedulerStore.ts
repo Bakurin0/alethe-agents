@@ -80,7 +80,9 @@ export const useSchedulerStore = create<SchedulerState>((set, get) => ({
       // Atualiza status localmente para 'failed' enquanto o evento de retorno não chega
       set((state) => ({
         tasks: state.tasks.map((t) =>
-          t.id === taskId ? { ...t, status: 'failed', assignedAgentId: null, leaseResource: null } : t
+          t.id === taskId
+            ? { ...t, status: 'failed', assignedAgentId: null, leaseResource: null }
+            : t,
         ),
       }))
     } catch (err) {

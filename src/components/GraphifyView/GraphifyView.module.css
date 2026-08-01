@@ -62,7 +62,9 @@
   border-radius: 5px;
   color: var(--fg-faint);
   cursor: pointer;
-  transition: background 0.1s ease, color 0.1s ease;
+  transition:
+    background 0.1s ease,
+    color 0.1s ease;
 }
 .closeButton:hover {
   background: var(--status-offline-soft, var(--accent-soft));
@@ -169,7 +171,9 @@
 }
 
 @keyframes graphify-spin {
-  to { transform: rotate(360deg); }
+  to {
+    transform: rotate(360deg);
+  }
 }
 
 .error {

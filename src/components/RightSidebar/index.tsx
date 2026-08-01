@@ -23,7 +23,9 @@ function MarkdownSidebarViewer() {
   const activeProjectId = useProjectsStore((state) => state.activeProjectId)
   const projects = useProjectsStore((state) => state.projects)
   const setPreferences = useProjectsStore((state) => state.setPreferences)
-  const dark = useProjectsStore((state) => state.preferences.uiTheme !== 'light' && state.preferences.uiTheme !== 'min-light')
+  const dark = useProjectsStore(
+    (state) => state.preferences.uiTheme !== 'light' && state.preferences.uiTheme !== 'min-light',
+  )
   const [content, setContent] = useState<string | null>(null)
   const [error, setError] = useState<string | null>(null)
   const [copied, setCopied] = useState(false)
@@ -35,7 +37,8 @@ function MarkdownSidebarViewer() {
       .filter((terminal) => terminal.kind === 'markdown' && terminal.filePath)
       .map((terminal) => ({ path: terminal.filePath!, title: terminal.name }))
   }, [activeProjectId, projects])
-  const selected = readmeTabs.find((tab) => tab.path === selectedPath) ??
+  const selected =
+    readmeTabs.find((tab) => tab.path === selectedPath) ??
     (markdown ? { path: markdown.path, title: markdown.title } : null)
 
   const load = async () => {
@@ -124,7 +127,11 @@ function MarkdownSidebarViewer() {
         </div>
       </header>
       {readmeTabs.length > 1 ? (
-        <div className={styles.readmeTabs} role="tablist" aria-label={t('rightSidebar.markdownTabs')}>
+        <div
+          className={styles.readmeTabs}
+          role="tablist"
+          aria-label={t('rightSidebar.markdownTabs')}
+        >
           {readmeTabs.map((tab) => (
             <button
               key={tab.path}

@@ -11,10 +11,7 @@ import { agentCliCommand, type AgentType } from './types'
  * Args são citados com aspas simples (escapando aspas internas) para sobreviver
  * ao parsing do shell.
  */
-export function buildGhosttyCommand(
-  type: AgentType,
-  extraArgs?: string[],
-): string | undefined {
+export function buildGhosttyCommand(type: AgentType, extraArgs?: string[]): string | undefined {
   const command = agentCliCommand(type)
   if (!command) return undefined
   const parts = [command, ...(extraArgs ?? []).map(shellQuote)]

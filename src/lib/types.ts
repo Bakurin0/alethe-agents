@@ -1,4 +1,5 @@
-export type AgentType = 'shell' | 'claude' | 'codex' | 'opencode' | 'freebuff' | 'mimo' | 'antigravity'
+export type AgentType =
+  'shell' | 'claude' | 'codex' | 'opencode' | 'freebuff' | 'mimo' | 'antigravity'
 
 /** Executável real de cada agente. O Antigravity desktop usa `antigravity`,
  * enquanto o agente de terminal oficial usa `agy`. */
@@ -363,7 +364,15 @@ export const DEFAULT_PREFERENCES: Preferences = {
   uiZoom: 1,
   windowOpacity: 1,
   terminalTheme: null,
-  enabledAgents: { shell: true, claude: true, codex: true, antigravity: true, opencode: true, freebuff: true, mimo: true },
+  enabledAgents: {
+    shell: true,
+    claude: true,
+    codex: true,
+    antigravity: true,
+    opencode: true,
+    freebuff: true,
+    mimo: true,
+  },
   onboardingDone: false,
   workspaceFlat: false,
   fullscreenContainerId: null,

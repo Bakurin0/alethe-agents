@@ -1,36 +1,21 @@
-import {
-  DndContext,
-  PointerSensor,
-  useSensor,
-  useSensors,
-  type DragEndEvent,
-} from '@dnd-kit/core'
+import { DndContext, PointerSensor, useSensor, useSensors, type DragEndEvent } from '@dnd-kit/core'
 import { FolderOpen, FolderPlus, TerminalSquare } from 'lucide-react'
 import { Group as PanelGroup, Panel, Separator } from 'react-resizable-panels'
 import { useEffect, useMemo, useRef, useState } from 'react'
 
-import {
-  selectActiveProject,
-  useProjectsStore,
-} from '../../stores/projectsStore'
+import { selectActiveProject, useProjectsStore } from '../../stores/projectsStore'
 import { useUiStore } from '../../stores/uiStore'
 import { pickDirectory } from '../../lib/dialog'
 import { useT } from '../../lib/i18n'
 import { cellStyle, gridContainerStyle, reconcileGridLayout } from '../../lib/gridLayout'
-import type {
-  GridLayout,
-  Group,
-  Project,
-  Terminal,
-  WorkspaceContainer,
-} from '../../lib/types'
+import type { GridLayout, Group, Project, Terminal, WorkspaceContainer } from '../../lib/types'
 import { EmptyState } from '../EmptyState/EmptyState'
 import { PaneArea } from './PaneArea'
 import { ProjectContainer } from './ProjectContainer'
 import styles from './WorkspaceView.module.css'
 
 function resolveGroup(project: Project, groupsById: Map<string, Group>): Group | null {
-  return project.groupId ? groupsById.get(project.groupId) ?? null : null
+  return project.groupId ? (groupsById.get(project.groupId) ?? null) : null
 }
 
 function collectGroupProjectIds(groupId: string, groups: Group[]): Set<string> {
@@ -69,10 +54,7 @@ export function WorkspaceView() {
   const requestPaneFocus = useUiStore((s) => s.requestPaneFocus)
   const initialWorkspaceEnsured = useRef(false)
 
-  const projectsById = useMemo(
-    () => new Map(projects.map((p) => [p.id, p])),
-    [projects],
-  )
+  const projectsById = useMemo(() => new Map(projects.map((p) => [p.id, p])), [projects])
   const groupsById = useMemo(() => new Map(groups.map((g) => [g.id, g])), [groups])
   const activeGroupProjectIds = useMemo(
     () => (activeGroupTabId ? collectGroupProjectIds(activeGroupTabId, groups) : null),
@@ -101,14 +83,15 @@ export function WorkspaceView() {
       allContainers.length > 0 ||
       activeGroupTabId !== null ||
       projects.length === 0
-    ) return
+    )
+      return
 
     const recent = recentProjectIds
       .map((id) => projectsById.get(id))
       .find((project) => project && project.terminals.length > 0)
     const candidate = activeProject?.terminals.length
       ? activeProject
-      : recent ?? projects.find((project) => project.terminals.length > 0)
+      : (recent ?? projects.find((project) => project.terminals.length > 0))
     if (!candidate) return
 
     initialWorkspaceEnsured.current = true
@@ -134,9 +117,7 @@ export function WorkspaceView() {
     setFullscreenContainer(null)
   }, [fullscreenId, containers, projectsById, setFullscreenContainer])
 
-  const sensors = useSensors(
-    useSensor(PointerSensor, { activationConstraint: { distance: 8 } }),
-  )
+  const sensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 8 } }))
 
   const onDragEnd = (e: DragEndEvent) => {
     const from = String(e.active.id)
@@ -149,9 +130,7 @@ export function WorkspaceView() {
     if (from.startsWith('pane:') && to.startsWith('pane:')) {
       const fromId = from.slice('pane:'.length)
       const toId = to.slice('pane:'.length)
-      const cont = allContainers.find(
-        (c) => c.paneIds.includes(fromId) && c.paneIds.includes(toId),
-      )
+      const cont = allContainers.find((c) => c.paneIds.includes(fromId) && c.paneIds.includes(toId))
       if (!cont) return
       const project = projectsById.get(cont.projectId)
       if (project?.layoutMode === 'grid' && project.gridLayout) {
@@ -247,7 +226,9 @@ export function WorkspaceView() {
           <DndContext sensors={sensors} onDragEnd={onDragEnd}>
             {children}
           </DndContext>
-        ) : children}
+        ) : (
+          children
+        )}
       </div>
     </div>
   )
@@ -258,7 +239,9 @@ export function WorkspaceView() {
       <NoWorkspace
         project={activeProject}
         onAddTerminal={() =>
-          activeProject ? openModal('newTerminal', { projectId: activeProject.id }) : openModal('newProject')
+          activeProject
+            ? openModal('newTerminal', { projectId: activeProject.id })
+            : openModal('newProject')
         }
       />,
       false,
@@ -271,7 +254,12 @@ export function WorkspaceView() {
     const project = c ? projectsById.get(c.projectId) : null
     if (c && project) {
       return shell(
-        <ProjectContainer container={c} project={project} group={resolveGroup(project, groupsById)} isFullscreen />,
+        <ProjectContainer
+          container={c}
+          project={project}
+          group={resolveGroup(project, groupsById)}
+          isFullscreen
+        />,
       )
     }
   }
@@ -336,9 +324,7 @@ function ContainerAutoGrid({
   groupsById: Map<string, Group>
   activeGroupTabId: string | null
 }) {
-  const workspaceGridLayout = useProjectsStore(
-    (s) => s.preferences.workspaceGridLayout,
-  )
+  const workspaceGridLayout = useProjectsStore((s) => s.preferences.workspaceGridLayout)
   // Prioridade: 1) workspace custom  2) grupo/subgrupo ativo
   // 3) grupo direto único  4) auto-grid
   const activeGroup = activeGroupTabId ? groupsById.get(activeGroupTabId) : null
@@ -365,9 +351,7 @@ function ContainerAutoGrid({
   }
   // Detecta se todos os containers pertencem ao MESMO grupo com gridLayout salvo.
   const groupId = (() => {
-    const ids = new Set(
-      containers.map((c) => projectsById.get(c.projectId)?.groupId ?? null),
-    )
+    const ids = new Set(containers.map((c) => projectsById.get(c.projectId)?.groupId ?? null))
     if (ids.size === 1) {
       const only = [...ids][0]
       if (only) return only
@@ -456,11 +440,7 @@ function FragmentRowOuter({
     <>
       <Panel id={rowId} minSize="10%">
         {row.length === 1 ? (
-          <SingleContainer
-            container={row[0]}
-            projectsById={projectsById}
-            groupsById={groupsById}
-          />
+          <SingleContainer container={row[0]} projectsById={projectsById} groupsById={groupsById} />
         ) : (
           <PanelGroup orientation="horizontal" className={styles.fullSize}>
             {row.map((c, i) => {
@@ -613,7 +593,11 @@ function NoWorkspace({
           />
           <div className={styles.emptyFolderLabel}>{t('ws.emptyFolderLabel')}</div>
           <div className={styles.emptyFolderRow}>
-            <button type="button" className={styles.emptyFolderButton} onClick={() => void browseFolder()}>
+            <button
+              type="button"
+              className={styles.emptyFolderButton}
+              onClick={() => void browseFolder()}
+            >
               <FolderOpen size={14} />
               <span>{folder || t('ws.emptyFolderPlaceholder')}</span>
             </button>

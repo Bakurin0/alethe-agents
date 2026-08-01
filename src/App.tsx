@@ -99,12 +99,16 @@ function LoadingScreen() {
         </div>
         <div className={styles.loadingWordmark}>Alethe</div>
         <div className={styles.loadingConsole}>
-          <span className={styles.loadingPrompt} aria-hidden="true">›</span>
+          <span className={styles.loadingPrompt} aria-hidden="true">
+            ›
+          </span>
           <span>{t('loading.initializing')}</span>
           <span className={styles.loadingCursor} aria-hidden="true" />
         </div>
         <div className={styles.loadingRail} aria-hidden="true">
-          {Array.from({ length: 12 }, (_, index) => <span key={index} />)}
+          {Array.from({ length: 12 }, (_, index) => (
+            <span key={index} />
+          ))}
         </div>
       </div>
     </div>
@@ -290,10 +294,15 @@ export default function App() {
     return startActivityTracker()
   }, [hydrated])
 
-  useEffect(() => () => {
-    if (leftSidebarSaveTimerRef.current !== null) window.clearTimeout(leftSidebarSaveTimerRef.current)
-    if (rightSidebarSaveTimerRef.current !== null) window.clearTimeout(rightSidebarSaveTimerRef.current)
-  }, [])
+  useEffect(
+    () => () => {
+      if (leftSidebarSaveTimerRef.current !== null)
+        window.clearTimeout(leftSidebarSaveTimerRef.current)
+      if (rightSidebarSaveTimerRef.current !== null)
+        window.clearTimeout(rightSidebarSaveTimerRef.current)
+    },
+    [],
+  )
 
   useEffect(() => {
     if (!hydrated) return
@@ -347,10 +356,15 @@ export default function App() {
             collapsible
             groupResizeBehavior="preserve-pixel-size"
             onResize={(size, _id, previous) => {
-              if (size.inPixels >= 220 && previous && Math.abs(size.inPixels - previous.inPixels) >= 1) {
+              if (
+                size.inPixels >= 220 &&
+                previous &&
+                Math.abs(size.inPixels - previous.inPixels) >= 1
+              ) {
                 const nextWidth = Math.max(220, Math.min(380, Math.round(size.inPixels)))
                 leftSidebarDefaultRef.current = nextWidth
-                if (leftSidebarSaveTimerRef.current !== null) window.clearTimeout(leftSidebarSaveTimerRef.current)
+                if (leftSidebarSaveTimerRef.current !== null)
+                  window.clearTimeout(leftSidebarSaveTimerRef.current)
                 leftSidebarSaveTimerRef.current = window.setTimeout(() => {
                   leftSidebarSaveTimerRef.current = null
                   setPreferences({ leftSidebarWidth: nextWidth })
@@ -362,7 +376,9 @@ export default function App() {
               <ProjectSidebar />
             </div>
           </Panel>
-          <Separator className={`${styles.shellSeparator} ${leftSidebarVisible ? '' : styles.shellSeparatorHidden}`} />
+          <Separator
+            className={`${styles.shellSeparator} ${leftSidebarVisible ? '' : styles.shellSeparatorHidden}`}
+          />
 
           <Panel id="alethe-main" minSize="360px">
             <main className={styles.mainView}>
@@ -382,7 +398,9 @@ export default function App() {
 
           {todoEnabled ? (
             <>
-              <Separator className={`${styles.shellSeparator} ${rightSidebarVisible ? '' : styles.shellSeparatorHidden}`} />
+              <Separator
+                className={`${styles.shellSeparator} ${rightSidebarVisible ? '' : styles.shellSeparatorHidden}`}
+              />
               <Panel
                 id="alethe-todo-sidebar"
                 panelRef={rightPanelRef}
@@ -393,17 +411,22 @@ export default function App() {
                 collapsedSize="0px"
                 collapsible
                 groupResizeBehavior="preserve-pixel-size"
-            onResize={(size, _id, previous) => {
-              if (size.inPixels >= 260 && previous && Math.abs(size.inPixels - previous.inPixels) >= 1) {
-                const nextWidth = Math.max(260, Math.min(420, Math.round(size.inPixels)))
-                rightSidebarDefaultRef.current = nextWidth
-                if (rightSidebarSaveTimerRef.current !== null) window.clearTimeout(rightSidebarSaveTimerRef.current)
-                rightSidebarSaveTimerRef.current = window.setTimeout(() => {
-                  rightSidebarSaveTimerRef.current = null
-                  setPreferences({ rightSidebarWidth: nextWidth })
-                }, 180)
-              }
-            }}
+                onResize={(size, _id, previous) => {
+                  if (
+                    size.inPixels >= 260 &&
+                    previous &&
+                    Math.abs(size.inPixels - previous.inPixels) >= 1
+                  ) {
+                    const nextWidth = Math.max(260, Math.min(420, Math.round(size.inPixels)))
+                    rightSidebarDefaultRef.current = nextWidth
+                    if (rightSidebarSaveTimerRef.current !== null)
+                      window.clearTimeout(rightSidebarSaveTimerRef.current)
+                    rightSidebarSaveTimerRef.current = window.setTimeout(() => {
+                      rightSidebarSaveTimerRef.current = null
+                      setPreferences({ rightSidebarWidth: nextWidth })
+                    }, 180)
+                  }
+                }}
               >
                 <div className={styles.sidebarContent} data-hidden={!rightSidebarVisible}>
                   <RightSidebar />
@@ -418,36 +441,36 @@ export default function App() {
       <DictationButton />
       <MainMenu />
       <ErrorBoundary label="modals">
-      <NewProjectModal />
-      <NewGroupModal />
-      <EditGroupModal />
-      <EditProjectModal />
-      <NewTerminalModal />
-      <AddContentModal />
-      <NewSubTabModal />
-      <PreferencesModal />
-      <ProfilesModal />
-      <SyncModal />
-      <FindJumpModal />
-      <OnboardingModal />
-      <WelcomeModal />
-      {openModal === 'layoutDesigner' ? (
-        <Suspense fallback={null}>
-          <LayoutDesignerModal />
-        </Suspense>
-      ) : null}
-      <SuspendGroupModal />
-      {openModal === 'memoryAnalytics' ? (
-        <Suspense fallback={null}>
-          <MemoryAnalyticsModal />
-        </Suspense>
-      ) : null}
-      <ThemePickerModal />
-      <TodoSettingsModal />
-      <TopbarSettingsModal />
-      <AiUsageModal />
-      <UpdateModal />
-      <WhatsNewModal />
+        <NewProjectModal />
+        <NewGroupModal />
+        <EditGroupModal />
+        <EditProjectModal />
+        <NewTerminalModal />
+        <AddContentModal />
+        <NewSubTabModal />
+        <PreferencesModal />
+        <ProfilesModal />
+        <SyncModal />
+        <FindJumpModal />
+        <OnboardingModal />
+        <WelcomeModal />
+        {openModal === 'layoutDesigner' ? (
+          <Suspense fallback={null}>
+            <LayoutDesignerModal />
+          </Suspense>
+        ) : null}
+        <SuspendGroupModal />
+        {openModal === 'memoryAnalytics' ? (
+          <Suspense fallback={null}>
+            <MemoryAnalyticsModal />
+          </Suspense>
+        ) : null}
+        <ThemePickerModal />
+        <TodoSettingsModal />
+        <TopbarSettingsModal />
+        <AiUsageModal />
+        <UpdateModal />
+        <WhatsNewModal />
       </ErrorBoundary>
       <InAppNotifications />
       {activeView === 'agentCanvas' ? <TokenHud /> : null}

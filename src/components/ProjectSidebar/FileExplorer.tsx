@@ -18,9 +18,11 @@ export function FileExplorer({ cwd, ptyId, terminalName }: FileExplorerProps) {
     setLiveCwd(cwd)
     if (cwd || !ptyId) return
     let cancelled = false
-    getPtyCwd(ptyId).then((value) => {
-      if (!cancelled && value) setLiveCwd(value)
-    }).catch(() => undefined)
+    getPtyCwd(ptyId)
+      .then((value) => {
+        if (!cancelled && value) setLiveCwd(value)
+      })
+      .catch(() => undefined)
     return () => {
       cancelled = true
     }
@@ -45,7 +47,13 @@ export function FileExplorer({ cwd, ptyId, terminalName }: FileExplorerProps) {
           <RefreshCw size={13} />
         </button>
       </div>
-      <DirectoryNode path={liveCwd} name={rootName(liveCwd)} depth={0} initialOpen reloadKey={reloadKey} />
+      <DirectoryNode
+        path={liveCwd}
+        name={rootName(liveCwd)}
+        depth={0}
+        initialOpen
+        reloadKey={reloadKey}
+      />
     </div>
   )
 }

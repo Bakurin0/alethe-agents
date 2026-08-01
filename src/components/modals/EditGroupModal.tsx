@@ -17,7 +17,7 @@ export function EditGroupModal() {
   const setGroupColor = useProjectsStore((s) => s.setGroupColor)
   const setGroupIconUrl = useProjectsStore((s) => s.setGroupIconUrl)
   const group = useProjectsStore((s) =>
-    context?.groupId ? s.groups.find((g) => g.id === context.groupId) ?? null : null,
+    context?.groupId ? (s.groups.find((g) => g.id === context.groupId) ?? null) : null,
   )
 
   const [name, setName] = useState('')

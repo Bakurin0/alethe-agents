@@ -151,14 +151,16 @@ export function HomeView() {
   const quickAgents = QUICK_AGENTS.filter((agent) => preferences.enabledAgents[agent.type])
   const fallbackQuickTarget = recentProjects[0] ?? projects[0] ?? null
   const [quickProjectId, setQuickProjectId] = useState(() => fallbackQuickTarget?.id ?? '')
-  const quickTarget = projects.find((project) => project.id === quickProjectId) ?? fallbackQuickTarget
+  const quickTarget =
+    projects.find((project) => project.id === quickProjectId) ?? fallbackQuickTarget
   const [quickAgent, setQuickAgent] = useState<AgentType>('claude')
   const quickAgentMenuRef = useRef<HTMLDetailsElement>(null)
   const quickModeMenuRef = useRef<HTMLDetailsElement>(null)
   const [quickUnrestricted, setQuickUnrestricted] = useState(false)
   const quickPromptRef = useRef<HTMLInputElement>(null)
   const [quickCwd, setQuickCwd] = useState('')
-  const quickAgentLabel = QUICK_AGENTS.find((agent) => agent.type === quickAgent)?.label ?? quickAgent
+  const quickAgentLabel =
+    QUICK_AGENTS.find((agent) => agent.type === quickAgent)?.label ?? quickAgent
 
   useEffect(() => {
     if (quickAgents.some((agent) => agent.type === quickAgent)) return
@@ -244,8 +246,12 @@ export function HomeView() {
           <div className={styles.identityMedia}>
             <div
               className={styles.streakBubble}
-              title={activityStreak === null ? undefined : t('activity.streak', { n: activityStreak })}
-              aria-label={activityStreak === null ? undefined : t('activity.streak', { n: activityStreak })}
+              title={
+                activityStreak === null ? undefined : t('activity.streak', { n: activityStreak })
+              }
+              aria-label={
+                activityStreak === null ? undefined : t('activity.streak', { n: activityStreak })
+              }
             >
               <span className={styles.streakFlame} aria-hidden="true">
                 <Flame size={11} />
@@ -291,7 +297,8 @@ export function HomeView() {
               ref={quickAgentMenuRef}
               className={styles.quickAgentMenu}
               onBlur={(event) => {
-                if (!event.currentTarget.contains(event.relatedTarget)) event.currentTarget.open = false
+                if (!event.currentTarget.contains(event.relatedTarget))
+                  event.currentTarget.open = false
               }}
             >
               <summary title={t('home.quickAgent')} aria-label={t('home.quickAgent')}>
@@ -329,20 +336,25 @@ export function HomeView() {
             >
               <FolderOpen size={13} />
               <span className={styles.quickControlLabel}>{t('home.quickPath')}:</span>
-              <span className={styles.quickPathValue}>{compactWorkspacePath(quickCwd || t('home.quickFolderPlaceholder'))}</span>
+              <span className={styles.quickPathValue}>
+                {compactWorkspacePath(quickCwd || t('home.quickFolderPlaceholder'))}
+              </span>
               <ChevronDown size={10} />
             </button>
             <details
               ref={quickModeMenuRef}
               className={styles.quickMode}
               onBlur={(event) => {
-                if (!event.currentTarget.contains(event.relatedTarget)) event.currentTarget.open = false
+                if (!event.currentTarget.contains(event.relatedTarget))
+                  event.currentTarget.open = false
               }}
             >
               <summary aria-label={t('home.quickPermissions')}>
                 <span className={styles.quickModeDot} aria-hidden="true" />
                 <span className={styles.quickControlLabel}>{t('home.quickMode')}:</span>
-                <span>{quickUnrestricted ? t('home.quickUnrestricted') : t('home.quickRestricted')}</span>
+                <span>
+                  {quickUnrestricted ? t('home.quickUnrestricted') : t('home.quickRestricted')}
+                </span>
                 <ChevronDown size={10} />
               </summary>
               <div className={`${styles.quickSelectOptions} ${styles.quickModeOptions}`}>
@@ -350,14 +362,22 @@ export function HomeView() {
                   <button
                     key={mode}
                     type="button"
-                    className={quickUnrestricted === (mode === 'unrestricted') ? styles.quickSelectActive : ''}
+                    className={
+                      quickUnrestricted === (mode === 'unrestricted')
+                        ? styles.quickSelectActive
+                        : ''
+                    }
                     onClick={() => {
                       setQuickUnrestricted(mode === 'unrestricted')
                       quickModeMenuRef.current?.removeAttribute('open')
                     }}
                   >
                     <span className={styles.quickModeDot} aria-hidden="true" />
-                    <span>{mode === 'unrestricted' ? t('home.quickUnrestricted') : t('home.quickRestricted')}</span>
+                    <span>
+                      {mode === 'unrestricted'
+                        ? t('home.quickUnrestricted')
+                        : t('home.quickRestricted')}
+                    </span>
                   </button>
                 ))}
               </div>
@@ -376,11 +396,19 @@ export function HomeView() {
 
         <div className={styles.heroFooter}>
           <div className={styles.heroActions}>
-            <button type="button" className={styles.heroSecondaryAction} onClick={handleNewTerminal}>
+            <button
+              type="button"
+              className={styles.heroSecondaryAction}
+              onClick={handleNewTerminal}
+            >
               <TerminalSquare size={14} />
               {t('home.newTerminal')}
             </button>
-            <button type="button" className={styles.heroSecondaryAction} onClick={() => openModal('newProject')}>
+            <button
+              type="button"
+              className={styles.heroSecondaryAction}
+              onClick={() => openModal('newProject')}
+            >
               <FolderPlus size={14} />
               {t('home.newProject')}
             </button>
@@ -395,7 +423,11 @@ export function HomeView() {
             {recentProjects.length > 0 ? (
               <>
                 <span className={styles.sectionCount}>{recentProjects.length}</span>
-                <button type="button" className={styles.sectionAction} onClick={() => setActiveView('workspace')}>
+                <button
+                  type="button"
+                  className={styles.sectionAction}
+                  onClick={() => setActiveView('workspace')}
+                >
                   {t('home.viewAll')}
                 </button>
               </>
@@ -517,17 +549,32 @@ export function HomeView() {
             />
           )}
         </section>
-
       </div>
 
       <footer className={styles.footer}>
         <div className={styles.footerLinks}>
-          <FooterLink icon={<Github size={13} />} label={t('home.repository')} onClick={() => void openInBrowser(REPOSITORY_URL)} />
-          <FooterLink icon={<CircleDot size={13} />} label={t('home.issues')} onClick={() => void openInBrowser(ISSUES_URL)} />
-          <FooterLink icon={<PackageOpen size={13} />} label={t('home.releases')} onClick={() => void openInBrowser(RELEASES_URL)} />
+          <FooterLink
+            icon={<Github size={13} />}
+            label={t('home.repository')}
+            onClick={() => void openInBrowser(REPOSITORY_URL)}
+          />
+          <FooterLink
+            icon={<CircleDot size={13} />}
+            label={t('home.issues')}
+            onClick={() => void openInBrowser(ISSUES_URL)}
+          />
+          <FooterLink
+            icon={<PackageOpen size={13} />}
+            label={t('home.releases')}
+            onClick={() => void openInBrowser(RELEASES_URL)}
+          />
         </div>
         <div className={styles.footerShortcuts}>
-          <FooterShortcut keys={formatShortcut('Ctrl+P')} label={t('home.searchShortcut')} onClick={() => openModal('findJump')} />
+          <FooterShortcut
+            keys={formatShortcut('Ctrl+P')}
+            label={t('home.searchShortcut')}
+            onClick={() => openModal('findJump')}
+          />
           <FooterShortcut keys={formatShortcut('Ctrl+K')} label={t('home.commandShortcut')} />
           <FooterShortcut keys="?" label={t('home.helpShortcut')} />
         </div>
@@ -622,7 +669,15 @@ function FooterShortcut({
   )
 }
 
-function FooterLink({ icon, label, onClick }: { icon: React.ReactNode; label: string; onClick: () => void }) {
+function FooterLink({
+  icon,
+  label,
+  onClick,
+}: {
+  icon: React.ReactNode
+  label: string
+  onClick: () => void
+}) {
   return (
     <button type="button" className={styles.footerLink} onClick={onClick}>
       {icon}

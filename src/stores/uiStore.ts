@@ -1,5 +1,11 @@
 import { create } from 'zustand'
-import type { AntigravityUsage, ClaudeUsage, CodexUsage, MemoryStats, RuntimeSnapshot } from '../lib/tauri'
+import type {
+  AntigravityUsage,
+  ClaudeUsage,
+  CodexUsage,
+  MemoryStats,
+  RuntimeSnapshot,
+} from '../lib/tauri'
 import type { AgentType } from '../lib/types'
 import type { UpdateInfo } from '../lib/updater'
 
@@ -163,10 +169,8 @@ export const useUiStore = create<UiState>((set) => ({
   setFocusedTerminal: (id) => set({ focusedTerminalId: id }),
   requestPaneFocus: (terminalId) => set({ focusRequest: { terminalId, ts: Date.now() } }),
   setActiveTerminal: (projectId, terminalId) => set({ activeTerminal: { projectId, terminalId } }),
-  setActiveView: (v) =>
-    set((s) => (s.activeView === v ? s : { activeView: v })),
-  toggleHome: () =>
-    set((s) => ({ activeView: s.activeView === 'home' ? 'workspace' : 'home' })),
+  setActiveView: (v) => set((s) => (s.activeView === v ? s : { activeView: v })),
+  toggleHome: () => set((s) => ({ activeView: s.activeView === 'home' ? 'workspace' : 'home' })),
   openMarkdownSidebar: (path, title) =>
     set({
       rightSidebarMode: 'markdown',
@@ -189,8 +193,7 @@ export const useUiStore = create<UiState>((set) => ({
       const toasts = [...s.toasts, entry].slice(-MAX_TOASTS)
       return { toasts, notifications }
     }),
-  dismissToast: (id) =>
-    set((s) => ({ toasts: s.toasts.filter((toast) => toast.id !== id) })),
+  dismissToast: (id) => set((s) => ({ toasts: s.toasts.filter((toast) => toast.id !== id) })),
   clearNotifications: () => set({ notifications: [] }),
   setUpdateInfo: (info) => set({ updateInfo: info }),
   openLinkViewer: (url) => set({ linkViewerUrl: url }),

@@ -59,9 +59,15 @@ export function NewProjectModal() {
   const submit = (addTerminal = withInitialTerminal) => {
     const trimmed = name.trim()
     if (!trimmed) return
-    const project = createProject({ name: trimmed, color, iconUrl: iconUrl.trim() || undefined, groupId })
+    const project = createProject({
+      name: trimmed,
+      color,
+      iconUrl: iconUrl.trim() || undefined,
+      groupId,
+    })
     if (addTerminal) {
-      const agent = agentOptions.find((option) => option.type === initialTerminalType) ?? agentOptions[0]
+      const agent =
+        agentOptions.find((option) => option.type === initialTerminalType) ?? agentOptions[0]
       const terminal = createTerminal(project.id, {
         name: agent.label,
         cwd: '',

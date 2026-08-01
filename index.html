@@ -11,9 +11,7 @@
       // Marca a plataforma o quanto antes (antes do React montar) para o CSS
       // dos cantos arredondados no macOS não causar flash de fundo opaco no
       // primeiro paint. O App.tsx reconfirma isto depois. Ver reset.css.
-      document.documentElement.dataset.platform = /Macintosh|Mac OS X/i.test(
-        navigator.userAgent,
-      )
+      document.documentElement.dataset.platform = /Macintosh|Mac OS X/i.test(navigator.userAgent)
         ? 'macos'
         : 'other'
     </script>

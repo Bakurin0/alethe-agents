@@ -80,7 +80,10 @@ function agentMetadata(): Map<string, AgentMeta> {
   const canvas = useUiStore.getState().agentCanvasSession
   if (canvas && !result.has(canvas.ptyId)) {
     result.set(canvas.ptyId, {
-      agent: 'claude', projectId: '__agent_canvas__', terminalId: null, cwd: canvas.folder,
+      agent: 'claude',
+      projectId: '__agent_canvas__',
+      terminalId: null,
+      cwd: canvas.folder,
     })
   }
   return result
@@ -150,12 +153,14 @@ function currentAgents(): ActivityAgentSample[] {
   return [...tracked.entries()].flatMap(([ptyId, meta]) => {
     const runtime = runtimes[ptyId]
     if (!runtime?.alive) return []
-    return [{
-      agent: meta.agent,
-      projectId: meta.projectId,
-      terminalId: meta.terminalId,
-      state: runtime.status === 'working' ? 'working' as const : 'waiting' as const,
-    }]
+    return [
+      {
+        agent: meta.agent,
+        projectId: meta.projectId,
+        terminalId: meta.terminalId,
+        state: runtime.status === 'working' ? ('working' as const) : ('waiting' as const),
+      },
+    ]
   })
 }
 
@@ -172,10 +177,14 @@ function sample(): void {
     durationMs,
     appFocused: document.hasFocus() && document.visibilityState === 'visible',
     userActive: now - lastInteractionAt < IDLE_MS,
-    activeProjectId: ui.activeView === 'workspace'
-      ? projects.activeProjectId
-      : ui.activeView === 'agentCanvas' ? '__agent_canvas__' : null,
-    activeTerminalId: ui.activeView === 'workspace' ? ui.activeTerminal?.terminalId ?? null : null,
+    activeProjectId:
+      ui.activeView === 'workspace'
+        ? projects.activeProjectId
+        : ui.activeView === 'agentCanvas'
+          ? '__agent_canvas__'
+          : null,
+    activeTerminalId:
+      ui.activeView === 'workspace' ? (ui.activeTerminal?.terminalId ?? null) : null,
     agents: currentAgents(),
   })
 }
@@ -185,8 +194,9 @@ async function flush(): Promise<void> {
   const batch = pending
   pending = []
   flushChain = flushChain.then(async () => {
-    try { await recordActivitySamples(batch) }
-    catch (error) {
+    try {
+      await recordActivitySamples(batch)
+    } catch (error) {
       pending = [...batch, ...pending].slice(-360)
       console.error('Failed to persist activity metrics', error)
     }
@@ -202,9 +212,19 @@ export async function flushActivityTracker(): Promise<void> {
 export function startActivityTracker(): () => void {
   if (started) return () => undefined
   started = true
-  const markInteraction = () => { lastInteractionAt = Date.now() }
-  const events: (keyof WindowEventMap)[] = ['keydown', 'pointerdown', 'pointermove', 'wheel', 'touchstart']
-  events.forEach((event) => window.addEventListener(event, markInteraction, { passive: true, capture: true }))
+  const markInteraction = () => {
+    lastInteractionAt = Date.now()
+  }
+  const events: (keyof WindowEventMap)[] = [
+    'keydown',
+    'pointerdown',
+    'pointermove',
+    'wheel',
+    'touchstart',
+  ]
+  events.forEach((event) =>
+    window.addEventListener(event, markInteraction, { passive: true, capture: true }),
+  )
   const sampleTimer = window.setInterval(sample, SAMPLE_MS)
   const flushTimer = window.setInterval(() => void flush(), FLUSH_MS)
   const unsubTerminals = useTerminalsStore.subscribe(scheduleSyncTrackedAgents)
@@ -223,7 +243,10 @@ export function startActivityTracker(): () => void {
       /* sem o bridge, a heurística de PTY continua sendo a única fonte */
     })
 
-  const flushOnHide = () => { sample(); void flush() }
+  const flushOnHide = () => {
+    sample()
+    void flush()
+  }
   window.addEventListener('blur', flushOnHide)
   window.addEventListener('beforeunload', flushOnHide)
   document.addEventListener('visibilitychange', flushOnHide)
@@ -242,10 +265,15 @@ export function startActivityTracker(): () => void {
     window.removeEventListener('blur', flushOnHide)
     window.removeEventListener('beforeunload', flushOnHide)
     document.removeEventListener('visibilitychange', flushOnHide)
-    unsubTerminals(); unsubProjects(); unsubUi()
+    unsubTerminals()
+    unsubProjects()
+    unsubUi()
     bridgeDisposed = true
     unlistenBridge?.()
-    for (const entry of tracked.values()) { entry.unlisten?.(); entry.monitor.dispose() }
+    for (const entry of tracked.values()) {
+      entry.unlisten?.()
+      entry.monitor.dispose()
+    }
     tracked.clear()
     bridgeActivePtyIds.clear()
   }

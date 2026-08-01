@@ -1,8 +1,6 @@
 import { invoke } from '@tauri-apps/api/core'
 import { listen, type UnlistenFn } from '@tauri-apps/api/event'
 
-
-
 export async function loadProjectsFile(): Promise<string | null> {
   return invoke<string | null>('load_projects')
 }
@@ -192,11 +190,7 @@ export async function ghosttySpawn(args: GhosttySpawnArgs): Promise<GhosttySurfa
   })
 }
 
-export async function ghosttySyncFrame(
-  id: string,
-  rect: WebRect,
-  scale: number,
-): Promise<void> {
+export async function ghosttySyncFrame(id: string, rect: WebRect, scale: number): Promise<void> {
   await invoke('ghostty_sync_frame', { id, rect, scale })
 }
 
@@ -277,7 +271,11 @@ export async function gitUnstage(repoRoot: string, paths: string[]): Promise<voi
   return invoke('git_unstage', { repoRoot, paths })
 }
 
-export async function gitDiscard(repoRoot: string, paths: string[], untracked: boolean): Promise<void> {
+export async function gitDiscard(
+  repoRoot: string,
+  paths: string[],
+  untracked: boolean,
+): Promise<void> {
   return invoke('git_discard', { repoRoot, paths, untracked })
 }
 
@@ -318,10 +316,7 @@ export function listenFileChanged(handler: (path: string) => void): Promise<Unli
   return listen<{ path: string }>('md://changed', (event) => handler(event.payload.path))
 }
 
-export function listenPtyData(
-  id: string,
-  handler: (chunk: string) => void,
-): Promise<UnlistenFn> {
+export function listenPtyData(id: string, handler: (chunk: string) => void): Promise<UnlistenFn> {
   return listen<string>(`pty://data/${id}`, (event) => handler(event.payload))
 }
 
@@ -473,9 +468,7 @@ export function listenResourcePressure(
 export function listenPtySuspended(
   handler: (payload: PtySuspendedPayload) => void,
 ): Promise<UnlistenFn> {
-  return listen<PtySuspendedPayload>('resource://pty-suspended', (event) =>
-    handler(event.payload),
-  )
+  return listen<PtySuspendedPayload>('resource://pty-suspended', (event) => handler(event.payload))
 }
 
 /** Estado da sessão anterior, se ela não saiu limpa (provável crash/OOM/kill). */
@@ -675,7 +668,9 @@ export type AntigravitySessionSnapshot = {
   modified_at_ms: number
 }
 
-export async function snapshotAntigravitySessions(cwd: string): Promise<AntigravitySessionSnapshot[]> {
+export async function snapshotAntigravitySessions(
+  cwd: string,
+): Promise<AntigravitySessionSnapshot[]> {
   return invoke<AntigravitySessionSnapshot[]>('snapshot_antigravity_sessions', { cwd })
 }
 
@@ -995,15 +990,7 @@ export async function cancelTask(taskId: string): Promise<void> {
 // --- RFC-006/007/008 — Ciclo de merge seguro ---
 
 export type ConflictClass =
-  | 'rust'
-  | 'typeScript'
-  | 'ui'
-  | 'cargo'
-  | 'package'
-  | 'asset'
-  | 'config'
-  | 'gsd'
-  | 'unknown'
+  'rust' | 'typeScript' | 'ui' | 'cargo' | 'package' | 'asset' | 'config' | 'gsd' | 'unknown'
 
 export type ConflictFile = {
   path: string
@@ -1079,7 +1066,10 @@ export type MergeForceCleanupResult = {
 }
 
 /** Limpeza bruta de um ambiente de merge irrecuperável (fase `terminal_error`). */
-export async function mergeForceCleanup(repo: string, envId: string): Promise<MergeForceCleanupResult> {
+export async function mergeForceCleanup(
+  repo: string,
+  envId: string,
+): Promise<MergeForceCleanupResult> {
   return invoke<MergeForceCleanupResult>('merge_force_cleanup', { repo, envId })
 }
 
@@ -1160,7 +1150,10 @@ export async function graphifyReadGraph(repo: string): Promise<GraphData> {
   return invoke<GraphData>('graphify_read_graph', { repo })
 }
 
-export async function graphifySnapshot(repo: string, projectId?: string): Promise<GraphSnapshotInfo> {
+export async function graphifySnapshot(
+  repo: string,
+  projectId?: string,
+): Promise<GraphSnapshotInfo> {
   return invoke<GraphSnapshotInfo>('graphify_snapshot', { repo, projectId })
 }
 
@@ -1176,7 +1169,11 @@ export async function graphifyDiffSnapshot(
   return invoke<GraphData>('graphify_diff_snapshot', { repo, baseId, targetId })
 }
 
-export async function graphifyRollback(repo: string, snapshotId: string, projectId?: string): Promise<void> {
+export async function graphifyRollback(
+  repo: string,
+  snapshotId: string,
+  projectId?: string,
+): Promise<void> {
   await invoke('graphify_rollback', { repo, snapshotId, projectId })
 }
 
@@ -1229,10 +1226,18 @@ export async function planningAuditRecord(
   reason?: string,
   projectId?: string,
 ): Promise<PlanningCommit | null> {
-  return invoke<PlanningCommit | null>('planning_audit_record', { repoPath, agentId, reason, projectId })
+  return invoke<PlanningCommit | null>('planning_audit_record', {
+    repoPath,
+    agentId,
+    reason,
+    projectId,
+  })
 }
 
-export async function planningAuditHistory(repoPath: string, limit?: number): Promise<PlanningCommit[]> {
+export async function planningAuditHistory(
+  repoPath: string,
+  limit?: number,
+): Promise<PlanningCommit[]> {
   return invoke<PlanningCommit[]>('planning_audit_history', { repoPath, limit })
 }
 

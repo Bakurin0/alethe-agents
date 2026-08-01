@@ -26,18 +26,22 @@ describe('savedConversationIdFor', () => {
   })
 
   it('returns the saved Antigravity conversation id', () => {
-    expect(savedConversationIdFor(
-      { ...baseSession, agent: 'antigravity' },
-      'antigravity',
-      'D:/Work/Project',
-    )).toBe('antigravity-chat')
+    expect(
+      savedConversationIdFor(
+        { ...baseSession, agent: 'antigravity' },
+        'antigravity',
+        'D:/Work/Project',
+      ),
+    ).toBe('antigravity-chat')
   })
 
   it('returns the saved OpenCode session id', () => {
-    expect(savedConversationIdFor(
-      { ...baseSession, agent: 'opencode', opencodeSessionId: 'opencode-chat' },
-      'opencode',
-      'D:/Work/Project',
-    )).toBe('opencode-chat')
+    expect(
+      savedConversationIdFor(
+        { ...baseSession, agent: 'opencode', opencodeSessionId: 'opencode-chat' },
+        'opencode',
+        'D:/Work/Project',
+      ),
+    ).toBe('opencode-chat')
   })
 })

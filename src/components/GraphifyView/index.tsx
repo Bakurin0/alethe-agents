@@ -32,8 +32,18 @@ type GraphifyViewProps = {
  */
 export function GraphifyView({ repo, projectId, terminalId }: GraphifyViewProps) {
   const t = useT()
-  const { graph, snapshots, error, loading, load, generateGraph, refreshGraph, snapshot, rollback, prune } =
-    useGraphifyStore()
+  const {
+    graph,
+    snapshots,
+    error,
+    loading,
+    load,
+    generateGraph,
+    refreshGraph,
+    snapshot,
+    rollback,
+    prune,
+  } = useGraphifyStore()
   const deleteTerminal = useProjectsStore((state) => state.deleteTerminal)
   const canvasRef = useRef<HTMLDivElement>(null)
   const cyRef = useRef<cytoscape.Core | null>(null)
@@ -168,7 +178,11 @@ export function GraphifyView({ repo, projectId, terminalId }: GraphifyViewProps)
         <button className={styles.button} onClick={() => void refreshGraph()} disabled={loading}>
           <RefreshCw size={13} /> {t('graphify.reload')}
         </button>
-        <button className={styles.button} onClick={() => void snapshot(projectId)} disabled={!hasGraph}>
+        <button
+          className={styles.button}
+          onClick={() => void snapshot(projectId)}
+          disabled={!hasGraph}
+        >
           <Camera size={13} /> {t('graphify.snapshot')}
         </button>
         <button
@@ -196,7 +210,11 @@ export function GraphifyView({ repo, projectId, terminalId }: GraphifyViewProps)
         ) : (
           <div className={`${styles.empty} ${error ? styles.error : ''}`}>
             <Network size={30} strokeWidth={1.5} />
-            <strong>{error === 'graphify_unavailable' ? t('graphify.unavailableTitle') : t('graphify.emptyTitle')}</strong>
+            <strong>
+              {error === 'graphify_unavailable'
+                ? t('graphify.unavailableTitle')
+                : t('graphify.emptyTitle')}
+            </strong>
             <span>
               {error === 'graphify_unavailable'
                 ? t('graphify.unavailable')
@@ -204,7 +222,11 @@ export function GraphifyView({ repo, projectId, terminalId }: GraphifyViewProps)
                   ? t('graphify.generationTimeout')
                   : error || t('graphify.emptyDescription')}
             </span>
-            <button className={`${styles.button} ${styles.generateButton}`} onClick={() => void generateGraph()} disabled={loading}>
+            <button
+              className={`${styles.button} ${styles.generateButton}`}
+              onClick={() => void generateGraph()}
+              disabled={loading}
+            >
               {loading ? <Loader2 size={13} className={styles.spin} /> : <Network size={13} />}
               {loading ? t('graphify.generating') : t('graphify.generate')}
             </button>

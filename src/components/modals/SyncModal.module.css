@@ -132,7 +132,10 @@
   font-weight: 500;
   border: 1px solid var(--border);
   cursor: pointer;
-  transition: background 100ms, border-color 100ms, opacity 100ms;
+  transition:
+    background 100ms,
+    border-color 100ms,
+    opacity 100ms;
 }
 .btn {
   background: var(--panel);
@@ -288,7 +291,9 @@
   border: 1px solid var(--accent-border);
   color: var(--fg);
   cursor: pointer;
-  transition: background 100ms, border-color 100ms;
+  transition:
+    background 100ms,
+    border-color 100ms;
 }
 .sponsor:hover {
   background: var(--accent-soft);

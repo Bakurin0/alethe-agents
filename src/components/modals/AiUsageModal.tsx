@@ -29,7 +29,9 @@ export function AiUsageModal() {
       setCodexUsage(codex.status === 'fulfilled' ? codex.value : null)
       setAntigravityUsage(antigravity.status === 'fulfilled' ? antigravity.value : null)
     })
-    return () => { cancelled = true }
+    return () => {
+      cancelled = true
+    }
   }, [open, setAntigravityUsage, setClaudeUsage, setCodexUsage])
 
   return (

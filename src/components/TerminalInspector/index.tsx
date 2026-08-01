@@ -78,9 +78,11 @@ function InspectorBody({ projectId, terminal }: { projectId: string; terminal: T
     [terminal.activeTabId, terminal.tabs],
   )
   const runtime = useTerminalsStore((state) =>
-    activeTab?.ptyId ? state.byPtyId[activeTab.ptyId] ?? null : null,
+    activeTab?.ptyId ? (state.byPtyId[activeTab.ptyId] ?? null) : null,
   )
-  const status = terminal.disabled ? 'disabled' : runtime?.status ?? (activeTab ? 'waiting' : 'stopped')
+  const status = terminal.disabled
+    ? 'disabled'
+    : (runtime?.status ?? (activeTab ? 'waiting' : 'stopped'))
   const isFocusMode = focusedTerminalId === terminal.id
   const effectiveLaneVisible = terminal.tabs.length > 1 ? true : terminal.laneVisible === true
   const cwd = activeTab?.cwd?.trim() || terminal.cwd?.trim() || ''
@@ -144,7 +146,9 @@ function InspectorBody({ projectId, terminal }: { projectId: string; terminal: T
         new CustomEvent('alethe:terminal-resize-request', { detail: { ptyId: activeTab.ptyId } }),
       )
     } catch (err) {
-      window.alert(t('ui.terminal.openFailed', { label: t('ui.terminal.restart'), error: String(err) }))
+      window.alert(
+        t('ui.terminal.openFailed', { label: t('ui.terminal.restart'), error: String(err) }),
+      )
     }
   }
 
@@ -220,9 +224,15 @@ function InspectorBody({ projectId, terminal }: { projectId: string; terminal: T
               onClick={() => setTerminalDisabled(projectId, terminal.id, !terminal.disabled)}
             />
             <InspectorAction
-              icon={effectiveLaneVisible ? <PanelLeftClose size={14} /> : <PanelLeftOpen size={14} />}
-              label={effectiveLaneVisible ? t('ui.terminal.hideTabsLane') : t('ui.terminal.showTabsLane')}
-              onClick={() => setLaneVisible(projectId, terminal.id, effectiveLaneVisible ? false : true)}
+              icon={
+                effectiveLaneVisible ? <PanelLeftClose size={14} /> : <PanelLeftOpen size={14} />
+              }
+              label={
+                effectiveLaneVisible ? t('ui.terminal.hideTabsLane') : t('ui.terminal.showTabsLane')
+              }
+              onClick={() =>
+                setLaneVisible(projectId, terminal.id, effectiveLaneVisible ? false : true)
+              }
               disabled={terminal.tabs.length > 1}
             />
             {isAgentWithHistory ? (
@@ -341,15 +351,7 @@ function InspectorAction({
   )
 }
 
-function TabRow({
-  tab,
-  active,
-  onClick,
-}: {
-  tab: SubTab
-  active: boolean
-  onClick: () => void
-}) {
+function TabRow({ tab, active, onClick }: { tab: SubTab; active: boolean; onClick: () => void }) {
   return (
     <button
       type="button"

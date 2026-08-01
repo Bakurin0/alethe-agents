@@ -1,7 +1,12 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
 
-import { DEFAULT_PREFERENCES, type Preferences, type Project, type WorkspaceViewSnapshot } from '../src/lib/types.ts'
+import {
+  DEFAULT_PREFERENCES,
+  type Preferences,
+  type Project,
+  type WorkspaceViewSnapshot,
+} from '../src/lib/types.ts'
 import {
   MAX_WORKSPACE_HISTORY,
   captureWorkspaceSnapshot,
@@ -61,16 +66,31 @@ function snapshot(projectId = 'project-a', terminalId = 'terminal-a'): Workspace
 test('pushWorkspaceHistory truncates the forward branch', () => {
   const a = snapshot()
   const first = pushWorkspaceHistory([], -1, {
-    id: 'h1', tabId: 'tab-a', label: 'A', snapshot: a, visitedAt: 1,
+    id: 'h1',
+    tabId: 'tab-a',
+    label: 'A',
+    snapshot: a,
+    visitedAt: 1,
   })
   const second = pushWorkspaceHistory(first.history, first.historyIndex, {
-    id: 'h2', tabId: 'tab-b', label: 'B', snapshot: a, visitedAt: 2,
+    id: 'h2',
+    tabId: 'tab-b',
+    label: 'B',
+    snapshot: a,
+    visitedAt: 2,
   })
   const branched = pushWorkspaceHistory(second.history, 0, {
-    id: 'h3', tabId: 'tab-c', label: 'C', snapshot: a, visitedAt: 3,
+    id: 'h3',
+    tabId: 'tab-c',
+    label: 'C',
+    snapshot: a,
+    visitedAt: 3,
   })
 
-  assert.deepEqual(branched.history.map((entry) => entry.id), ['h1', 'h3'])
+  assert.deepEqual(
+    branched.history.map((entry) => entry.id),
+    ['h1', 'h3'],
+  )
   assert.equal(branched.historyIndex, 1)
 })
 

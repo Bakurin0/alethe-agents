@@ -32,8 +32,18 @@ export type DotmCircular2Props = {
 }
 
 const RING_ORDER = new Map([
-  [1, 0], [2, 1], [3, 2], [9, 3], [14, 4], [19, 5],
-  [23, 6], [22, 7], [21, 8], [15, 9], [10, 10], [5, 11],
+  [1, 0],
+  [2, 1],
+  [3, 2],
+  [9, 3],
+  [14, 4],
+  [19, 5],
+  [23, 6],
+  [22, 7],
+  [21, 8],
+  [15, 9],
+  [10, 10],
+  [5, 11],
 ])
 
 const PRESET_FILL: Record<DotMatrixColorPreset, string> = {
@@ -44,7 +54,8 @@ const PRESET_FILL: Record<DotMatrixColorPreset, string> = {
   'grad-neon': 'linear-gradient(135deg, var(--status-working), var(--agent-codex))',
   'grad-aurora': 'linear-gradient(135deg, var(--agent-claude), var(--accent), var(--agent-codex))',
   'grad-fire': 'linear-gradient(135deg, var(--status-offline), var(--status-busy))',
-  'grad-prism': 'linear-gradient(135deg, var(--agent-codex), var(--agent-claude), var(--status-working))',
+  'grad-prism':
+    'linear-gradient(135deg, var(--agent-codex), var(--agent-claude), var(--status-working))',
 }
 
 export function DotmCircular2({
@@ -103,10 +114,13 @@ export function DotmCircular2({
             <span
               key={index}
               className={`${styles.dot} ${animated && order !== undefined ? styles.ring : ''}`}
-              style={{
-                '--ring-order': order ?? 0,
-                opacity: order === undefined ? (index === 12 ? opacityMid : opacityBase) : undefined,
-              } as CSSProperties}
+              style={
+                {
+                  '--ring-order': order ?? 0,
+                  opacity:
+                    order === undefined ? (index === 12 ? opacityMid : opacityBase) : undefined,
+                } as CSSProperties
+              }
             />
           )
         })}
@@ -124,7 +138,10 @@ export function DotmCheck({
   ariaLabel = 'Completed',
   className,
   cellPadding = 1,
-}: Pick<DotmCircular2Props, 'size' | 'dotSize' | 'color' | 'ariaLabel' | 'className' | 'cellPadding'>) {
+}: Pick<
+  DotmCircular2Props,
+  'size' | 'dotSize' | 'color' | 'ariaLabel' | 'className' | 'cellPadding'
+>) {
   const style = {
     width: size,
     height: size,
@@ -135,11 +152,24 @@ export function DotmCheck({
   } as CSSProperties
 
   return (
-    <span className={`${styles.slot} ${className ?? ''}`} style={style} role="status" aria-label={ariaLabel}>
-      <span className={styles.matrix} aria-hidden="true" style={{ width: size, height: size, gap: cellPadding }}>
-        {Array.from({ length: 25 }, (_, index) => (
-          CHECK_DOTS.has(index) ? <span key={index} className={styles.dot} /> : <span key={index} />
-        ))}
+    <span
+      className={`${styles.slot} ${className ?? ''}`}
+      style={style}
+      role="status"
+      aria-label={ariaLabel}
+    >
+      <span
+        className={styles.matrix}
+        aria-hidden="true"
+        style={{ width: size, height: size, gap: cellPadding }}
+      >
+        {Array.from({ length: 25 }, (_, index) =>
+          CHECK_DOTS.has(index) ? (
+            <span key={index} className={styles.dot} />
+          ) : (
+            <span key={index} />
+          ),
+        )}
       </span>
     </span>
   )

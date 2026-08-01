@@ -8,7 +8,8 @@ import { useUiStore } from '../../stores/uiStore'
 import { Modal } from './Modal'
 import styles from './TopbarSettingsModal.module.css'
 
-type ToggleKey = keyof Pick<Preferences,
+type ToggleKey = keyof Pick<
+  Preferences,
   | 'topbarShowClaudeUsage'
   | 'topbarShowCodexUsage'
   | 'topbarShowAntigravityUsage'
@@ -24,12 +25,32 @@ export function TopbarSettingsModal() {
   const preferences = useProjectsStore((state) => state.preferences)
   const setPreferences = useProjectsStore((state) => state.setPreferences)
   const items: Array<{ key: ToggleKey; label: string; icon: React.ReactNode }> = [
-    { key: 'topbarShowClaudeUsage', label: t('ui.titlebar.itemClaude'), icon: <ClaudeIcon size={18} /> },
-    { key: 'topbarShowCodexUsage', label: t('ui.titlebar.itemCodex'), icon: <CodexIcon size={18} /> },
-    { key: 'topbarShowAntigravityUsage', label: t('ui.titlebar.itemAntigravity'), icon: <AntigravityIcon size={18} /> },
+    {
+      key: 'topbarShowClaudeUsage',
+      label: t('ui.titlebar.itemClaude'),
+      icon: <ClaudeIcon size={18} />,
+    },
+    {
+      key: 'topbarShowCodexUsage',
+      label: t('ui.titlebar.itemCodex'),
+      icon: <CodexIcon size={18} />,
+    },
+    {
+      key: 'topbarShowAntigravityUsage',
+      label: t('ui.titlebar.itemAntigravity'),
+      icon: <AntigravityIcon size={18} />,
+    },
     { key: 'topbarShowSync', label: t('ui.titlebar.itemSync'), icon: <Cloud size={18} /> },
-    { key: 'topbarShowProfile', label: t('ui.titlebar.itemProfile'), icon: <UserRound size={18} /> },
-    { key: 'topbarShowMemory', label: t('ui.titlebar.itemMemory'), icon: <MemoryStick size={18} /> },
+    {
+      key: 'topbarShowProfile',
+      label: t('ui.titlebar.itemProfile'),
+      icon: <UserRound size={18} />,
+    },
+    {
+      key: 'topbarShowMemory',
+      label: t('ui.titlebar.itemMemory'),
+      icon: <MemoryStick size={18} />,
+    },
   ]
 
   return (
@@ -39,10 +60,19 @@ export function TopbarSettingsModal() {
         {items.map((item) => {
           const enabled = preferences[item.key]
           return (
-            <button key={item.key} type="button" className={styles.item} role="switch" aria-checked={enabled} onClick={() => setPreferences({ [item.key]: !enabled })}>
+            <button
+              key={item.key}
+              type="button"
+              className={styles.item}
+              role="switch"
+              aria-checked={enabled}
+              onClick={() => setPreferences({ [item.key]: !enabled })}
+            >
               <span className={styles.icon}>{item.icon}</span>
               <span className={styles.label}>{item.label}</span>
-              <span className={`${styles.check} ${enabled ? styles.checkActive : ''}`}>{enabled ? <Check size={14} /> : null}</span>
+              <span className={`${styles.check} ${enabled ? styles.checkActive : ''}`}>
+                {enabled ? <Check size={14} /> : null}
+              </span>
             </button>
           )
         })}

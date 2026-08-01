@@ -99,7 +99,9 @@ export function TokenHud() {
                   {cost?.model ?? e.agent} · {fmtTokens(cost?.total_tokens ?? 0)} {t('hud.tokens')}
                 </span>
               </span>
-              <span className={`${styles.rowCost} ${usd != null ? costClass(usd) : styles.costNone}`}>
+              <span
+                className={`${styles.rowCost} ${usd != null ? costClass(usd) : styles.costNone}`}
+              >
                 {usd != null ? fmtUsd(usd) : t('hud.noCost')}
               </span>
             </li>

@@ -28,7 +28,9 @@ function Pane({
   if (terminal.kind === 'web') {
     return <WebPane projectId={projectId} terminal={terminal} />
   }
-  return <TerminalPane projectId={projectId} terminal={terminal} paneDragEnabled={paneDragEnabled} />
+  return (
+    <TerminalPane projectId={projectId} terminal={terminal} paneDragEnabled={paneDragEnabled} />
+  )
 }
 
 export type PaneAreaProps = {

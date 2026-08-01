@@ -1,16 +1,13 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
 
-import {
-  AGENT_RUNTIME_ADAPTERS,
-  preparePtyRuntimeLaunch,
-} from '../src/lib/agentRuntimeAdapter.ts'
+import { AGENT_RUNTIME_ADAPTERS, preparePtyRuntimeLaunch } from '../src/lib/agentRuntimeAdapter.ts'
 
 test('full runtime profile preserves arguments and environment', () => {
-  assert.deepEqual(
-    preparePtyRuntimeLaunch('claude', 'full', ['--verbose'], { EXAMPLE: '1' }),
-    { args: ['--verbose'], env: { EXAMPLE: '1' } },
-  )
+  assert.deepEqual(preparePtyRuntimeLaunch('claude', 'full', ['--verbose'], { EXAMPLE: '1' }), {
+    args: ['--verbose'],
+    env: { EXAMPLE: '1' },
+  })
 })
 
 test('lean Claude profile limits startup fan-out without disabling configured tools', () => {
@@ -29,4 +26,3 @@ test('native adapters stay explicitly experimental and unavailable', () => {
   const native = AGENT_RUNTIME_ADAPTERS.filter((adapter) => adapter.id !== 'pty')
   assert.ok(native.every((adapter) => adapter.experimental && !adapter.available))
 })
-

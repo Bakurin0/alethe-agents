@@ -82,7 +82,10 @@
   width: 0;
   opacity: 0;
   overflow: hidden;
-  transition: width 0.15s ease, opacity 0.12s ease, margin-left 0.15s ease;
+  transition:
+    width 0.15s ease,
+    opacity 0.12s ease,
+    margin-left 0.15s ease;
 }
 .box:hover .tagActions {
   width: auto;

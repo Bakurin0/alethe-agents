@@ -78,14 +78,15 @@ export const useAgentCostStore = create<AgentCostState>((set) => ({
       // Mantém entradas vivas (atualizadas ou as anteriores se a chamada falhou).
       for (const s of live) {
         const fresh = results.find((r) => r && r.ptyId === s.ptyId) ?? null
-        next[s.ptyId] = fresh ?? state.byPtyId[s.ptyId] ?? {
-          ptyId: s.ptyId,
-          agent: s.agent,
-          sessionId: s.sessionId,
-          cwd: s.cwd,
-          cost: null,
-          updatedAt: 0,
-        }
+        next[s.ptyId] = fresh ??
+          state.byPtyId[s.ptyId] ?? {
+            ptyId: s.ptyId,
+            agent: s.agent,
+            sessionId: s.sessionId,
+            cwd: s.cwd,
+            cost: null,
+            updatedAt: 0,
+          }
       }
       // Poda PTYs que morreram.
       void liveIds

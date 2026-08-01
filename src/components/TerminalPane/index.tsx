@@ -19,7 +19,13 @@ import { getActiveSessions, saveSession, savedConversationIdFor } from '../../li
 import { useProjectsStore } from '../../stores/projectsStore'
 import { useTerminalsStore } from '../../stores/terminalsStore'
 import { useUiStore } from '../../stores/uiStore'
-import { agentCliCommand, type Terminal as TerminalEntry, type SubTab, type Theme, type AgentType } from '../../lib/types'
+import {
+  agentCliCommand,
+  type Terminal as TerminalEntry,
+  type SubTab,
+  type Theme,
+  type AgentType,
+} from '../../lib/types'
 import { getPtyCwd, openInVscode, restartPty, snapshotCodexSessions } from '../../lib/tauri'
 import { AgentIcon, VSCodeIcon } from '../icons/AgentIcons'
 import { SubTabsLane } from '../SubTabsLane'
@@ -110,9 +116,7 @@ export const TerminalPane = memo(function TerminalPane({
     (s) => s.preferences.terminalTheme ?? s.preferences.uiTheme,
   )
   // Native Ghostty rendering is opt-in and macOS-only; other platforms use xterm.js.
-  const nativeTerminalMacos = useProjectsStore(
-    (s) => s.preferences.nativeTerminalMacos ?? false,
-  )
+  const nativeTerminalMacos = useProjectsStore((s) => s.preferences.nativeTerminalMacos ?? false)
   const useNativeBackend = shouldUseNativeBackend(nativeTerminalMacos)
 
   // RFC-004 — projeto com Graphify habilitado: cada spawn de agente recebe o
@@ -139,11 +143,10 @@ export const TerminalPane = memo(function TerminalPane({
     [terminal.tabs, terminal.activeTabId],
   )
 
-  const effectiveLaneVisible =
-    terminal.tabs.length > 1 ? true : terminal.laneVisible === true
+  const effectiveLaneVisible = terminal.tabs.length > 1 ? true : terminal.laneVisible === true
 
   const ptyRuntime = useTerminalsStore((s) =>
-    activeTab?.ptyId ? s.byPtyId[activeTab.ptyId] ?? null : null,
+    activeTab?.ptyId ? (s.byPtyId[activeTab.ptyId] ?? null) : null,
   )
   const ptyExited = ptyRuntime !== null && !ptyRuntime.alive
   const ptyParked = ptyRuntime?.parked === true
@@ -186,11 +189,7 @@ export const TerminalPane = memo(function TerminalPane({
       activeTab.runtimeProfile,
       activeTab.extraArgs ?? [],
     )
-    const launch = buildAgentLaunch(
-      activeTab.type,
-      preparedRuntime.args,
-      resumeSessionId,
-    )
+    const launch = buildAgentLaunch(activeTab.type, preparedRuntime.args, resumeSessionId)
     if (launch.sessionId && launch.sessionId !== activeTab.sessionId) {
       setSubTabSessionId(projectId, terminal.id, activeTab.id, launch.sessionId)
     }
@@ -281,9 +280,7 @@ export const TerminalPane = memo(function TerminalPane({
             </button>
           ) : null}
           <span className={styles.iconWrap}>
-            {activeTab ? (
-              <AgentIcon type={activeTab.type} size={16} theme={terminalTheme} />
-            ) : null}
+            {activeTab ? <AgentIcon type={activeTab.type} size={16} theme={terminalTheme} /> : null}
           </span>
           <div className={styles.identity}>
             <span className={styles.name} title={terminal.name}>
@@ -293,61 +290,71 @@ export const TerminalPane = memo(function TerminalPane({
         </div>
 
         {!preview ? (
-        <div className={styles.headRight}>
-          <div className={styles.actions}>
-            <button
-              type="button"
-              className={styles.action}
-              onClick={onToggleLane}
-              title={effectiveLaneVisible ? t('ui.terminal.hideTabsLane') : t('ui.terminal.showTabsLane')}
-              aria-label={t('ui.terminal.toggleLane')}
-              aria-pressed={effectiveLaneVisible}
-              disabled={terminal.tabs.length > 1}
-            >
-              {effectiveLaneVisible ? <PanelLeftClose size={12} /> : <PanelLeftOpen size={12} />}
-            </button>
-            <button
-              type="button"
-              className={styles.action}
-              onClick={() => void openVscode()}
-              title={t('ui.terminal.openInVscode')}
-              aria-label={t('ui.terminal.openInVscode')}
-              disabled={!activeTab}
-            >
-              <VSCodeIcon size={12} />
-            </button>
-            <button
-              type="button"
-              className={styles.action}
-              onClick={() => setFocusedTerminal(isFocusMode ? null : terminal.id)}
-              title={isFocusMode ? t('ui.terminal.exitFocusModeEsc') : t('ui.terminal.focusModeFullscreen')}
-              aria-label={isFocusMode ? t('ui.terminal.exitFocusMode') : t('ui.terminal.focusMode')}
-            >
-              {isFocusMode ? <Minimize2 size={12} /> : <Maximize2 size={12} />}
-            </button>
-            {activeTab?.ptyId ? (
+          <div className={styles.headRight}>
+            <div className={styles.actions}>
               <button
                 type="button"
                 className={styles.action}
-                onClick={() => void onRestart()}
-                title={ptyParked ? t('ui.terminal.resume') : t('ui.terminal.restart')}
-                aria-label={ptyParked ? t('ui.terminal.resume') : t('ui.terminal.restart')}
-                disabled={terminal.disabled}
+                onClick={onToggleLane}
+                title={
+                  effectiveLaneVisible
+                    ? t('ui.terminal.hideTabsLane')
+                    : t('ui.terminal.showTabsLane')
+                }
+                aria-label={t('ui.terminal.toggleLane')}
+                aria-pressed={effectiveLaneVisible}
+                disabled={terminal.tabs.length > 1}
               >
-                <RefreshCw size={12} />
+                {effectiveLaneVisible ? <PanelLeftClose size={12} /> : <PanelLeftOpen size={12} />}
               </button>
-            ) : null}
-            <button
-              type="button"
-              className={`${styles.action} ${styles.danger}`}
-              onClick={onDelete}
-              title={t('ui.sidebar.deleteTerminal')}
-              aria-label={t('ui.sidebar.deleteTerminal')}
-            >
-              <Trash2 size={12} />
-            </button>
+              <button
+                type="button"
+                className={styles.action}
+                onClick={() => void openVscode()}
+                title={t('ui.terminal.openInVscode')}
+                aria-label={t('ui.terminal.openInVscode')}
+                disabled={!activeTab}
+              >
+                <VSCodeIcon size={12} />
+              </button>
+              <button
+                type="button"
+                className={styles.action}
+                onClick={() => setFocusedTerminal(isFocusMode ? null : terminal.id)}
+                title={
+                  isFocusMode
+                    ? t('ui.terminal.exitFocusModeEsc')
+                    : t('ui.terminal.focusModeFullscreen')
+                }
+                aria-label={
+                  isFocusMode ? t('ui.terminal.exitFocusMode') : t('ui.terminal.focusMode')
+                }
+              >
+                {isFocusMode ? <Minimize2 size={12} /> : <Maximize2 size={12} />}
+              </button>
+              {activeTab?.ptyId ? (
+                <button
+                  type="button"
+                  className={styles.action}
+                  onClick={() => void onRestart()}
+                  title={ptyParked ? t('ui.terminal.resume') : t('ui.terminal.restart')}
+                  aria-label={ptyParked ? t('ui.terminal.resume') : t('ui.terminal.restart')}
+                  disabled={terminal.disabled}
+                >
+                  <RefreshCw size={12} />
+                </button>
+              ) : null}
+              <button
+                type="button"
+                className={`${styles.action} ${styles.danger}`}
+                onClick={onDelete}
+                title={t('ui.sidebar.deleteTerminal')}
+                aria-label={t('ui.sidebar.deleteTerminal')}
+              >
+                <Trash2 size={12} />
+              </button>
+            </div>
           </div>
-        </div>
         ) : null}
       </header>
 
@@ -449,7 +456,6 @@ export const TerminalPane = memo(function TerminalPane({
           title={t('ui.terminal.dragToResizeSpan')}
         />
       ) : null}
-
     </div>
   )
 })

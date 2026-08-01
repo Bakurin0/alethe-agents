@@ -235,7 +235,10 @@ function ClaudeCard({ usage }: { usage: ClaudeUsage | null }) {
         critical={usage.five_hour.utilization >= 80}
         sub={
           <>
-            {t('widget.usage5h')} · <b>{t('widget.week')} {pctNum(usage.seven_day.utilization)}%</b>
+            {t('widget.usage5h')} ·{' '}
+            <b>
+              {t('widget.week')} {pctNum(usage.seven_day.utilization)}%
+            </b>
           </>
         }
       />
@@ -261,10 +264,23 @@ function ClaudeCard({ usage }: { usage: ClaudeUsage | null }) {
           />
         </div>
         <div className={styles.statGrid}>
-          <StatCell label={t('widget.resetLabel', { w: '5h' })} value={formatResetTime(usage.five_hour.resets_at)} />
-          <StatCell label={t('widget.resetLabel', { w: t('widget.week') })} value={formatResetTime(usage.seven_day.resets_at)} />
-          <StatCell label={t('widget.resetLabel', { w: 'opus' })} value={formatResetTime(usage.seven_day_opus.resets_at)} />
-          <StatCell label={t('widget.peakLabel')} value={`${pctNum(maxUtil)}%`} crit={maxUtil >= 80} />
+          <StatCell
+            label={t('widget.resetLabel', { w: '5h' })}
+            value={formatResetTime(usage.five_hour.resets_at)}
+          />
+          <StatCell
+            label={t('widget.resetLabel', { w: t('widget.week') })}
+            value={formatResetTime(usage.seven_day.resets_at)}
+          />
+          <StatCell
+            label={t('widget.resetLabel', { w: 'opus' })}
+            value={formatResetTime(usage.seven_day_opus.resets_at)}
+          />
+          <StatCell
+            label={t('widget.peakLabel')}
+            value={`${pctNum(maxUtil)}%`}
+            crit={maxUtil >= 80}
+          />
         </div>
       </div>
       <CardFoot
@@ -327,7 +343,10 @@ function CodexCard({ usage }: { usage: CodexUsage | null }) {
             t('widget.limitReached')
           ) : (
             <>
-              {t('widget.usage5h')} · <b>{t('widget.week')} {pctNum(usage.secondary.used_percent)}%</b>
+              {t('widget.usage5h')} ·{' '}
+              <b>
+                {t('widget.week')} {pctNum(usage.secondary.used_percent)}%
+              </b>
             </>
           )
         }
@@ -348,8 +367,14 @@ function CodexCard({ usage }: { usage: CodexUsage | null }) {
           />
         </div>
         <div className={styles.statGrid}>
-          <StatCell label={t('widget.resetLabel', { w: '5h' })} value={formatResetMs(usage.primary.resets_at_ms)} />
-          <StatCell label={t('widget.resetLabel', { w: t('widget.week') })} value={formatResetMs(usage.secondary.resets_at_ms)} />
+          <StatCell
+            label={t('widget.resetLabel', { w: '5h' })}
+            value={formatResetMs(usage.primary.resets_at_ms)}
+          />
+          <StatCell
+            label={t('widget.resetLabel', { w: t('widget.week') })}
+            value={formatResetMs(usage.secondary.resets_at_ms)}
+          />
           <StatCell
             label={t('widget.statusLabel')}
             value={usage.rate_limited ? t('widget.statusLimited') : t('widget.statusOk')}
@@ -394,11 +419,12 @@ function AntigravityCard({ usage }: { usage: AntigravityUsage | null }) {
   )
 
   if (!usage || !hasData) {
-    const emptyTitle = usage?.status === 'no_cli'
-      ? t('widget.antigravityNotInstalled')
-      : usage?.status === 'no_auth'
-        ? t('widget.antigravityNotSignedIn')
-        : t('widget.usageUnavailable')
+    const emptyTitle =
+      usage?.status === 'no_cli'
+        ? t('widget.antigravityNotInstalled')
+        : usage?.status === 'no_auth'
+          ? t('widget.antigravityNotSignedIn')
+          : t('widget.usageUnavailable')
     return (
       <div className={styles.usageCard}>
         {head}
@@ -418,9 +444,11 @@ function AntigravityCard({ usage }: { usage: AntigravityUsage | null }) {
         percent={usage.used_percent}
         reset={formatResetTime(primary.resets_at)}
         critical={usage.rate_limited || usage.used_percent >= 80}
-        sub={usage.rate_limited
-          ? t('widget.limitReached')
-          : t('widget.mostUsedBucket', { name: primary.label })}
+        sub={
+          usage.rate_limited
+            ? t('widget.limitReached')
+            : t('widget.mostUsedBucket', { name: primary.label })
+        }
       />
       <div className={styles.cardBody}>
         <div className={styles.meterList}>
@@ -436,10 +464,25 @@ function AntigravityCard({ usage }: { usage: AntigravityUsage | null }) {
           ))}
         </div>
         <div className={styles.statGrid}>
-          <StatCell label={t('widget.statusLabel')} value={usage.rate_limited ? t('widget.statusLimited') : t('widget.statusOk')} crit={usage.rate_limited} />
-          <StatCell label={t('widget.remainingLabel')} value={`${pctNum(primary.remaining_percent)}%`} crit={primary.remaining_percent <= 1} />
-          <StatCell label={t('widget.modelsLabel')} value={String(usage.buckets.reduce((sum, bucket) => sum + bucket.models.length, 0))} />
-          <StatCell label={t('widget.peakLabel')} value={`${pctNum(usage.used_percent)}%`} crit={usage.used_percent >= 80} />
+          <StatCell
+            label={t('widget.statusLabel')}
+            value={usage.rate_limited ? t('widget.statusLimited') : t('widget.statusOk')}
+            crit={usage.rate_limited}
+          />
+          <StatCell
+            label={t('widget.remainingLabel')}
+            value={`${pctNum(primary.remaining_percent)}%`}
+            crit={primary.remaining_percent <= 1}
+          />
+          <StatCell
+            label={t('widget.modelsLabel')}
+            value={String(usage.buckets.reduce((sum, bucket) => sum + bucket.models.length, 0))}
+          />
+          <StatCell
+            label={t('widget.peakLabel')}
+            value={`${pctNum(usage.used_percent)}%`}
+            crit={usage.used_percent >= 80}
+          />
         </div>
       </div>
       <CardFoot

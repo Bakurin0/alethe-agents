@@ -65,7 +65,15 @@ export function computeStreak(days: ActivityDay[]): number {
 export function ActivityGraph() {
   const t = useT()
   const language = useProjectsStore((s) => s.preferences.language)
-  const weekdayLabels = ['', t('activity.weekdayMon'), '', t('activity.weekdayWed'), '', t('activity.weekdayFri'), '']
+  const weekdayLabels = [
+    '',
+    t('activity.weekdayMon'),
+    '',
+    t('activity.weekdayWed'),
+    '',
+    t('activity.weekdayFri'),
+    '',
+  ]
   const [days, setDays] = useState<ActivityDay[]>([])
   const [loading, setLoading] = useState(true)
   const [refreshing, setRefreshing] = useState(false)
@@ -123,8 +131,19 @@ export function ActivityGraph() {
     <div className={styles.usageCard}>
       <div className={styles.cardHead}>
         <div className={`${styles.badge} ${styles.badgeActivity}`}>
-          <svg width="15" height="15" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.6">
-            <polyline points="2,12 5,8 8,10 11,4 14,6" strokeLinecap="round" strokeLinejoin="round" />
+          <svg
+            width="15"
+            height="15"
+            viewBox="0 0 16 16"
+            fill="none"
+            stroke="currentColor"
+            strokeWidth="1.6"
+          >
+            <polyline
+              points="2,12 5,8 8,10 11,4 14,6"
+              strokeLinecap="round"
+              strokeLinejoin="round"
+            />
           </svg>
         </div>
         <span className={styles.name}>{t('activity.title')}</span>
@@ -184,10 +203,13 @@ export function ActivityGraph() {
                         <div
                           key={ri}
                           className={`${styles.activityCell} ${intensityClass(day.count, max)}`}
-                          title={t(day.count === 1 ? 'activity.tooltipOne' : 'activity.tooltipMany', {
-                            count: day.count,
-                            date: formatDateBR(day.date),
-                          })}
+                          title={t(
+                            day.count === 1 ? 'activity.tooltipOne' : 'activity.tooltipMany',
+                            {
+                              count: day.count,
+                              date: formatDateBR(day.date),
+                            },
+                          )}
                         />
                       ) : (
                         <div key={ri} className={`${styles.activityCell} ${styles.cellEmpty}`} />
@@ -215,7 +237,9 @@ export function ActivityGraph() {
           <span className={styles.cardFootDot} style={{ background: 'var(--status-working)' }} />
           {t('activity.streak', { n: streak })}
         </span>
-        <span className={styles.cardFootRight}>{t('activity.total', { total: totalFormatted })}</span>
+        <span className={styles.cardFootRight}>
+          {t('activity.total', { total: totalFormatted })}
+        </span>
       </div>
     </div>
   )

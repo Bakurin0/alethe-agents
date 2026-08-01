@@ -25,10 +25,7 @@ export function SubTabsLane({ tabs, activeTabId, onActivate, onClose, onAdd }: S
       {tabs.map((tab) => {
         const isActive = tab.id === activeTabId
         return (
-          <div
-            key={tab.id}
-            className={`${styles.itemWrap} ${isActive ? styles.active : ''}`}
-          >
+          <div key={tab.id} className={`${styles.itemWrap} ${isActive ? styles.active : ''}`}>
             <button
               type="button"
               className={styles.item}
@@ -49,7 +46,10 @@ export function SubTabsLane({ tabs, activeTabId, onActivate, onClose, onAdd }: S
                 className={styles.close}
                 onClick={(e) => {
                   e.stopPropagation()
-                  if (window.confirm(t('ui.subtabs.confirmCloseTab', { name: tab.name || tab.type }))) onClose(tab.id)
+                  if (
+                    window.confirm(t('ui.subtabs.confirmCloseTab', { name: tab.name || tab.type }))
+                  )
+                    onClose(tab.id)
                 }}
                 title={t('ui.subtabs.closeTab')}
                 aria-label={t('ui.subtabs.closeTab')}

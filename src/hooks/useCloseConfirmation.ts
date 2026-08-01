@@ -42,8 +42,7 @@ const closeCoordinator = createCloseCoordinator({
       cancelLabel: translate(locale, 'appClose.cancel'),
     })
   },
-  confirmFallback: () =>
-    window.confirm(translate(getLocale(), 'appClose.message')),
+  confirmFallback: () => window.confirm(translate(getLocale(), 'appClose.message')),
   destroyWindow: () => appWindow.destroy(),
   quitApp: () => invoke<void>('quit_app'),
   onFailure: reportCloseFailure,

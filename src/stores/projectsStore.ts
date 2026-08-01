@@ -24,7 +24,12 @@ import {
   type WorkspaceRecentTab,
   type WorkspaceViewSnapshot,
 } from '../lib/types'
-import { DEFAULT_TODOS, normalizeTodoTags, normalizeTodoTitle, reorderTodoItems } from '../lib/todos'
+import {
+  DEFAULT_TODOS,
+  normalizeTodoTags,
+  normalizeTodoTitle,
+  reorderTodoItems,
+} from '../lib/todos'
 import {
   MAX_WORKSPACE_TABS,
   captureWorkspaceSnapshot,
@@ -151,7 +156,13 @@ type ProjectsState = ProjectsFile & {
     args: {
       name: string
       cwd: string
-      firstTab: { type: AgentType; cwd: string; extraArgs?: string[]; initialInput?: string; runtimeProfile?: AgentRuntimeProfile }
+      firstTab: {
+        type: AgentType
+        cwd: string
+        extraArgs?: string[]
+        initialInput?: string
+        runtimeProfile?: AgentRuntimeProfile
+      }
       worktreeAgentId?: string
     },
   ) => Terminal
@@ -166,7 +177,12 @@ type ProjectsState = ProjectsFile & {
     args: {
       name: string
       cwd: string
-      firstTab: { type: AgentType; cwd: string; extraArgs?: string[]; runtimeProfile?: AgentRuntimeProfile }
+      firstTab: {
+        type: AgentType
+        cwd: string
+        extraArgs?: string[]
+        runtimeProfile?: AgentRuntimeProfile
+      }
     },
   ) => Promise<Terminal>
   /** Cria um pane viewer (markdown/arquivo) e adiciona ao grid do projeto. */
@@ -179,11 +195,7 @@ type ProjectsState = ProjectsFile & {
   /** Mata a árvore de processos do terminal + fecha o pane, mas MANTÉM o atalho na
    *  sidebar (descarta sessão/scrollback). O atalho reabre do zero ao ser clicado. */
   killTerminal: (projectId: string, terminalId: string) => void
-  moveTerminal: (
-    fromProjectId: string,
-    terminalId: string,
-    toProjectId: string,
-  ) => void
+  moveTerminal: (fromProjectId: string, terminalId: string, toProjectId: string) => void
   setTerminalDisabled: (projectId: string, terminalId: string, disabled: boolean) => void
   /** Desabilita/reabilita todos os terminais de um projeto e fecha/reabre o container. */
   setProjectDisabled: (projectId: string, disabled: boolean) => void
@@ -205,11 +217,7 @@ type ProjectsState = ProjectsFile & {
   /** Fecha todos os containers que NÃO são o projectId fornecido. */
   closeOtherContainers: (keepProjectId: string) => void
   reorderContainers: (fromIndex: number, toIndex: number) => void
-  reorderPaneInContainer: (
-    projectId: string,
-    fromIndex: number,
-    toIndex: number,
-  ) => void
+  reorderPaneInContainer: (projectId: string, fromIndex: number, toIndex: number) => void
   setContainerCollapsed: (projectId: string, collapsed: boolean) => void
   setContainerInternalLayout: (projectId: string, layout: LayoutMode) => void
   setFullscreenContainer: (projectId: string | null) => void
@@ -219,7 +227,13 @@ type ProjectsState = ProjectsFile & {
   createSubTab: (
     projectId: string,
     terminalId: string,
-    args: { type: AgentType; cwd: string; name?: string; extraArgs?: string[]; runtimeProfile?: AgentRuntimeProfile },
+    args: {
+      type: AgentType
+      cwd: string
+      name?: string
+      extraArgs?: string[]
+      runtimeProfile?: AgentRuntimeProfile
+    },
   ) => SubTab
   closeSubTab: (projectId: string, terminalId: string, tabId: string) => void
   setActiveTab: (projectId: string, terminalId: string, tabId: string) => void
@@ -317,7 +331,13 @@ function rememberWorkspaceTab(
 function makeDefaultTerminal(args: {
   name: string
   cwd: string
-  firstTab: { type: AgentType; cwd: string; extraArgs?: string[]; initialInput?: string; runtimeProfile?: AgentRuntimeProfile }
+  firstTab: {
+    type: AgentType
+    cwd: string
+    extraArgs?: string[]
+    initialInput?: string
+    runtimeProfile?: AgentRuntimeProfile
+  }
   worktreeAgentId?: string
 }): Terminal {
   const tabId = nanoid()
@@ -414,16 +434,16 @@ function touchTerminalUsage(terminal: Terminal, tabId = terminal.activeTabId): T
     ...terminal,
     lastUsedAt: now,
     activeTabId,
-    tabs: terminal.tabs.map((tab) =>
-      tab.id === activeTabId ? { ...tab, lastUsedAt: now } : tab,
-    ),
+    tabs: terminal.tabs.map((tab) => (tab.id === activeTabId ? { ...tab, lastUsedAt: now } : tab)),
   }
 }
 
 function pickMostRecentTab(terminal: Terminal, excludeTabId?: string): SubTab | null {
   const candidates = terminal.tabs.filter((tab) => tab.id !== excludeTabId)
   if (candidates.length === 0) return null
-  return [...candidates].sort((a, b) => (b.lastUsedAt ?? 0) - (a.lastUsedAt ?? 0))[0] ?? candidates[0]
+  return (
+    [...candidates].sort((a, b) => (b.lastUsedAt ?? 0) - (a.lastUsedAt ?? 0))[0] ?? candidates[0]
+  )
 }
 
 function collectTerminalPtyIds(terminals: Terminal[]): string[] {
@@ -464,9 +484,7 @@ export function getProjectDefaultCwd(
   if (project.defaultCwd?.trim()) return project.defaultCwd.trim()
   const candidates = [project]
   if (project.groupId) {
-    candidates.push(
-      ...projects.filter((p) => p.id !== project.id && p.groupId === project.groupId),
-    )
+    candidates.push(...projects.filter((p) => p.id !== project.id && p.groupId === project.groupId))
   }
 
   for (const candidate of candidates) {
@@ -518,10 +536,7 @@ function normalizePreferences(raw: LegacyPreferences | undefined): Preferences {
     ...(rawResourcePolicy ?? {}),
   }
   const automaticParkingOptIn = rawResourcePolicy?.automaticParkingOptIn === true
-  const memoryBudgetMb = Math.min(
-    8192,
-    Math.max(768, Math.round(resourcePolicy.memoryBudgetMb)),
-  )
+  const memoryBudgetMb = Math.min(8192, Math.max(768, Math.round(resourcePolicy.memoryBudgetMb)))
   const warningThresholdMb = Math.min(
     memoryBudgetMb - 64,
     Math.max(512, Math.round(resourcePolicy.warningThresholdMb)),
@@ -560,10 +575,7 @@ function normalizePreferences(raw: LegacyPreferences | undefined): Preferences {
     resourcePolicy: {
       // Older installs inherited Smart LRU without an explicit choice. Migrate
       // them to monitor-only so an update never starts terminating PTYs.
-      mode:
-        automaticParkingOptIn && resourcePolicy.mode === 'smart-lru'
-          ? 'smart-lru'
-          : 'manual',
+      mode: automaticParkingOptIn && resourcePolicy.mode === 'smart-lru' ? 'smart-lru' : 'manual',
       automaticParkingOptIn,
       memoryBudgetMb,
       warningThresholdMb,
@@ -576,10 +588,7 @@ function normalizePreferences(raw: LegacyPreferences | undefined): Preferences {
         480,
         Math.max(5, Math.round(resourcePolicy.hiddenShellIdleMinutes)),
       ),
-      spawnGraceSeconds: Math.min(
-        900,
-        Math.max(30, Math.round(resourcePolicy.spawnGraceSeconds)),
-      ),
+      spawnGraceSeconds: Math.min(900, Math.max(30, Math.round(resourcePolicy.spawnGraceSeconds))),
     },
   }
 }
@@ -598,13 +607,12 @@ function normalizeTodos(raw: unknown): TodoItem[] {
       title,
       completed: Boolean(item?.completed),
       tags: normalizeTodoTags(item?.tags),
-      ...(typeof item?.projectId === 'string' && item.projectId ? { projectId: item.projectId } : {}),
+      ...(typeof item?.projectId === 'string' && item.projectId
+        ? { projectId: item.projectId }
+        : {}),
     })
   }
-  return [
-    ...result.filter((item) => !item.completed),
-    ...result.filter((item) => item.completed),
-  ]
+  return [...result.filter((item) => !item.completed), ...result.filter((item) => item.completed)]
 }
 
 function migrateWorkspaceNavigation(base: {
@@ -628,10 +636,12 @@ function migrateWorkspaceNavigation(base: {
   )
 
   if (Array.isArray(rawWorkspace.tabs)) {
-    const tabs: WorkspaceTab[] = rawWorkspace.tabs.slice(0, MAX_WORKSPACE_TABS).map((tab: WorkspaceTab) => ({
-      ...tab,
-      snapshot: sanitizeWorkspaceSnapshot(tab.snapshot ?? currentSnapshot, base.projects),
-    }))
+    const tabs: WorkspaceTab[] = rawWorkspace.tabs
+      .slice(0, MAX_WORKSPACE_TABS)
+      .map((tab: WorkspaceTab) => ({
+        ...tab,
+        snapshot: sanitizeWorkspaceSnapshot(tab.snapshot ?? currentSnapshot, base.projects),
+      }))
     const tabIds = new Set(tabs.map((tab) => tab.id))
     const history = (rawWorkspace.history ?? [])
       .filter((entry: any) => entry?.snapshot)
@@ -644,7 +654,9 @@ function migrateWorkspaceNavigation(base: {
       ...rawWorkspace,
       containers: currentSnapshot.containers,
       tabs,
-      activeTabId: tabIds.has(rawWorkspace.activeTabId) ? rawWorkspace.activeTabId : tabs[0]?.id ?? null,
+      activeTabId: tabIds.has(rawWorkspace.activeTabId)
+        ? rawWorkspace.activeTabId
+        : (tabs[0]?.id ?? null),
       activeGroupId: rawWorkspace.activeGroupId ?? null,
       focusedTerminalId: rawWorkspace.focusedTerminalId ?? null,
       history,
@@ -656,43 +668,59 @@ function migrateWorkspaceNavigation(base: {
     rawWorkspace.recentTabs ??
     (rawWorkspace.recentProjectIds ?? []).map((id: string) => ({ kind: 'project', id }))
   const now = Date.now()
-  const tabs = recentTabs.map<WorkspaceTab | null>((recent, index) => {
-    if (recent.kind === 'group') {
-      const group = base.groups.find((item) => item.id === recent.id)
-      if (!group) return null
+  const tabs = recentTabs
+    .map<WorkspaceTab | null>((recent, index) => {
+      if (recent.kind === 'group') {
+        const group = base.groups.find((item) => item.id === recent.id)
+        if (!group) return null
+        return {
+          id: nanoid(),
+          kind: 'group' as const,
+          sourceId: group.id,
+          label: group.name,
+          color: group.color,
+          iconUrl: group.iconUrl,
+          snapshot: cloneWorkspaceSnapshot(currentSnapshot),
+          createdAt: now + index,
+          updatedAt: now + index,
+        }
+      }
+      const project = base.projects.find((item) => item.id === recent.id)
+      if (!project) return null
+      const container = containers.find((item: WorkspaceContainer) => item.projectId === project.id)
+      const snapshot = container
+        ? {
+            ...cloneWorkspaceSnapshot(currentSnapshot),
+            containers: [{ ...container, paneIds: [...container.paneIds] }],
+            activeProjectId: project.id,
+            activeGroupId: null,
+          }
+        : currentSnapshot
       return {
         id: nanoid(),
-        kind: 'group' as const,
-        sourceId: group.id,
-        label: group.name,
-        color: group.color,
-        iconUrl: group.iconUrl,
-        snapshot: cloneWorkspaceSnapshot(currentSnapshot),
+        kind: 'project' as const,
+        sourceId: project.id,
+        label: project.name,
+        color: project.color,
+        iconUrl: project.iconUrl,
+        snapshot,
         createdAt: now + index,
         updatedAt: now + index,
       }
-    }
-    const project = base.projects.find((item) => item.id === recent.id)
-    if (!project) return null
-    const container = containers.find((item: WorkspaceContainer) => item.projectId === project.id)
-    const snapshot = container
-      ? { ...cloneWorkspaceSnapshot(currentSnapshot), containers: [{ ...container, paneIds: [...container.paneIds] }], activeProjectId: project.id, activeGroupId: null }
-      : currentSnapshot
-    return {
-      id: nanoid(),
-      kind: 'project' as const,
-      sourceId: project.id,
-      label: project.name,
-      color: project.color,
-      iconUrl: project.iconUrl,
-      snapshot,
-      createdAt: now + index,
-      updatedAt: now + index,
-    }
-  }).filter((tab): tab is WorkspaceTab => tab !== null).slice(0, MAX_WORKSPACE_TABS)
+    })
+    .filter((tab): tab is WorkspaceTab => tab !== null)
+    .slice(0, MAX_WORKSPACE_TABS)
   const activeTab = tabs.find((tab) => tab.sourceId === base.activeProjectId) ?? tabs[0] ?? null
   const history = activeTab
-    ? [{ id: nanoid(), tabId: activeTab.id, label: activeTab.label, snapshot: cloneWorkspaceSnapshot(currentSnapshot), visitedAt: now }]
+    ? [
+        {
+          id: nanoid(),
+          tabId: activeTab.id,
+          label: activeTab.label,
+          snapshot: cloneWorkspaceSnapshot(currentSnapshot),
+          visitedAt: now,
+        },
+      ]
     : []
   return {
     ...rawWorkspace,
@@ -850,9 +878,9 @@ export const useProjectsStore = create<ProjectsState>((set, get) => {
       const workspaceChanged = Boolean(result.workspace)
       const visualPreferencesChanged = Boolean(
         result.preferences &&
-          (result.preferences.workspaceFlat !== state.preferences.workspaceFlat ||
-            result.preferences.fullscreenContainerId !== state.preferences.fullscreenContainerId ||
-            result.preferences.workspaceGridLayout !== state.preferences.workspaceGridLayout),
+        (result.preferences.workspaceFlat !== state.preferences.workspaceFlat ||
+          result.preferences.fullscreenContainerId !== state.preferences.fullscreenContainerId ||
+          result.preferences.workspaceGridLayout !== state.preferences.workspaceGridLayout),
       )
       if (!suppressNavigationSync && (workspaceChanged || visualPreferencesChanged)) {
         const nextState = { ...state, ...result } as ProjectsState
@@ -923,9 +951,7 @@ export const useProjectsStore = create<ProjectsState>((set, get) => {
     if (changed) scheduleSave(get)
   }
 
-  const navigationUpdate = (
-    mutator: (state: ProjectsState) => Partial<ProjectsState> | void,
-  ) => {
+  const navigationUpdate = (mutator: (state: ProjectsState) => Partial<ProjectsState> | void) => {
     suppressNavigationSync = true
     try {
       update(mutator)
@@ -939,11 +965,7 @@ export const useProjectsStore = create<ProjectsState>((set, get) => {
       projects: state.projects.map((p) => (p.id === projectId ? fn(p) : p)),
     }))
 
-  const updateTerminal = (
-    projectId: string,
-    terminalId: string,
-    fn: (t: Terminal) => Terminal,
-  ) =>
+  const updateTerminal = (projectId: string, terminalId: string, fn: (t: Terminal) => Terminal) =>
     updateProject(projectId, (p) => ({
       ...p,
       terminals: p.terminals.map((t) => (t.id === terminalId ? fn(t) : t)),
@@ -960,21 +982,20 @@ export const useProjectsStore = create<ProjectsState>((set, get) => {
       tabs: t.tabs.map((s) => (s.id === tabId ? fn(s) : s)),
     }))
 
-  const updateContainer = (
-    projectId: string,
-    fn: (c: WorkspaceContainer) => WorkspaceContainer,
-  ) =>
+  const updateContainer = (projectId: string, fn: (c: WorkspaceContainer) => WorkspaceContainer) =>
     update((state) => ({
       workspace: {
         ...state.workspace,
-        containers: state.workspace.containers.map((c) =>
-          c.projectId === projectId ? fn(c) : c,
-        ),
+        containers: state.workspace.containers.map((c) => (c.projectId === projectId ? fn(c) : c)),
       },
     }))
 
   /** Cria um container default pra um projeto. */
-  const newContainer = (projectId: string, paneIds: string[], layout: LayoutMode): WorkspaceContainer => ({
+  const newContainer = (
+    projectId: string,
+    paneIds: string[],
+    layout: LayoutMode,
+  ): WorkspaceContainer => ({
     projectId,
     paneIds,
     lastUsedAt: Date.now(),
@@ -989,7 +1010,9 @@ export const useProjectsStore = create<ProjectsState>((set, get) => {
     activeProjectId: string | null,
     activeGroupId: string | null,
     focusedTerminalId: string | null = null,
-    visual?: Partial<Pick<Preferences, 'workspaceFlat' | 'fullscreenContainerId' | 'workspaceGridLayout'>>,
+    visual?: Partial<
+      Pick<Preferences, 'workspaceFlat' | 'fullscreenContainerId' | 'workspaceGridLayout'>
+    >,
   ): WorkspaceViewSnapshot =>
     captureWorkspaceSnapshot({
       containers,
@@ -1026,15 +1049,16 @@ export const useProjectsStore = create<ProjectsState>((set, get) => {
         tabs = tabs.slice(-MAX_WORKSPACE_TABS)
       }
     }
-    const navigation = options?.pushHistory === false
-      ? { history, historyIndex }
-      : pushWorkspaceHistory(history, historyIndex, {
-          id: nanoid(),
-          tabId: tab.id,
-          label: tab.label,
-          snapshot,
-          visitedAt: Date.now(),
-        })
+    const navigation =
+      options?.pushHistory === false
+        ? { history, historyIndex }
+        : pushWorkspaceHistory(history, historyIndex, {
+            id: nanoid(),
+            tabId: tab.id,
+            label: tab.label,
+            snapshot,
+            visitedAt: Date.now(),
+          })
     return {
       activeProjectId: snapshot.activeProjectId,
       preferences: {
@@ -1105,7 +1129,7 @@ export const useProjectsStore = create<ProjectsState>((set, get) => {
         containers,
         activeGroupId: null,
         focusedTerminalId: snapshot.focusedTerminalId,
-        tabs: state.workspace.tabs.map((tab) => tab.id === updatedTab.id ? updatedTab : tab),
+        tabs: state.workspace.tabs.map((tab) => (tab.id === updatedTab.id ? updatedTab : tab)),
         history: replaceCurrentHistorySnapshot(
           state.workspace.history,
           state.workspace.historyIndex,
@@ -1192,9 +1216,7 @@ export const useProjectsStore = create<ProjectsState>((set, get) => {
           }
         }
         return {
-          groups: state.groups.map((g) =>
-            g.id === groupId ? { ...g, parentGroupId } : g,
-          ),
+          groups: state.groups.map((g) => (g.id === groupId ? { ...g, parentGroupId } : g)),
         }
       }),
 
@@ -1226,9 +1248,7 @@ export const useProjectsStore = create<ProjectsState>((set, get) => {
         const allProjectIds = collectGroupProjectIds(groupId, state.groups)
         cleanupPtys(
           collectTerminalPtyIds(
-            state.projects
-              .filter((p) => allProjectIds.has(p.id))
-              .flatMap((p) => p.terminals),
+            state.projects.filter((p) => allProjectIds.has(p.id)).flatMap((p) => p.terminals),
           ),
         )
 
@@ -1242,9 +1262,7 @@ export const useProjectsStore = create<ProjectsState>((set, get) => {
         })
 
         // Fecha os containers desses projetos
-        const containers = state.workspace.containers.filter(
-          (c) => !allProjectIds.has(c.projectId),
-        )
+        const containers = state.workspace.containers.filter((c) => !allProjectIds.has(c.projectId))
 
         // Marca o grupo (e subgrupos) como suspenso
         const groups = state.groups.map((g) => {
@@ -1301,9 +1319,7 @@ export const useProjectsStore = create<ProjectsState>((set, get) => {
           }
           cleanupPtys(
             collectTerminalPtyIds(
-              state.projects
-                .filter((p) => projectsToRemove.has(p.id))
-                .flatMap((p) => p.terminals),
+              state.projects.filter((p) => projectsToRemove.has(p.id)).flatMap((p) => p.terminals),
             ),
           )
           const remainingProjects = state.projects.filter((p) => !projectsToRemove.has(p.id))
@@ -1321,7 +1337,7 @@ export const useProjectsStore = create<ProjectsState>((set, get) => {
           const tabIds = new Set(tabs.map((tab) => tab.id))
           const activeTabId = tabIds.has(state.workspace.activeTabId ?? '')
             ? state.workspace.activeTabId
-            : tabs[0]?.id ?? null
+            : (tabs[0]?.id ?? null)
           const history = state.workspace.history
             .filter((entry) => tabIds.has(entry.tabId))
             .map((entry) => {
@@ -1345,9 +1361,7 @@ export const useProjectsStore = create<ProjectsState>((set, get) => {
                 (pid) => !projectsToRemove.has(pid),
               ),
               recentTabs: (state.workspace.recentTabs ?? []).filter((tab) =>
-                tab.kind === 'group'
-                  ? !groupsToRemove.has(tab.id)
-                  : !projectsToRemove.has(tab.id),
+                tab.kind === 'group' ? !groupsToRemove.has(tab.id) : !projectsToRemove.has(tab.id),
               ),
               tabs,
               activeTabId,
@@ -1366,9 +1380,7 @@ export const useProjectsStore = create<ProjectsState>((set, get) => {
           groups: state.groups
             .filter((g) => g.id !== id)
             .map((g) => (g.parentGroupId === id ? { ...g, parentGroupId: null } : g)),
-          projects: state.projects.map((p) =>
-            p.groupId === id ? { ...p, groupId: null } : p,
-          ),
+          projects: state.projects.map((p) => (p.groupId === id ? { ...p, groupId: null } : p)),
           ungroupedOrder: [
             ...state.ungroupedOrder,
             ...group.projectIds.filter((pid) => !state.ungroupedOrder.includes(pid)),
@@ -1499,13 +1511,17 @@ export const useProjectsStore = create<ProjectsState>((set, get) => {
 
     setWorktreeMode: (id, worktreeMode) => updateProject(id, (p) => ({ ...p, worktreeMode })),
 
-    setValidationCommands: (id, validationCommands) => updateProject(id, (p) => ({ ...p, validationCommands })),
+    setValidationCommands: (id, validationCommands) =>
+      updateProject(id, (p) => ({ ...p, validationCommands })),
 
-    setGsdWatcherEnabled: (id, gsdWatcherEnabled) => updateProject(id, (p) => ({ ...p, gsdWatcherEnabled })),
+    setGsdWatcherEnabled: (id, gsdWatcherEnabled) =>
+      updateProject(id, (p) => ({ ...p, gsdWatcherEnabled })),
 
-    setConflictAgentProvider: (id, conflictAgentProvider) => updateProject(id, (p) => ({ ...p, conflictAgentProvider })),
+    setConflictAgentProvider: (id, conflictAgentProvider) =>
+      updateProject(id, (p) => ({ ...p, conflictAgentProvider })),
 
-    setGraphifyEnabled: (id, graphifyEnabled) => updateProject(id, (p) => ({ ...p, graphifyEnabled })),
+    setGraphifyEnabled: (id, graphifyEnabled) =>
+      updateProject(id, (p) => ({ ...p, graphifyEnabled })),
 
     setAutoWorktree: (id, autoWorktree) => updateProject(id, (p) => ({ ...p, autoWorktree })),
 
@@ -1646,7 +1662,7 @@ export const useProjectsStore = create<ProjectsState>((set, get) => {
         const tabIds = new Set(tabs.map((tab) => tab.id))
         const activeTabId = tabIds.has(state.workspace.activeTabId ?? '')
           ? state.workspace.activeTabId
-          : tabs[0]?.id ?? null
+          : (tabs[0]?.id ?? null)
         const history = state.workspace.history
           .filter((entry) => tabIds.has(entry.tabId))
           .map((entry) => ({
@@ -1699,7 +1715,11 @@ export const useProjectsStore = create<ProjectsState>((set, get) => {
             )
           : [
               ...state.workspace.containers,
-              newContainer(id, target.terminals.map((t) => t.id), target.layoutMode),
+              newContainer(
+                id,
+                target.terminals.map((t) => t.id),
+                target.layoutMode,
+              ),
             ]
         return {
           activeProjectId: id,
@@ -1781,7 +1801,11 @@ export const useProjectsStore = create<ProjectsState>((set, get) => {
           const existingIndex = containers.findIndex((c) => c.projectId === project.id)
           if (existingIndex === -1) {
             containers.push(
-              newContainer(project.id, project.terminals.map((t) => t.id), project.layoutMode),
+              newContainer(
+                project.id,
+                project.terminals.map((t) => t.id),
+                project.layoutMode,
+              ),
             )
           }
         }
@@ -1812,7 +1836,13 @@ export const useProjectsStore = create<ProjectsState>((set, get) => {
         const snapshot = makeSnapshot(
           state,
           project.terminals.length > 0
-            ? [newContainer(project.id, project.terminals.map((terminal) => terminal.id), project.layoutMode)]
+            ? [
+                newContainer(
+                  project.id,
+                  project.terminals.map((terminal) => terminal.id),
+                  project.layoutMode,
+                ),
+              ]
             : [],
           project.id,
           null,
@@ -1846,7 +1876,13 @@ export const useProjectsStore = create<ProjectsState>((set, get) => {
           state,
           makeSnapshot(
             state,
-            [newContainer(project.id, project.terminals.map((terminal) => terminal.id), project.layoutMode)],
+            [
+              newContainer(
+                project.id,
+                project.terminals.map((terminal) => terminal.id),
+                project.layoutMode,
+              ),
+            ],
             project.id,
             null,
           ),
@@ -1873,7 +1909,11 @@ export const useProjectsStore = create<ProjectsState>((set, get) => {
           for (const project of toAdd) {
             if (!containers.some((c) => c.projectId === project.id)) {
               containers.push(
-                newContainer(project.id, project.terminals.map((t) => t.id), project.layoutMode),
+                newContainer(
+                  project.id,
+                  project.terminals.map((t) => t.id),
+                  project.layoutMode,
+                ),
               )
             }
           }
@@ -1934,7 +1974,11 @@ export const useProjectsStore = create<ProjectsState>((set, get) => {
           (project) => projectIds.has(project.id) && project.terminals.length > 0,
         )
         const containers = scopedProjects.map((project) =>
-          newContainer(project.id, project.terminals.map((terminal) => terminal.id), project.layoutMode),
+          newContainer(
+            project.id,
+            project.terminals.map((terminal) => terminal.id),
+            project.layoutMode,
+          ),
         )
         const snapshot = makeSnapshot(
           state,
@@ -1942,7 +1986,11 @@ export const useProjectsStore = create<ProjectsState>((set, get) => {
           scopedProjects[0]?.id ?? null,
           group.id,
           null,
-          { workspaceGridLayout: group.gridLayout, workspaceFlat: false, fullscreenContainerId: null },
+          {
+            workspaceGridLayout: group.gridLayout,
+            workspaceFlat: false,
+            fullscreenContainerId: null,
+          },
         )
         const now = Date.now()
         const tab: WorkspaceTab = {
@@ -2006,7 +2054,10 @@ export const useProjectsStore = create<ProjectsState>((set, get) => {
           createdAt: now,
           updatedAt: now,
         }
-        return { projects, ...applyTabNavigation({ ...state, projects } as ProjectsState, tab, { addTab: true }) }
+        return {
+          projects,
+          ...applyTabNavigation({ ...state, projects } as ProjectsState, tab, { addTab: true }),
+        }
       }),
 
     addTerminalToWorkspace: (projectId, terminalId) => {
@@ -2089,7 +2140,7 @@ export const useProjectsStore = create<ProjectsState>((set, get) => {
           workspace: {
             ...state.workspace,
             focusedTerminalId: terminalId,
-            tabs: state.workspace.tabs.map((tab) => tab.id === updatedTab.id ? updatedTab : tab),
+            tabs: state.workspace.tabs.map((tab) => (tab.id === updatedTab.id ? updatedTab : tab)),
             history: replaceCurrentHistorySnapshot(
               state.workspace.history,
               state.workspace.historyIndex,
@@ -2112,10 +2163,7 @@ export const useProjectsStore = create<ProjectsState>((set, get) => {
           tab.id === tabId ? { ...tab, pinned: !tab.pinned, updatedAt: Date.now() } : tab,
         )
         // Fixadas primeiro, preservando a ordem relativa de cada grupo.
-        const ordered = [
-          ...tabs.filter((tab) => tab.pinned),
-          ...tabs.filter((tab) => !tab.pinned),
-        ]
+        const ordered = [...tabs.filter((tab) => tab.pinned), ...tabs.filter((tab) => !tab.pinned)]
         return { workspace: { ...state.workspace, tabs: ordered } }
       }),
 
@@ -2185,8 +2233,7 @@ export const useProjectsStore = create<ProjectsState>((set, get) => {
         }
       }),
 
-    toggleProjectCollapsed: (id) =>
-      updateProject(id, (p) => ({ ...p, collapsed: !p.collapsed })),
+    toggleProjectCollapsed: (id) => updateProject(id, (p) => ({ ...p, collapsed: !p.collapsed })),
 
     setLayoutMode: (projectId, layout) => {
       updateProject(projectId, (p) => ({ ...p, layoutMode: layout }))
@@ -2210,9 +2257,7 @@ export const useProjectsStore = create<ProjectsState>((set, get) => {
 
     setGroupLayoutMode: (groupId, mode) =>
       update((state) => ({
-        groups: state.groups.map((g) =>
-          g.id === groupId ? { ...g, layoutMode: mode } : g,
-        ),
+        groups: state.groups.map((g) => (g.id === groupId ? { ...g, layoutMode: mode } : g)),
       })),
 
     setGroupGridLayout: (groupId, layout) =>
@@ -2230,9 +2275,7 @@ export const useProjectsStore = create<ProjectsState>((set, get) => {
           workspaceFlat: false,
           workspaceGridLayout,
         }
-        const activeTab = state.workspace.tabs.find(
-          (tab) => tab.id === state.workspace.activeTabId,
-        )
+        const activeTab = state.workspace.tabs.find((tab) => tab.id === state.workspace.activeTabId)
         if (!activeTab) return { preferences }
 
         // O redimensionamento acontece em `preferences`, mas cada aba salva
@@ -2250,9 +2293,7 @@ export const useProjectsStore = create<ProjectsState>((set, get) => {
           preferences,
           workspace: {
             ...state.workspace,
-            tabs: state.workspace.tabs.map((tab) =>
-              tab.id === updatedTab.id ? updatedTab : tab,
-            ),
+            tabs: state.workspace.tabs.map((tab) => (tab.id === updatedTab.id ? updatedTab : tab)),
             history: replaceCurrentHistorySnapshot(
               state.workspace.history,
               state.workspace.historyIndex,
@@ -2320,10 +2361,17 @@ export const useProjectsStore = create<ProjectsState>((set, get) => {
       if (project && wantsIsolation) {
         const repo = getProjectDefaultCwd(project, state.projects)
         if (repo) {
-          const agentId = `${args.firstTab.type.slice(0, 2)}-${nanoid(6)}`.replace(/[^A-Za-z0-9_-]/g, 'x')
+          const agentId = `${args.firstTab.type.slice(0, 2)}-${nanoid(6)}`.replace(
+            /[^A-Za-z0-9_-]/g,
+            'x',
+          )
           try {
             const { worktreeProvision } = await import('../lib/tauri')
-            const info = await worktreeProvision(repo, agentId, project.worktreeMode ?? 'gitWorktree')
+            const info = await worktreeProvision(
+              repo,
+              agentId,
+              project.worktreeMode ?? 'gitWorktree',
+            )
             return get().createTerminal(projectId, {
               name: args.name,
               cwd: info.path,
@@ -2399,10 +2447,7 @@ export const useProjectsStore = create<ProjectsState>((set, get) => {
           workspace: {
             ...state.workspace,
             containers,
-            recentProjectIds: rememberProjectTab(
-              state.workspace.recentProjectIds,
-              projectId,
-            ),
+            recentProjectIds: rememberProjectTab(state.workspace.recentProjectIds, projectId),
             recentTabs: rememberWorkspaceTab(state.workspace.recentTabs, {
               kind: 'project',
               id: projectId,
@@ -2477,7 +2522,11 @@ export const useProjectsStore = create<ProjectsState>((set, get) => {
         const tabs = state.workspace.tabs
           .filter(
             (tab) =>
-              !(tab.kind === 'terminal' && tab.sourceProjectId === projectId && tab.sourceId === terminalId),
+              !(
+                tab.kind === 'terminal' &&
+                tab.sourceProjectId === projectId &&
+                tab.sourceId === terminalId
+              ),
           )
           .map((tab) => ({
             ...tab,
@@ -2498,7 +2547,7 @@ export const useProjectsStore = create<ProjectsState>((set, get) => {
             tabs,
             activeTabId: tabIds.has(state.workspace.activeTabId ?? '')
               ? state.workspace.activeTabId
-              : tabs[0]?.id ?? null,
+              : (tabs[0]?.id ?? null),
             focusedTerminalId:
               state.workspace.focusedTerminalId === terminalId
                 ? null
@@ -2598,9 +2647,7 @@ export const useProjectsStore = create<ProjectsState>((set, get) => {
         })
         if (disabled) {
           // Fecha o container pra liberar RAM
-          const containers = state.workspace.containers.filter(
-            (c) => c.projectId !== projectId,
-          )
+          const containers = state.workspace.containers.filter((c) => c.projectId !== projectId)
           return { projects, workspace: { ...state.workspace, containers } }
         }
         return { projects }
@@ -2792,8 +2839,12 @@ export const useProjectsStore = create<ProjectsState>((set, get) => {
 
     closeOtherContainers: (keepProjectId) =>
       update((state) => {
-        const closingContainers = state.workspace.containers.filter((c) => c.projectId !== keepProjectId)
-        const closingByProject = new Map(closingContainers.map((c) => [c.projectId, new Set(c.paneIds)]))
+        const closingContainers = state.workspace.containers.filter(
+          (c) => c.projectId !== keepProjectId,
+        )
+        const closingByProject = new Map(
+          closingContainers.map((c) => [c.projectId, new Set(c.paneIds)]),
+        )
         const closingTerminals = state.projects.flatMap((project) => {
           const paneIds = closingByProject.get(project.id)
           if (!paneIds) return []
@@ -2866,11 +2917,7 @@ export const useProjectsStore = create<ProjectsState>((set, get) => {
         const completedIndex = state.todos.findIndex((item) => item.completed)
         const insertAt = completedIndex === -1 ? state.todos.length : completedIndex
         return {
-          todos: [
-            ...state.todos.slice(0, insertAt),
-            todo,
-            ...state.todos.slice(insertAt),
-          ],
+          todos: [...state.todos.slice(0, insertAt), todo, ...state.todos.slice(insertAt)],
         }
       })
       return todo
@@ -2917,11 +2964,7 @@ export const useProjectsStore = create<ProjectsState>((set, get) => {
         const firstCompleted = remaining.findIndex((item) => item.completed)
         const insertAt = firstCompleted === -1 ? remaining.length : firstCompleted
         return {
-          todos: [
-            ...remaining.slice(0, insertAt),
-            changed,
-            ...remaining.slice(insertAt),
-          ],
+          todos: [...remaining.slice(0, insertAt), changed, ...remaining.slice(insertAt)],
         }
       }),
 
@@ -2966,9 +3009,10 @@ export const useProjectsStore = create<ProjectsState>((set, get) => {
         if (closingTab?.ptyId) cleanupPtys([closingTab.ptyId])
         const remaining = t.tabs.filter((s) => s.id !== tabId)
         if (remaining.length === 0) return t
-        const activeTabId = t.activeTabId === tabId
-          ? pickMostRecentTab(t, tabId)?.id ?? remaining[0].id
-          : t.activeTabId
+        const activeTabId =
+          t.activeTabId === tabId
+            ? (pickMostRecentTab(t, tabId)?.id ?? remaining[0].id)
+            : t.activeTabId
         const next = { ...t, tabs: remaining, activeTabId }
         return activeTabId ? touchTerminalUsage(next, activeTabId) : next
       }),
@@ -2982,9 +3026,7 @@ export const useProjectsStore = create<ProjectsState>((set, get) => {
           lastUsedAt: now,
           activeTabId: tabId,
           tabs: t.tabs.map((tab) =>
-            tab.id === tabId
-              ? { ...tab, completionUnread: false, lastUsedAt: now }
-              : tab,
+            tab.id === tabId ? { ...tab, completionUnread: false, lastUsedAt: now } : tab,
           ),
         }
       }),

@@ -629,7 +629,9 @@
   border-radius: var(--radius-sm);
   color: var(--fg-muted);
   cursor: pointer;
-  transition: background 0.1s ease, color 0.1s ease;
+  transition:
+    background 0.1s ease,
+    color 0.1s ease;
 }
 .layoutBtn:hover {
   color: var(--fg);
@@ -687,7 +689,9 @@
   cursor: pointer;
   width: 100%;
   text-align: left;
-  transition: background 0.15s, color 0.15s;
+  transition:
+    background 0.15s,
+    color 0.15s;
 }
 
 .quickNavItem:hover {
@@ -767,7 +771,9 @@
   padding: 3px 6px;
   border-radius: 6px;
   cursor: pointer;
-  transition: background 0.12s, color 0.12s;
+  transition:
+    background 0.12s,
+    color 0.12s;
 }
 
 .cardAgentRow:hover {

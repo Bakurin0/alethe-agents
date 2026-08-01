@@ -64,9 +64,7 @@ export function FindJumpModal() {
     const q = query.trim().toLowerCase()
     if (!q) return all.slice(0, 50)
     return all
-      .filter((h) =>
-        `${h.projectName} ${h.terminalName} ${h.cwd}`.toLowerCase().includes(q),
-      )
+      .filter((h) => `${h.projectName} ${h.terminalName} ${h.cwd}`.toLowerCase().includes(q))
       .slice(0, 50)
   }, [projects, query])
 
@@ -137,9 +135,7 @@ export function FindJumpModal() {
               >
                 <Icon size={14} />
                 <span style={{ fontWeight: 500 }}>{hit.terminalName}</span>
-                <span style={{ fontSize: 11, color: 'var(--fg-muted)' }}>
-                  · {hit.projectName}
-                </span>
+                <span style={{ fontSize: 11, color: 'var(--fg-muted)' }}>· {hit.projectName}</span>
                 {hit.cwd ? (
                   <span
                     style={{

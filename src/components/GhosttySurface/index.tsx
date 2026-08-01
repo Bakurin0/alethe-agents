@@ -45,7 +45,14 @@ export type GhosttySurfaceProps = {
  * espelha o PTY persistente do xterm. A surface só é morta no unmount real
  * (fechar o pane / fechar a sub-tab).
  */
-export function GhosttySurface({ surfaceId, cwd, command, active = true, onSpawned, onExit }: GhosttySurfaceProps) {
+export function GhosttySurface({
+  surfaceId,
+  cwd,
+  command,
+  active = true,
+  onSpawned,
+  onExit,
+}: GhosttySurfaceProps) {
   const placeholderRef = useRef<HTMLDivElement | null>(null)
   const lastRectRef = useRef<WebRect | null>(null)
   const rafRef = useRef<number | null>(null)
@@ -177,8 +184,7 @@ export function GhosttySurface({ surfaceId, cwd, command, active = true, onSpawn
     let lastHidden: boolean | null = null
     let lastFocused: boolean | null = null
 
-    const anyModalOpen = () =>
-      document.querySelector('[role="dialog"][data-state="open"]') !== null
+    const anyModalOpen = () => document.querySelector('[role="dialog"][data-state="open"]') !== null
 
     const applyHidden = () => {
       // Tab inativa também esconde: a surface segue viva, só sai da tela.
@@ -214,7 +220,12 @@ export function GhosttySurface({ surfaceId, cwd, command, active = true, onSpawn
 
     // Reavalia sempre que modais entram/saem do DOM (abrir/fechar diálogo).
     const mo = new MutationObserver(applyHidden)
-    mo.observe(document.body, { childList: true, subtree: true, attributes: true, attributeFilter: ['data-state'] })
+    mo.observe(document.body, {
+      childList: true,
+      subtree: true,
+      attributes: true,
+      attributeFilter: ['data-state'],
+    })
 
     return () => {
       io.disconnect()

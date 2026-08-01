@@ -67,36 +67,41 @@ export function GitControl({ cwd, ptyId, terminalName }: GitControlProps) {
         if (!cancelled && value) setLiveCwd(value)
       })
       .catch(() => undefined)
-    return () => { cancelled = true }
+    return () => {
+      cancelled = true
+    }
   }, [cwd, ptyId])
 
-  const refresh = useCallback(async (quiet = false) => {
-    if (quiet) {
-      const now = Date.now()
-      if (now - lastAutoRefreshRef.current < 1500) return
-      lastAutoRefreshRef.current = now
-    }
-    if (!liveCwd) {
-      setStatus(null)
-      setError('directory_not_found')
-      setLoading(false)
-      return
-    }
-    const id = ++requestId.current
-    if (!quiet) setLoading(true)
-    try {
-      const next = await gitStatus(liveCwd)
-      if (requestId.current !== id) return
-      setStatus(next)
-      setError(null)
-    } catch (cause) {
-      if (requestId.current !== id) return
-      setStatus(null)
-      setError(errorCode(cause))
-    } finally {
-      if (requestId.current === id) setLoading(false)
-    }
-  }, [liveCwd])
+  const refresh = useCallback(
+    async (quiet = false) => {
+      if (quiet) {
+        const now = Date.now()
+        if (now - lastAutoRefreshRef.current < 1500) return
+        lastAutoRefreshRef.current = now
+      }
+      if (!liveCwd) {
+        setStatus(null)
+        setError('directory_not_found')
+        setLoading(false)
+        return
+      }
+      const id = ++requestId.current
+      if (!quiet) setLoading(true)
+      try {
+        const next = await gitStatus(liveCwd)
+        if (requestId.current !== id) return
+        setStatus(next)
+        setError(null)
+      } catch (cause) {
+        if (requestId.current !== id) return
+        setStatus(null)
+        setError(errorCode(cause))
+      } finally {
+        if (requestId.current === id) setLoading(false)
+      }
+    },
+    [liveCwd],
+  )
 
   useEffect(() => {
     void refresh()
@@ -127,7 +132,8 @@ export function GitControl({ cwd, ptyId, terminalName }: GitControlProps) {
   }
 
   const allStageable = useMemo(
-    () => status ? uniquePaths([...status.changes, ...status.untracked, ...status.conflicts]) : [],
+    () =>
+      status ? uniquePaths([...status.changes, ...status.untracked, ...status.conflicts]) : [],
     [status],
   )
 
@@ -170,14 +176,22 @@ export function GitControl({ cwd, ptyId, terminalName }: GitControlProps) {
     return (
       <GitMessage
         title={t(ERROR_KEYS[error] ?? 'git.error.generic')}
-        description={error.startsWith('git_command_failed:') ? error.slice(error.indexOf(':') + 1) : undefined}
-        action={<button type="button" className={styles.retry} onClick={() => void refresh()}><RefreshCw size={13} />{t('git.refresh')}</button>}
+        description={
+          error.startsWith('git_command_failed:') ? error.slice(error.indexOf(':') + 1) : undefined
+        }
+        action={
+          <button type="button" className={styles.retry} onClick={() => void refresh()}>
+            <RefreshCw size={13} />
+            {t('git.refresh')}
+          </button>
+        }
       />
     )
   }
 
   if (!status) return null
-  const total = status.staged.length + status.changes.length + status.untracked.length + status.conflicts.length
+  const total =
+    status.staged.length + status.changes.length + status.untracked.length + status.conflicts.length
   const syncTitle = t('git.sync.title', { ahead: status.ahead, behind: status.behind })
 
   return (
@@ -187,7 +201,14 @@ export function GitControl({ cwd, ptyId, terminalName }: GitControlProps) {
           <strong>{terminalName}</strong>
           <span>{status.repoRoot}</span>
         </div>
-        <button type="button" className={styles.iconButton} onClick={() => void refresh()} disabled={loading || busy} title={t('git.refresh')} aria-label={t('git.refresh')}>
+        <button
+          type="button"
+          className={styles.iconButton}
+          onClick={() => void refresh()}
+          disabled={loading || busy}
+          title={t('git.refresh')}
+          aria-label={t('git.refresh')}
+        >
           <RefreshCw size={13} className={loading ? styles.spinning : undefined} />
         </button>
       </div>
@@ -206,8 +227,14 @@ export function GitControl({ cwd, ptyId, terminalName }: GitControlProps) {
         >
           <RefreshCw size={12} className={busy ? styles.spinning : undefined} />
           <span className={styles.syncCounts}>
-            <span><ArrowDown size={11} />{status.behind}</span>
-            <span><ArrowUp size={11} />{status.ahead}</span>
+            <span>
+              <ArrowDown size={11} />
+              {status.behind}
+            </span>
+            <span>
+              <ArrowUp size={11} />
+              {status.ahead}
+            </span>
           </span>
         </button>
       </div>
@@ -224,27 +251,79 @@ export function GitControl({ cwd, ptyId, terminalName }: GitControlProps) {
           rows={2}
         />
         <div className={styles.commitRow}>
-          <button type="button" className={styles.commitButton} disabled={!message.trim() || busy || total === 0} onClick={() => void commit()}>
-            <Check size={14} />{busy ? t('git.commit.busy') : t('git.commit.action')}
+          <button
+            type="button"
+            className={styles.commitButton}
+            disabled={!message.trim() || busy || total === 0}
+            onClick={() => void commit()}
+          >
+            <Check size={14} />
+            {busy ? t('git.commit.busy') : t('git.commit.action')}
           </button>
-          <button type="button" className={styles.syncWide} disabled={busy || status.detached} onClick={() => void sync()} title={syncTitle}>
-            <RefreshCw size={13} className={busy ? styles.spinning : undefined} />{t('git.sync.action')}
+          <button
+            type="button"
+            className={styles.syncWide}
+            disabled={busy || status.detached}
+            onClick={() => void sync()}
+            title={syncTitle}
+          >
+            <RefreshCw size={13} className={busy ? styles.spinning : undefined} />
+            {t('git.sync.action')}
           </button>
         </div>
       </div>
 
       <div className={styles.groups}>
-        <ChangeGroup kind="staged" label={t('git.group.staged')} items={status.staged} disabled={busy} onPrimary={(paths) => run(() => gitUnstage(status.repoRoot, paths))} />
-        <ChangeGroup kind="conflicts" label={t('git.group.conflicts')} items={status.conflicts} disabled={busy} onPrimary={(paths) => run(() => gitStage(status.repoRoot, paths))} />
-        <ChangeGroup kind="changes" label={t('git.group.changes')} items={status.changes} disabled={busy} onPrimary={(paths) => run(() => gitStage(status.repoRoot, paths))} onDiscard={(paths) => run(() => gitDiscard(status.repoRoot, paths, false))} />
-        <ChangeGroup kind="untracked" label={t('git.group.untracked')} items={status.untracked} disabled={busy} onPrimary={(paths) => run(() => gitStage(status.repoRoot, paths))} onDiscard={(paths) => run(() => gitDiscard(status.repoRoot, paths, true))} />
-        {total === 0 ? <div className={styles.clean}><Check size={18} /><strong>{t('git.clean')}</strong><span>{t('git.cleanDesc')}</span></div> : null}
+        <ChangeGroup
+          kind="staged"
+          label={t('git.group.staged')}
+          items={status.staged}
+          disabled={busy}
+          onPrimary={(paths) => run(() => gitUnstage(status.repoRoot, paths))}
+        />
+        <ChangeGroup
+          kind="conflicts"
+          label={t('git.group.conflicts')}
+          items={status.conflicts}
+          disabled={busy}
+          onPrimary={(paths) => run(() => gitStage(status.repoRoot, paths))}
+        />
+        <ChangeGroup
+          kind="changes"
+          label={t('git.group.changes')}
+          items={status.changes}
+          disabled={busy}
+          onPrimary={(paths) => run(() => gitStage(status.repoRoot, paths))}
+          onDiscard={(paths) => run(() => gitDiscard(status.repoRoot, paths, false))}
+        />
+        <ChangeGroup
+          kind="untracked"
+          label={t('git.group.untracked')}
+          items={status.untracked}
+          disabled={busy}
+          onPrimary={(paths) => run(() => gitStage(status.repoRoot, paths))}
+          onDiscard={(paths) => run(() => gitDiscard(status.repoRoot, paths, true))}
+        />
+        {total === 0 ? (
+          <div className={styles.clean}>
+            <Check size={18} />
+            <strong>{t('git.clean')}</strong>
+            <span>{t('git.cleanDesc')}</span>
+          </div>
+        ) : null}
       </div>
     </div>
   )
 }
 
-function ChangeGroup({ kind, label, items, disabled, onPrimary, onDiscard }: {
+function ChangeGroup({
+  kind,
+  label,
+  items,
+  disabled,
+  onPrimary,
+  onDiscard,
+}: {
   kind: GroupKind
   label: string
   items: GitFileChange[]
@@ -259,18 +338,42 @@ function ChangeGroup({ kind, label, items, disabled, onPrimary, onDiscard }: {
   const paths = uniquePaths(items)
   const primaryTitle = kind === 'staged' ? t('git.unstageAll') : t('git.stageAll')
   const confirmDiscard = (selected: string[]) => {
-    if (onDiscard && window.confirm(t('git.confirm.discard', { count: selected.length }))) onDiscard(selected)
+    if (onDiscard && window.confirm(t('git.confirm.discard', { count: selected.length })))
+      onDiscard(selected)
   }
   return (
     <section className={styles.group}>
       <div className={styles.groupHeader}>
-        <button type="button" className={styles.groupToggle} onClick={() => setOpen((value) => !value)}>
+        <button
+          type="button"
+          className={styles.groupToggle}
+          onClick={() => setOpen((value) => !value)}
+        >
           {open ? <ChevronDown size={13} /> : <ChevronRight size={13} />}
-          <strong>{label}</strong><span>{items.length}</span>
+          <strong>{label}</strong>
+          <span>{items.length}</span>
         </button>
         <div className={styles.groupActions}>
-          {onDiscard ? <button type="button" disabled={disabled} title={t('git.discardAll')} aria-label={t('git.discardAll')} onClick={() => confirmDiscard(paths)}><RotateCcw size={13} /></button> : null}
-          <button type="button" disabled={disabled} title={primaryTitle} aria-label={primaryTitle} onClick={() => onPrimary(paths)}>{kind === 'staged' ? <Minus size={14} /> : <Plus size={14} />}</button>
+          {onDiscard ? (
+            <button
+              type="button"
+              disabled={disabled}
+              title={t('git.discardAll')}
+              aria-label={t('git.discardAll')}
+              onClick={() => confirmDiscard(paths)}
+            >
+              <RotateCcw size={13} />
+            </button>
+          ) : null}
+          <button
+            type="button"
+            disabled={disabled}
+            title={primaryTitle}
+            aria-label={primaryTitle}
+            onClick={() => onPrimary(paths)}
+          >
+            {kind === 'staged' ? <Minus size={14} /> : <Plus size={14} />}
+          </button>
         </div>
       </div>
       {open ? (
@@ -292,7 +395,14 @@ function ChangeGroup({ kind, label, items, disabled, onPrimary, onDiscard }: {
   )
 }
 
-function TreeNodeView({ node, kind, depth, disabled, onPrimary, onDiscard }: {
+function TreeNodeView({
+  node,
+  kind,
+  depth,
+  disabled,
+  onPrimary,
+  onDiscard,
+}: {
   node: TreeNode
   kind: GroupKind
   depth: number
@@ -308,12 +418,36 @@ function TreeNodeView({ node, kind, depth, disabled, onPrimary, onDiscard }: {
     const change = node.change
     const isStaged = kind === 'staged'
     return (
-      <div className={styles.file} style={indent} title={change.originalPath ? `${change.originalPath} → ${change.path}` : change.path}>
+      <div
+        className={styles.file}
+        style={indent}
+        title={change.originalPath ? `${change.originalPath} → ${change.path}` : change.path}
+      >
         <span className={styles.fileName}>{node.name}</span>
-        <span className={`${styles.status} ${statusClass(kind, change.status)}`}>{statusChar(kind, change.status)}</span>
+        <span className={`${styles.status} ${statusClass(kind, change.status)}`}>
+          {statusChar(kind, change.status)}
+        </span>
         <div className={styles.fileActions}>
-          {onDiscard ? <button type="button" disabled={disabled} title={t('git.discard')} aria-label={t('git.discard')} onClick={() => onDiscard([change.path])}><RotateCcw size={12} /></button> : null}
-          <button type="button" disabled={disabled} title={isStaged ? t('git.unstage') : t('git.stage')} aria-label={isStaged ? t('git.unstage') : t('git.stage')} onClick={() => onPrimary([change.path])}>{isStaged ? <Minus size={13} /> : <Plus size={13} />}</button>
+          {onDiscard ? (
+            <button
+              type="button"
+              disabled={disabled}
+              title={t('git.discard')}
+              aria-label={t('git.discard')}
+              onClick={() => onDiscard([change.path])}
+            >
+              <RotateCcw size={12} />
+            </button>
+          ) : null}
+          <button
+            type="button"
+            disabled={disabled}
+            title={isStaged ? t('git.unstage') : t('git.stage')}
+            aria-label={isStaged ? t('git.unstage') : t('git.stage')}
+            onClick={() => onPrimary([change.path])}
+          >
+            {isStaged ? <Minus size={13} /> : <Plus size={13} />}
+          </button>
         </div>
       </div>
     )
@@ -324,33 +458,72 @@ function TreeNodeView({ node, kind, depth, disabled, onPrimary, onDiscard }: {
   return (
     <>
       <div className={styles.dir} style={indent}>
-        <button type="button" className={styles.dirToggle} onClick={() => setOpen((value) => !value)}>
+        <button
+          type="button"
+          className={styles.dirToggle}
+          onClick={() => setOpen((value) => !value)}
+        >
           {open ? <ChevronDown size={12} /> : <ChevronRight size={12} />}
           <Folder size={13} className={styles.dirIcon} />
           <span className={styles.dirName}>{node.name}</span>
         </button>
         <div className={styles.fileActions}>
-          {onDiscard ? <button type="button" disabled={disabled} title={t('git.discardAll')} aria-label={t('git.discardAll')} onClick={() => onDiscard(descendants)}><RotateCcw size={12} /></button> : null}
-          <button type="button" disabled={disabled} title={isStaged ? t('git.unstageAll') : t('git.stageAll')} aria-label={isStaged ? t('git.unstageAll') : t('git.stageAll')} onClick={() => onPrimary(descendants)}>{isStaged ? <Minus size={13} /> : <Plus size={13} />}</button>
+          {onDiscard ? (
+            <button
+              type="button"
+              disabled={disabled}
+              title={t('git.discardAll')}
+              aria-label={t('git.discardAll')}
+              onClick={() => onDiscard(descendants)}
+            >
+              <RotateCcw size={12} />
+            </button>
+          ) : null}
+          <button
+            type="button"
+            disabled={disabled}
+            title={isStaged ? t('git.unstageAll') : t('git.stageAll')}
+            aria-label={isStaged ? t('git.unstageAll') : t('git.stageAll')}
+            onClick={() => onPrimary(descendants)}
+          >
+            {isStaged ? <Minus size={13} /> : <Plus size={13} />}
+          </button>
         </div>
       </div>
-      {open ? node.children.map((child) => (
-        <TreeNodeView
-          key={child.type === 'dir' ? `d:${child.path}` : `f:${child.change.path}`}
-          node={child}
-          kind={kind}
-          depth={depth + 1}
-          disabled={disabled}
-          onPrimary={onPrimary}
-          onDiscard={onDiscard}
-        />
-      )) : null}
+      {open
+        ? node.children.map((child) => (
+            <TreeNodeView
+              key={child.type === 'dir' ? `d:${child.path}` : `f:${child.change.path}`}
+              node={child}
+              kind={kind}
+              depth={depth + 1}
+              disabled={disabled}
+              onPrimary={onPrimary}
+              onDiscard={onDiscard}
+            />
+          ))
+        : null}
     </>
   )
 }
 
-function GitMessage({ title, description, action }: { title: string; description?: string; action?: React.ReactNode }) {
-  return <div className={styles.message}><GitBranch size={22} /><strong>{title}</strong>{description ? <span>{description}</span> : null}{action}</div>
+function GitMessage({
+  title,
+  description,
+  action,
+}: {
+  title: string
+  description?: string
+  action?: React.ReactNode
+}) {
+  return (
+    <div className={styles.message}>
+      <GitBranch size={22} />
+      <strong>{title}</strong>
+      {description ? <span>{description}</span> : null}
+      {action}
+    </div>
+  )
 }
 
 // ---- árvore de arquivos (estilo VSCode, com folder compression) ----
@@ -388,7 +561,12 @@ function compress(node: TreeNode): TreeNode {
   let current = node
   while (current.children.length === 1 && current.children[0].type === 'dir') {
     const only = current.children[0]
-    current = { type: 'dir', name: `${current.name}/${only.name}`, path: only.path, children: only.children }
+    current = {
+      type: 'dir',
+      name: `${current.name}/${only.name}`,
+      path: only.path,
+      children: only.children,
+    }
   }
   current.children = current.children.map(compress).sort(compareNodes)
   return current

@@ -180,7 +180,9 @@ export const useAgentCanvasStore = create<AgentCanvasState>((set, get) => ({
         // Consome o prompt pendente mais antigo desse tipo (FIFO).
         const queue = s.pendingPrompts[agentType] ?? []
         const pending = queue[0] ?? null
-        console.log(`[agentCanvasStore] node criado id=${id} type=${agentType} prompt=${pending?.description ?? '(sem)'}`)
+        console.log(
+          `[agentCanvasStore] node criado id=${id} type=${agentType} prompt=${pending?.description ?? '(sem)'}`,
+        )
         return {
           nodes: [
             ...s.nodes,
@@ -249,7 +251,8 @@ export const useAgentCanvasStore = create<AgentCanvasState>((set, get) => ({
         if (taskId) {
           set((s) => {
             const prev = s.tasks[taskId]
-            const status = (str(input.status) as TeamTask['status'] | null) ?? prev?.status ?? 'pending'
+            const status =
+              (str(input.status) as TeamTask['status'] | null) ?? prev?.status ?? 'pending'
             return {
               tasks: {
                 ...s.tasks,
@@ -340,7 +343,9 @@ export const useAgentCanvasStore = create<AgentCanvasState>((set, get) => ({
           // Start se perdeu (listener fora do ar no spawn) — ensureNode: cria
           // o card aqui mesmo. Seguro porque a sessão principal nunca chega
           // neste branch (não tem agent_id).
-          console.warn(`[agentCanvasStore] PreToolUse sem node, criando via ensureNode id=${agentId}`)
+          console.warn(
+            `[agentCanvasStore] PreToolUse sem node, criando via ensureNode id=${agentId}`,
+          )
           return {
             nodes: [
               ...s.nodes,

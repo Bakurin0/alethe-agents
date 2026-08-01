@@ -10,12 +10,10 @@ import controls from './controls.module.css'
 export function NewGroupModal() {
   const t = useT()
   const open = useUiStore((s) => s.openModal === 'newGroup')
-  const context = useUiStore((s) => s.modalContext) as
-    | { parentGroupId?: string | null }
-    | null
+  const context = useUiStore((s) => s.modalContext) as { parentGroupId?: string | null } | null
   const parentGroupId = context?.parentGroupId ?? null
   const parentGroup = useProjectsStore((s) =>
-    parentGroupId ? s.groups.find((g) => g.id === parentGroupId) ?? null : null,
+    parentGroupId ? (s.groups.find((g) => g.id === parentGroupId) ?? null) : null,
   )
   const closeModal = useUiStore((s) => s.closeModal)
   const createGroup = useProjectsStore((s) => s.createGroup)
@@ -43,7 +41,11 @@ export function NewGroupModal() {
         reset()
         closeModal()
       }}
-      title={parentGroup ? t('crud.newSubgroupTitle', { name: parentGroup.name }) : t('crud.newGroupTitle')}
+      title={
+        parentGroup
+          ? t('crud.newSubgroupTitle', { name: parentGroup.name })
+          : t('crud.newGroupTitle')
+      }
       footer={
         <>
           <button type="button" className={controls.btn} onClick={closeModal}>

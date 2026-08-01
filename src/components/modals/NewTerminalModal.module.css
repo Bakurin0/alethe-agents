@@ -35,7 +35,9 @@
   color: var(--fg);
   text-align: left;
   cursor: pointer;
-  transition: background 120ms, border-color 120ms;
+  transition:
+    background 120ms,
+    border-color 120ms;
 }
 
 .agentCard:hover {
@@ -87,7 +89,9 @@
   color: var(--fg);
   text-align: left;
   cursor: pointer;
-  transition: background 120ms, border-color 120ms;
+  transition:
+    background 120ms,
+    border-color 120ms;
 }
 
 .permissionToggle:hover {

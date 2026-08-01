@@ -110,7 +110,9 @@
 .gripBtn {
   cursor: grab;
   opacity: 0.55;
-  transition: opacity 0.12s ease, background 0.12s ease;
+  transition:
+    opacity 0.12s ease,
+    background 0.12s ease;
 }
 .gripBtn:hover {
   opacity: 1;
@@ -213,18 +215,31 @@
   background: var(--status-working);
   animation: glowPulse 2s infinite ease-in-out;
 }
-.status_waiting { background: var(--status-waiting); }
-.status_stopped { background: var(--status-stopped); }
-.status_disabled { background: var(--status-disabled); }
-.status_offline { background: var(--status-offline); }
+.status_waiting {
+  background: var(--status-waiting);
+}
+.status_stopped {
+  background: var(--status-stopped);
+}
+.status_disabled {
+  background: var(--status-disabled);
+}
+.status_offline {
+  background: var(--status-offline);
+}
 
 @keyframes glowPulse {
-  0%, 100% {
-    box-shadow: 0 0 0 0px var(--status-working-soft), 0 0 4px var(--status-working);
+  0%,
+  100% {
+    box-shadow:
+      0 0 0 0px var(--status-working-soft),
+      0 0 4px var(--status-working);
     opacity: 1;
   }
   50% {
-    box-shadow: 0 0 0 5px rgba(16, 185, 129, 0), 0 0 8px var(--status-working);
+    box-shadow:
+      0 0 0 5px rgba(16, 185, 129, 0),
+      0 0 8px var(--status-working);
     opacity: 0.8;
   }
 }
@@ -259,7 +274,9 @@
   border-radius: 5px;
   color: var(--fg-faint);
   cursor: pointer;
-  transition: background 0.1s ease, color 0.1s ease;
+  transition:
+    background 0.1s ease,
+    color 0.1s ease;
 }
 .action:hover:not(:disabled) {
   background: var(--accent-soft);
@@ -356,7 +373,9 @@
   font-size: 13px;
   font-weight: 500;
   cursor: pointer;
-  transition: background 0.1s ease, border-color 0.1s ease;
+  transition:
+    background 0.1s ease,
+    border-color 0.1s ease;
 }
 .reactivateBtn:hover {
   background: var(--panel-hover);
@@ -398,7 +417,9 @@
   font-size: 13px;
   font-weight: 500;
   cursor: pointer;
-  transition: background 0.1s ease, border-color 0.1s ease;
+  transition:
+    background 0.1s ease,
+    border-color 0.1s ease;
   margin-top: 4px;
 }
 .restartBtn:hover {

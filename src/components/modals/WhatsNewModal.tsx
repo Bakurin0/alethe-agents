@@ -20,22 +20,49 @@ export function WhatsNewModal() {
   const hasUpdate = Boolean(updateInfo && updateInfo.version !== updateInfo.currentVersion)
 
   return (
-    <Modal open={open} onClose={closeModal} title={t('whatsNew.title', { version })} footer={<>
-      <button type="button" className={controls.btn} onClick={closeModal}>{t('whatsNew.close')}</button>
-      {hasUpdate ? <button type="button" className={`${controls.btn} ${controls.btnPrimary}`} onClick={() => openModal('updateAvailable')}>
-        {t('whatsNew.update')}
-      </button> : null}
-    </>}>
+    <Modal
+      open={open}
+      onClose={closeModal}
+      title={t('whatsNew.title', { version })}
+      footer={
+        <>
+          <button type="button" className={controls.btn} onClick={closeModal}>
+            {t('whatsNew.close')}
+          </button>
+          {hasUpdate ? (
+            <button
+              type="button"
+              className={`${controls.btn} ${controls.btnPrimary}`}
+              onClick={() => openModal('updateAvailable')}
+            >
+              {t('whatsNew.update')}
+            </button>
+          ) : null}
+        </>
+      }
+    >
       <div className={styles.hero}>
-        <span className={styles.icon}><Sparkles size={18} /></span>
+        <span className={styles.icon}>
+          <Sparkles size={18} />
+        </span>
         <div>
-          <strong>{hasUpdate ? t('whatsNew.pendingTitle', { version }) : t('whatsNew.subtitle')}</strong>
-          <p>{hasUpdate ? t('whatsNew.pendingBody', { version: updateInfo!.version }) : t('whatsNew.body')}</p>
+          <strong>
+            {hasUpdate ? t('whatsNew.pendingTitle', { version }) : t('whatsNew.subtitle')}
+          </strong>
+          <p>
+            {hasUpdate
+              ? t('whatsNew.pendingBody', { version: updateInfo!.version })
+              : t('whatsNew.body')}
+          </p>
         </div>
       </div>
-      {updateInfo?.notes ? <div className={styles.notes}>{updateInfo.notes}</div> : (
+      {updateInfo?.notes ? (
+        <div className={styles.notes}>{updateInfo.notes}</div>
+      ) : (
         <ul className={styles.list}>
-          {(['note1', 'note2', 'note3', 'note4'] as const).map((key) => <li key={key}>{t(`whatsNew.${key}`)}</li>)}
+          {(['note1', 'note2', 'note3', 'note4'] as const).map((key) => (
+            <li key={key}>{t(`whatsNew.${key}`)}</li>
+          ))}
         </ul>
       )}
     </Modal>

@@ -212,7 +212,9 @@
 
 .planeDropTarget {
   border-color: var(--accent-border);
-  box-shadow: 0 0 0 3px var(--accent-soft), var(--shadow-md);
+  box-shadow:
+    0 0 0 3px var(--accent-soft),
+    var(--shadow-md);
 }
 
 /* ── usage / fallback codex ── */

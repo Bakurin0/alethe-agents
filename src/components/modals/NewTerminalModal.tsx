@@ -28,7 +28,7 @@ export function NewTerminalModal() {
   const closeModal = useUiStore((s) => s.closeModal)
   const createTerminal = useProjectsStore((s) => s.createTerminal)
   const project = useProjectsStore((s) =>
-    context?.projectId ? s.projects.find((p) => p.id === context.projectId) ?? null : null,
+    context?.projectId ? (s.projects.find((p) => p.id === context.projectId) ?? null) : null,
   )
   const projects = useProjectsStore((s) => s.projects)
   const enabled = useProjectsStore((s) => s.preferences.enabledAgents)
@@ -50,9 +50,10 @@ export function NewTerminalModal() {
   })
 
   const visibleAgents = AGENTS.filter((a) => enabled[a.type])
-  const defaultType = visibleAgents.find((agent) => agent.type === 'claude')?.type
-    ?? visibleAgents[0]?.type
-    ?? 'shell'
+  const defaultType =
+    visibleAgents.find((agent) => agent.type === 'claude')?.type ??
+    visibleAgents[0]?.type ??
+    'shell'
   const selectedAgent = AGENTS.find((agent) => agent.type === type) ?? AGENTS[0]
   const inheritedCwd = useMemo(() => getProjectDefaultCwd(project, projects), [project, projects])
   const recentFolders = useMemo(() => {
@@ -72,9 +73,7 @@ export function NewTerminalModal() {
         }
       }
     }
-    return [...folders.values()]
-      .sort((a, b) => b.lastUsedAt - a.lastUsedAt)
-      .slice(0, 4)
+    return [...folders.values()].sort((a, b) => b.lastUsedAt - a.lastUsedAt).slice(0, 4)
   }, [projects])
 
   useEffect(() => {
@@ -87,7 +86,15 @@ export function NewTerminalModal() {
     setType(defaultType)
     setRuntimeProfile('lean')
     setCwd('')
-    setUnrestricted({ shell: false, claude: false, codex: false, antigravity: false, opencode: false, freebuff: false, mimo: false })
+    setUnrestricted({
+      shell: false,
+      claude: false,
+      codex: false,
+      antigravity: false,
+      opencode: false,
+      freebuff: false,
+      mimo: false,
+    })
   }
 
   const submit = () => {
@@ -171,7 +178,9 @@ export function NewTerminalModal() {
             </span>
             <span className={styles.permissionToggleCopy}>
               <span className={styles.permissionToggleTitle}>{t('term.unrestrictedShort')}</span>
-              <span className={styles.permissionToggleDescription}>{t('term.unrestrictedDescription')}</span>
+              <span className={styles.permissionToggleDescription}>
+                {t('term.unrestrictedDescription')}
+              </span>
             </span>
             <span className={styles.permissionToggleState}>
               {unrestricted[type] ? t('term.unrestrictedOn') : t('term.unrestrictedOff')}
@@ -190,11 +199,7 @@ export function NewTerminalModal() {
             onChange={(e) => setCwd(e.target.value)}
             placeholder={inheritedCwd || t('term.shellDefaultPlaceholder')}
           />
-          <button
-            type="button"
-            className={styles.browseButton}
-            onClick={browse}
-          >
+          <button type="button" className={styles.browseButton} onClick={browse}>
             {t('term.browse')}
           </button>
         </div>
@@ -204,7 +209,11 @@ export function NewTerminalModal() {
             <span className={styles.recentLabel}>{t('term.recentFolders')}</span>
             <div className={styles.recentFolders}>
               {recentFolders.map((folder) => {
-                const label = folder.path.replace(/[\\/]+$/, '').split(/[\\/]/).pop() || folder.path
+                const label =
+                  folder.path
+                    .replace(/[\\/]+$/, '')
+                    .split(/[\\/]/)
+                    .pop() || folder.path
                 return (
                   <button
                     key={folder.path}
@@ -246,7 +255,9 @@ export function NewTerminalModal() {
                   </button>
                 ))}
               </div>
-              <span className={controls.hint}>{t(`term.runtimeProfile.${runtimeProfile}.desc`)}</span>
+              <span className={controls.hint}>
+                {t(`term.runtimeProfile.${runtimeProfile}.desc`)}
+              </span>
             </div>
           </div>
         </details>

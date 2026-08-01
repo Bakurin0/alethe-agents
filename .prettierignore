@@ -5,4 +5,7 @@ graphify-out
 package-lock.json
 *.md
 *.snap
+*.yml
+*.yaml
+.github
 assets

@@ -1,4 +1,13 @@
-import { Activity, AlertTriangle, Cpu, FolderOpen, Layers, Monitor, TerminalSquare, Trash2 } from 'lucide-react'
+import {
+  Activity,
+  AlertTriangle,
+  Cpu,
+  FolderOpen,
+  Layers,
+  Monitor,
+  TerminalSquare,
+  Trash2,
+} from 'lucide-react'
 import { useEffect, useState } from 'react'
 
 import { intlLocale, useT, type Locale, type TFunction } from '../../lib/i18n'
@@ -12,7 +21,11 @@ import styles from './MemoryAnalyticsModal.module.css'
 
 type Bucket = 'app_mb' | 'webview_mb' | 'ptys_mb'
 
-const BUCKETS: Array<{ key: Bucket; labelKey: 'mod.bucketApp' | 'mod.bucketWebview' | 'mod.bucketPtys'; short: string }> = [
+const BUCKETS: Array<{
+  key: Bucket
+  labelKey: 'mod.bucketApp' | 'mod.bucketWebview' | 'mod.bucketPtys'
+  short: string
+}> = [
   { key: 'app_mb', labelKey: 'mod.bucketApp', short: 'App' },
   { key: 'webview_mb', labelKey: 'mod.bucketWebview', short: 'Web' },
   { key: 'ptys_mb', labelKey: 'mod.bucketPtys', short: 'PTY' },
@@ -31,17 +44,26 @@ function formatTime(ts: number, language: Locale): string {
   })
 }
 
-function average(samples: MemorySample[], key: keyof Pick<MemorySample, 'total_mb' | Bucket>): number {
+function average(
+  samples: MemorySample[],
+  key: keyof Pick<MemorySample, 'total_mb' | Bucket>,
+): number {
   if (samples.length === 0) return 0
   return samples.reduce((sum, sample) => sum + Number(sample[key]), 0) / samples.length
 }
 
-function getGrowth(samples: MemorySample[], key: keyof Pick<MemorySample, 'total_mb' | Bucket>): number {
+function getGrowth(
+  samples: MemorySample[],
+  key: keyof Pick<MemorySample, 'total_mb' | Bucket>,
+): number {
   if (samples.length < 2) return 0
   return Number(samples[samples.length - 1][key]) - Number(samples[0][key])
 }
 
-function dominantBucket(sample: MemorySample | null, t: TFunction): { label: string; value: number; share: number } | null {
+function dominantBucket(
+  sample: MemorySample | null,
+  t: TFunction,
+): { label: string; value: number; share: number } | null {
   if (!sample || sample.total_mb <= 0) return null
   const top = BUCKETS.map((bucket) => ({
     label: t(bucket.labelKey),
@@ -78,7 +100,9 @@ function buildDiagnostics(history: MemorySample[], t: TFunction): string[] {
   }
 
   if (bucketGrowth && bucketGrowth.value >= 80) {
-    diagnostics.push(t('mod.diagBucketGrowth', { label: bucketGrowth.label, value: formatMb(bucketGrowth.value) }))
+    diagnostics.push(
+      t('mod.diagBucketGrowth', { label: bucketGrowth.label, value: formatMb(bucketGrowth.value) }),
+    )
   }
 
   if (top && top.share >= 0.6) {
@@ -153,7 +177,12 @@ function Sparkline({ samples }: { samples: MemorySample[] }) {
 
   return (
     <div className={styles.chartWrap}>
-      <svg className={styles.chart} viewBox="0 0 100 100" preserveAspectRatio="none" aria-hidden="true">
+      <svg
+        className={styles.chart}
+        viewBox="0 0 100 100"
+        preserveAspectRatio="none"
+        aria-hidden="true"
+      >
         <defs>
           <linearGradient id="memChartFill" x1="0" y1="0" x2="0" y2="1">
             <stop offset="0%" stopColor="var(--accent)" stopOpacity="0.32" />
@@ -266,7 +295,12 @@ export function MemoryAnalyticsModal() {
       title={t('mod.memoryAnalyticsTitle')}
       width={760}
       footer={
-        <button type="button" className={controls.btn} onClick={clearMemoryHistory} disabled={history.length === 0}>
+        <button
+          type="button"
+          className={controls.btn}
+          onClick={clearMemoryHistory}
+          disabled={history.length === 0}
+        >
           <Trash2 size={14} />
           {t('mod.clearHistory')}
         </button>
@@ -321,7 +355,9 @@ export function MemoryAnalyticsModal() {
           <div className={styles.metric}>
             <Layers size={16} />
             <span className={styles.metricLabel}>{t('mod.trend')}</span>
-            <strong className={growth >= 120 ? styles.hot : growth <= -80 ? styles.cool : undefined}>
+            <strong
+              className={growth >= 120 ? styles.hot : growth <= -80 ? styles.cool : undefined}
+            >
               {growth >= 0 ? '+' : ''}
               {formatMb(growth)}
             </strong>
@@ -344,7 +380,11 @@ export function MemoryAnalyticsModal() {
             <div className={styles.panelHeader}>
               <div>
                 <h3>{t('mod.bottlenecks')}</h3>
-                <p>{top ? t('mod.bottleneckLead', { label: top.label, value: formatMb(top.value) }) : t('mod.noCurrentReading')}</p>
+                <p>
+                  {top
+                    ? t('mod.bottleneckLead', { label: top.label, value: formatMb(top.value) })
+                    : t('mod.noCurrentReading')}
+                </p>
               </div>
               <AlertTriangle size={16} />
             </div>
@@ -361,7 +401,11 @@ export function MemoryAnalyticsModal() {
             <div className={styles.panelHeader}>
               <div>
                 <h3>{t('mod.currentComposition')}</h3>
-                <p>{latest ? t('mod.processesTracked', { count: latest.process_count }) : t('mod.waitingData')}</p>
+                <p>
+                  {latest
+                    ? t('mod.processesTracked', { count: latest.process_count })
+                    : t('mod.waitingData')}
+                </p>
               </div>
               <TerminalSquare size={16} />
             </div>

@@ -36,9 +36,7 @@ export function useKeybindings() {
       const target = e.target as HTMLElement | null
       const inEditable =
         target &&
-        (target.tagName === 'INPUT' ||
-          target.tagName === 'TEXTAREA' ||
-          target.isContentEditable)
+        (target.tagName === 'INPUT' || target.tagName === 'TEXTAREA' || target.isContentEditable)
 
       const ctrl = e.ctrlKey || e.metaKey
       if (ctrl && !e.altKey && isZoomKey(e)) {
@@ -65,7 +63,12 @@ export function useKeybindings() {
           ? projects.projects.find((item) => item.id === selected.projectId)
           : null
         const terminal = project?.terminals.find((item) => item.id === selected?.terminalId)
-        if (!selected || !terminal || terminal.disabled || (terminal.kind && terminal.kind !== 'terminal')) {
+        if (
+          !selected ||
+          !terminal ||
+          terminal.disabled ||
+          (terminal.kind && terminal.kind !== 'terminal')
+        ) {
           return
         }
         e.preventDefault()
@@ -191,7 +194,8 @@ export function useKeybindings() {
         })
         if (terminals.length === 0) return
 
-        const activeTerminalId = ui.activeTerminal?.terminalId ?? projects.workspace.focusedTerminalId
+        const activeTerminalId =
+          ui.activeTerminal?.terminalId ?? projects.workspace.focusedTerminalId
         const currentIndex = terminals.findIndex((item) => item.terminalId === activeTerminalId)
         const next = terminals[(currentIndex + 1) % terminals.length]
         projects.focusWorkspaceTerminal(next.projectId, next.terminalId)
@@ -211,9 +215,7 @@ export function useKeybindings() {
         const currentIndex = topTabs.findIndex((tab) => tab.id === projects.workspace.activeTabId)
         const direction = e.shiftKey ? -1 : 1
         const nextIndex =
-          currentIndex === -1
-            ? 0
-            : (currentIndex + direction + topTabs.length) % topTabs.length
+          currentIndex === -1 ? 0 : (currentIndex + direction + topTabs.length) % topTabs.length
         const nextTab = topTabs[nextIndex]
         projects.activateWorkspaceTab(nextTab.id)
         ui.setActiveView('workspace')

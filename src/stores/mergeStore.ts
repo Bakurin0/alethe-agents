@@ -154,7 +154,11 @@ function reopenAgentTerminal(
   const terminal = store.createTerminal(projectId, {
     name: `merge ${env.id.slice(0, 6)}`,
     cwd: env.path,
-    firstTab: { type: provider, cwd: env.path, extraArgs: providerArgs(provider, retryPrompt(failureContext)) },
+    firstTab: {
+      type: provider,
+      cwd: env.path,
+      extraArgs: providerArgs(provider, retryPrompt(failureContext)),
+    },
   })
   set({ agentTerminalId: terminal.id })
   beginResolvingWatch(env, terminal.id)
@@ -379,7 +383,8 @@ export const useMergeStore = create<MergeState>((set, get) => ({
       // 7s segue re-disparando finalize indefinidamente sobre o estado failed.
       stopResolvingWatch()
       set({ phase: 'failed', outcome, isFinalizing: false })
-      if (!silentRetry) toast(t('merge.blockedTitle', { stage: outcome.stage }), outcome.output.slice(0, 300))
+      if (!silentRetry)
+        toast(t('merge.blockedTitle', { stage: outcome.stage }), outcome.output.slice(0, 300))
     } catch (err) {
       const message = String(err)
       const adminLockReason = adminLockReasonFrom(message)

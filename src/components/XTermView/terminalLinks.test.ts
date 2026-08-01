@@ -28,9 +28,7 @@ describe('terminal links', () => {
       length: values.length,
       getLine: (index: number) => {
         const line = values[index]
-        return line
-          ? { isWrapped: line.isWrapped, translateToString: () => line.value }
-          : undefined
+        return line ? { isWrapped: line.isWrapped, translateToString: () => line.value } : undefined
       },
     }
 
@@ -53,12 +51,12 @@ describe('terminal links', () => {
   it('classifies path links by extension', () => {
     expect(detectTerminalLinks('/tmp/shot.png')[0].fileKind).toBe('image')
     expect(detectTerminalLinks('/tmp/main.ts:42:10')[0].fileKind).toBe('text')
-  expect(detectTerminalLinks('/tmp/notes.md')[0].fileKind).toBe('markdown')
-  expect(
-    detectTerminalLinks(
-      'Jogado em D:\\kauam\\Vaults\\Nostromo\\40-Conteudo\\youtube\\projecao-canal.md com as duas projeções',
-    )[0].text,
-  ).toBe('D:\\kauam\\Vaults\\Nostromo\\40-Conteudo\\youtube\\projecao-canal.md')
+    expect(detectTerminalLinks('/tmp/notes.md')[0].fileKind).toBe('markdown')
+    expect(
+      detectTerminalLinks(
+        'Jogado em D:\\kauam\\Vaults\\Nostromo\\40-Conteudo\\youtube\\projecao-canal.md com as duas projeções',
+      )[0].text,
+    ).toBe('D:\\kauam\\Vaults\\Nostromo\\40-Conteudo\\youtube\\projecao-canal.md')
     expect(detectTerminalLinks('https://example.com/x')[0].fileKind).toBeUndefined()
   })
 

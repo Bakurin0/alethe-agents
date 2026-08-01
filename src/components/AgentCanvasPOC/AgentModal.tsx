@@ -13,7 +13,7 @@ export function AgentModal() {
   const t = useT()
   const language = useProjectsStore((s) => s.preferences.language)
   const node = useAgentCanvasStore((s) =>
-    s.selectedId ? s.nodes.find((n) => n.id === s.selectedId) ?? null : null,
+    s.selectedId ? (s.nodes.find((n) => n.id === s.selectedId) ?? null) : null,
   )
   const cost = useNodeCostStore((s) => (node ? (s.byNodeId[node.id] ?? null) : null))
   const select = useAgentCanvasStore((s) => s.select)

@@ -16,7 +16,7 @@ export function SuspendGroupModal() {
   const projects = useProjectsStore((s) => s.projects)
 
   const group = useMemo(
-    () => (context?.groupId ? groups.find((g) => g.id === context.groupId) ?? null : null),
+    () => (context?.groupId ? (groups.find((g) => g.id === context.groupId) ?? null) : null),
     [context?.groupId, groups],
   )
 

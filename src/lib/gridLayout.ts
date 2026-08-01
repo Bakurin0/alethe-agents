@@ -81,9 +81,7 @@ export function reconcileGridLayout(layout: GridLayout, childIds: string[]): Gri
       : undefined
   const rowSizes = (() => {
     if (!layout.rowSizes) return undefined
-    const next = layout.rowSizes
-      .slice(0, rows)
-      .map((size) => Math.max(0.1, Number(size) || 1))
+    const next = layout.rowSizes.slice(0, rows).map((size) => Math.max(0.1, Number(size) || 1))
     while (next.length < rows) {
       next.push(1)
     }

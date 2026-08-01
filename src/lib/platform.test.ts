@@ -10,9 +10,7 @@ describe('isMacOS', () => {
   afterEach(() => vi.restoreAllMocks())
 
   it('detecta macOS pelo user-agent da WKWebView', () => {
-    setUserAgent(
-      'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15',
-    )
+    setUserAgent('Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15')
     expect(isMacOS()).toBe(true)
   })
 

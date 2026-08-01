@@ -1,5 +1,22 @@
 import { getCurrentWindow } from '@tauri-apps/api/window'
-import { ArrowLeft, ArrowRight, Maximize2, Menu, Minus, PanelLeftClose, PanelLeftOpen, PanelRightClose, PanelRightOpen, Pencil, Pin, RefreshCw, Sparkles, Users, Workflow, X } from 'lucide-react'
+import {
+  ArrowLeft,
+  ArrowRight,
+  Maximize2,
+  Menu,
+  Minus,
+  PanelLeftClose,
+  PanelLeftOpen,
+  PanelRightClose,
+  PanelRightOpen,
+  Pencil,
+  Pin,
+  RefreshCw,
+  Sparkles,
+  Users,
+  Workflow,
+  X,
+} from 'lucide-react'
 import { useEffect, useRef, useState } from 'react'
 
 import { ContextMenu, type MenuItem } from '../ProjectSidebar/ContextMenu'
@@ -101,7 +118,8 @@ export function TitleBar() {
   const navigateWorkspaceHistory = useProjectsStore((s) => s.navigateWorkspaceHistory)
   const [tabMenu, setTabMenu] = useState<{ x: number; y: number; items: MenuItem[] } | null>(null)
   const activeProfile = profiles.find((profile) => profile.id === activeProfileId) ?? null
-  const antigravityReady = antigravityUsage?.status === 'ready' && antigravityUsage.buckets.length > 0
+  const antigravityReady =
+    antigravityUsage?.status === 'ready' && antigravityUsage.buckets.length > 0
 
   const closeAgentPlanning = () => {
     if (!agentCanvasSession) return
@@ -225,9 +243,11 @@ export function TitleBar() {
     const onVisibility = () => update(document.hasFocus())
     document.addEventListener('visibilitychange', onVisibility)
     let unlisten: (() => void) | undefined
-    void win.onFocusChanged(({ payload }) => update(payload)).then((fn) => {
-      unlisten = fn
-    })
+    void win
+      .onFocusChanged(({ payload }) => update(payload))
+      .then((fn) => {
+        unlisten = fn
+      })
     return () => {
       document.removeEventListener('visibilitychange', onVisibility)
       unlisten?.()
@@ -255,11 +275,23 @@ export function TitleBar() {
           type="button"
           className={`${styles.iconBtn} ${preferences.leftSidebarVisible ? styles.iconBtnActive : ''}`}
           onClick={() => setPreferences({ leftSidebarVisible: !preferences.leftSidebarVisible })}
-          title={preferences.leftSidebarVisible ? t('ui.titlebar.closeSidebar') : t('ui.titlebar.openSidebar')}
-          aria-label={preferences.leftSidebarVisible ? t('ui.titlebar.closeSidebar') : t('ui.titlebar.openSidebar')}
+          title={
+            preferences.leftSidebarVisible
+              ? t('ui.titlebar.closeSidebar')
+              : t('ui.titlebar.openSidebar')
+          }
+          aria-label={
+            preferences.leftSidebarVisible
+              ? t('ui.titlebar.closeSidebar')
+              : t('ui.titlebar.openSidebar')
+          }
           aria-pressed={preferences.leftSidebarVisible}
         >
-          {preferences.leftSidebarVisible ? <PanelLeftClose size={14} /> : <PanelLeftOpen size={14} />}
+          {preferences.leftSidebarVisible ? (
+            <PanelLeftClose size={14} />
+          ) : (
+            <PanelLeftOpen size={14} />
+          )}
         </button>
         <span className={styles.title} data-tauri-drag-region>
           <span className={styles.titleMark}>A</span>
@@ -278,7 +310,10 @@ export function TitleBar() {
               type="button"
               className={styles.historyBtn}
               disabled={historyIndex <= 0}
-              onClick={() => { navigateWorkspaceHistory(-1); setActiveView('workspace') }}
+              onClick={() => {
+                navigateWorkspaceHistory(-1)
+                setActiveView('workspace')
+              }}
               title={t('ui.titlebar.back')}
               aria-label={t('ui.titlebar.back')}
             >
@@ -288,7 +323,10 @@ export function TitleBar() {
               type="button"
               className={styles.historyBtn}
               disabled={historyIndex < 0 || historyIndex >= historyLength - 1}
-              onClick={() => { navigateWorkspaceHistory(1); setActiveView('workspace') }}
+              onClick={() => {
+                navigateWorkspaceHistory(1)
+                setActiveView('workspace')
+              }}
               title={t('ui.titlebar.forward')}
               aria-label={t('ui.titlebar.forward')}
             >
@@ -314,12 +352,18 @@ export function TitleBar() {
                       {
                         kind: 'item',
                         label: t('ui.workspace.openIndividually'),
-                        onClick: () => { activateWorkspaceTab(tab.id); setActiveView('workspace') },
+                        onClick: () => {
+                          activateWorkspaceTab(tab.id)
+                          setActiveView('workspace')
+                        },
                       },
                       {
                         kind: 'item',
                         label: t('ui.workspace.addToCurrent'),
-                        onClick: () => { addWorkspaceTabToCurrent(tab.id); setActiveView('workspace') },
+                        onClick: () => {
+                          addWorkspaceTabToCurrent(tab.id)
+                          setActiveView('workspace')
+                        },
                       },
                       { kind: 'separator' },
                       {
@@ -343,18 +387,22 @@ export function TitleBar() {
                   role="tab"
                   aria-selected={active}
                   className={styles.groupTabMain}
-                  onClick={() => { activateWorkspaceTab(tab.id); setActiveView('workspace') }}
+                  onClick={() => {
+                    activateWorkspaceTab(tab.id)
+                    setActiveView('workspace')
+                  }}
                   title={tab.label}
                 >
-                  {tab.pinned ? (
-                    <Pin size={11} className={styles.groupTabPinIcon} />
-                  ) : null}
+                  {tab.pinned ? <Pin size={11} className={styles.groupTabPinIcon} /> : null}
                   {tab.iconUrl ? (
                     <img src={tab.iconUrl} alt="" className={styles.groupTabIcon} />
                   ) : tab.kind === 'composition' ? (
                     <Workflow size={14} className={styles.groupTabIconSvg} />
                   ) : (
-                    <span className={styles.groupTabDot} style={{ background: tab.color ?? '#6ea8ff' }} />
+                    <span
+                      className={styles.groupTabDot}
+                      style={{ background: tab.color ?? '#6ea8ff' }}
+                    />
                   )}
                   <span className={styles.groupTabName}>{tab.label}</span>
                   <span className={styles.groupTabCount}>{count}</span>
@@ -362,7 +410,10 @@ export function TitleBar() {
                 <button
                   type="button"
                   className={styles.groupTabClose}
-                  onClick={(event) => { event.stopPropagation(); closeSavedWorkspaceTab(tab.id) }}
+                  onClick={(event) => {
+                    event.stopPropagation()
+                    closeSavedWorkspaceTab(tab.id)
+                  }}
                   title={t('ui.titlebar.removeFromTopbar')}
                   aria-label={t('ui.titlebar.removeNameFromTopbar', { name: tab.label })}
                 >
@@ -407,148 +458,201 @@ export function TitleBar() {
       <div className={styles.widgets}>
         <div className={styles.utilityGroup}>
           <button
-          type="button"
-          className={`${styles.iconBtn} ${updateInfo ? styles.whatsNewPending : ''}`}
-          onClick={() => openModal('whatsNew')}
-          title={t('whatsNew.button')}
-          aria-label={t('whatsNew.button')}
-        >
-          <Sparkles size={13} />
-          {updateInfo ? <span className={styles.whatsNewDot} /> : null}
+            type="button"
+            className={`${styles.iconBtn} ${updateInfo ? styles.whatsNewPending : ''}`}
+            onClick={() => openModal('whatsNew')}
+            title={t('whatsNew.button')}
+            aria-label={t('whatsNew.button')}
+          >
+            <Sparkles size={13} />
+            {updateInfo ? <span className={styles.whatsNewDot} /> : null}
           </button>
           {preferences.topbarShowSync ? (
-          <button type="button" className={styles.syncPill} title={t('sync.title')} aria-label={t('sync.title')} onClick={() => openModal('sync')}>
-            <RefreshCw size={12} />
-          </button>
+            <button
+              type="button"
+              className={styles.syncPill}
+              title={t('sync.title')}
+              aria-label={t('sync.title')}
+              onClick={() => openModal('sync')}
+            >
+              <RefreshCw size={12} />
+            </button>
           ) : null}
           {preferences.topbarShowProfile ? (
-          <button type="button" className={styles.profilePill} title={t('profile.manageAccounts')} onClick={() => openModal('profiles')}>
-            <Users size={12} />
-            <span className={styles.profilePillLabel}>{activeProfile?.name ?? t('profile.localAccount')}</span>
-          </button>
+            <button
+              type="button"
+              className={styles.profilePill}
+              title={t('profile.manageAccounts')}
+              onClick={() => openModal('profiles')}
+            >
+              <Users size={12} />
+              <span className={styles.profilePillLabel}>
+                {activeProfile?.name ?? t('profile.localAccount')}
+              </span>
+            </button>
           ) : null}
         </div>
         <div className={styles.statusGroup}>
-        {preferences.topbarShowClaudeUsage && claudeUsage !== null ? (
-          <div className={styles.usageWidget}>
-            <button
-              type="button"
-              className={`${styles.usagePill} ${styles.claudeUsage}`}
-              style={{ '--pill-color': usagePillColor(claudeUsage.five_hour.utilization) } as React.CSSProperties}
-              onClick={() => openModal('aiUsage')}
-              title={t('ui.titlebar.openUsageDetails')}
-              aria-label={t('ui.titlebar.openUsageDetails')}
-            >
-              <ClaudeIcon size={13} />
-              <span>{claudeUsage.five_hour.utilization.toFixed(0)}%</span>
-            </button>
-            <div className={styles.usagePopover} role="tooltip" aria-label={t('ui.titlebar.itemClaude')}>
-              <div className={styles.usagePopoverTitle}>{t('ui.titlebar.itemClaude')}</div>
-              <div className={styles.usagePopoverMain}>
-                <span>{t('widget.usage5h')}</span>
-                <strong>{formatPct(claudeUsage.five_hour.utilization)}</strong>
-              </div>
-              <div className={styles.usagePopoverLine}>
-                <span>{t('widget.week')}</span>
-                <strong>{formatPct(claudeUsage.seven_day.utilization)}</strong>
-              </div>
-              <div className={styles.usagePopoverLine}>
-                <span>{t('ws.usageOpusLabel')}</span>
-                <strong>{formatPct(claudeUsage.seven_day_opus.utilization)}</strong>
-              </div>
-              <div className={styles.usagePopoverFooter}>
-                {t('widget.resetLabel', { w: '5h' })} · {formatResetTime(claudeUsage.five_hour.resets_at)}
-              </div>
-            </div>
-          </div>
-        ) : null}
-        {preferences.topbarShowCodexUsage && codexUsage !== null ? (
-          <div className={styles.usageWidget}>
-            <button
-              type="button"
-              className={`${styles.usagePill} ${styles.codexUsage}`}
-              style={{ '--pill-color': usagePillColor(codexUsage.primary.used_percent) } as React.CSSProperties}
-              onClick={() => openModal('aiUsage')}
-              title={t('ui.titlebar.openUsageDetails')}
-              aria-label={t('ui.titlebar.openUsageDetails')}
-            >
-              <CodexIcon size={13} />
-              <span>{codexUsage.primary.used_percent.toFixed(0)}%</span>
-            </button>
-            <div className={styles.usagePopover} role="tooltip" aria-label={t('ui.titlebar.itemCodex')}>
-              <div className={styles.usagePopoverTitle}>{t('ui.titlebar.itemCodex')}</div>
-              <div className={styles.usagePopoverMain}>
-                <span>{t('widget.usage5h')}</span>
-                <strong>{formatPct(codexUsage.primary.used_percent)}</strong>
-              </div>
-              <div className={styles.usagePopoverLine}>
-                <span>{t('widget.week')}</span>
-                <strong>{formatPct(codexUsage.secondary.used_percent)}</strong>
-              </div>
-              <div className={styles.usagePopoverLine}>
-                <span>{t('widget.statusLabel')}</span>
-                <strong>{codexUsage.rate_limited ? t('widget.statusLimited') : t('widget.statusOk')}</strong>
-              </div>
-              <div className={styles.usagePopoverFooter}>
-                {t('widget.creditsLabel')} · {codexUsage.reset_credits}
-              </div>
-            </div>
-          </div>
-        ) : null}
-        {preferences.topbarShowAntigravityUsage && antigravityUsage !== null ? (
-          <div className={styles.usageWidget}>
-            <button
-              type="button"
-              className={`${styles.usagePill} ${styles.antigravityUsage}`}
-              style={{ '--pill-color': antigravityReady ? usagePillColor(antigravityUsage.used_percent) : 'var(--fg-faint)' } as React.CSSProperties}
-              onClick={() => openModal('aiUsage')}
-              title={t('ui.titlebar.openUsageDetails')}
-              aria-label={t('ui.titlebar.openUsageDetails')}
-            >
-              <AntigravityIcon size={13} />
-              <span>{antigravityReady ? formatPct(antigravityUsage.used_percent) : '—'}</span>
-            </button>
-            <div className={styles.usagePopover} role="tooltip" aria-label={t('ui.titlebar.itemAntigravity')}>
-              <div className={styles.usagePopoverTitle}>{t('ui.titlebar.itemAntigravity')}</div>
-              {antigravityReady ? (
-                <>
-                  <div className={styles.usagePopoverMain}>
-                    <span>{t('widget.mostUsed')}</span>
-                    <strong>{formatPct(antigravityUsage.used_percent)}</strong>
-                  </div>
-                  {antigravityUsage.buckets.map((bucket) => (
-                    <div className={styles.usagePopoverLine} key={`${bucket.label}:${bucket.resets_at}`}>
-                      <span title={bucket.models.join(', ')}>{bucket.label}</span>
-                      <strong>{formatPct(bucket.used_percent)} · {formatResetTime(bucket.resets_at)}</strong>
-                    </div>
-                  ))}
-                </>
-              ) : (
+          {preferences.topbarShowClaudeUsage && claudeUsage !== null ? (
+            <div className={styles.usageWidget}>
+              <button
+                type="button"
+                className={`${styles.usagePill} ${styles.claudeUsage}`}
+                style={
+                  {
+                    '--pill-color': usagePillColor(claudeUsage.five_hour.utilization),
+                  } as React.CSSProperties
+                }
+                onClick={() => openModal('aiUsage')}
+                title={t('ui.titlebar.openUsageDetails')}
+                aria-label={t('ui.titlebar.openUsageDetails')}
+              >
+                <ClaudeIcon size={13} />
+                <span>{claudeUsage.five_hour.utilization.toFixed(0)}%</span>
+              </button>
+              <div
+                className={styles.usagePopover}
+                role="tooltip"
+                aria-label={t('ui.titlebar.itemClaude')}
+              >
+                <div className={styles.usagePopoverTitle}>{t('ui.titlebar.itemClaude')}</div>
                 <div className={styles.usagePopoverMain}>
+                  <span>{t('widget.usage5h')}</span>
+                  <strong>{formatPct(claudeUsage.five_hour.utilization)}</strong>
+                </div>
+                <div className={styles.usagePopoverLine}>
+                  <span>{t('widget.week')}</span>
+                  <strong>{formatPct(claudeUsage.seven_day.utilization)}</strong>
+                </div>
+                <div className={styles.usagePopoverLine}>
+                  <span>{t('ws.usageOpusLabel')}</span>
+                  <strong>{formatPct(claudeUsage.seven_day_opus.utilization)}</strong>
+                </div>
+                <div className={styles.usagePopoverFooter}>
+                  {t('widget.resetLabel', { w: '5h' })} ·{' '}
+                  {formatResetTime(claudeUsage.five_hour.resets_at)}
+                </div>
+              </div>
+            </div>
+          ) : null}
+          {preferences.topbarShowCodexUsage && codexUsage !== null ? (
+            <div className={styles.usageWidget}>
+              <button
+                type="button"
+                className={`${styles.usagePill} ${styles.codexUsage}`}
+                style={
+                  {
+                    '--pill-color': usagePillColor(codexUsage.primary.used_percent),
+                  } as React.CSSProperties
+                }
+                onClick={() => openModal('aiUsage')}
+                title={t('ui.titlebar.openUsageDetails')}
+                aria-label={t('ui.titlebar.openUsageDetails')}
+              >
+                <CodexIcon size={13} />
+                <span>{codexUsage.primary.used_percent.toFixed(0)}%</span>
+              </button>
+              <div
+                className={styles.usagePopover}
+                role="tooltip"
+                aria-label={t('ui.titlebar.itemCodex')}
+              >
+                <div className={styles.usagePopoverTitle}>{t('ui.titlebar.itemCodex')}</div>
+                <div className={styles.usagePopoverMain}>
+                  <span>{t('widget.usage5h')}</span>
+                  <strong>{formatPct(codexUsage.primary.used_percent)}</strong>
+                </div>
+                <div className={styles.usagePopoverLine}>
+                  <span>{t('widget.week')}</span>
+                  <strong>{formatPct(codexUsage.secondary.used_percent)}</strong>
+                </div>
+                <div className={styles.usagePopoverLine}>
                   <span>{t('widget.statusLabel')}</span>
                   <strong>
-                    {antigravityUsage.status === 'no_cli'
-                      ? t('widget.antigravityNotInstalled')
-                      : antigravityUsage.status === 'no_auth'
-                        ? t('widget.antigravityNotSignedIn')
-                        : t('widget.usageUnavailable')}
+                    {codexUsage.rate_limited ? t('widget.statusLimited') : t('widget.statusOk')}
                   </strong>
                 </div>
-              )}
-              {antigravityUsage.cli_path ? (
-                <div className={styles.usagePopoverFooter} title={antigravityUsage.cli_path}>
-                  {antigravityUsage.cli_path.split(/[\\/]/).pop()}
+                <div className={styles.usagePopoverFooter}>
+                  {t('widget.creditsLabel')} · {codexUsage.reset_credits}
                 </div>
-              ) : null}
+              </div>
             </div>
-          </div>
-        ) : null}
-        {preferences.topbarShowMemory && ramMb !== null ? (
-          <MemoryPillButton ramMb={ramMb} />
-        ) : null}
-        <button type="button" className={styles.editWidgets} title={t('ui.titlebar.customize')} aria-label={t('ui.titlebar.customize')} onClick={() => openModal('topbarSettings')}>
-          <Pencil size={12} />
-        </button>
+          ) : null}
+          {preferences.topbarShowAntigravityUsage && antigravityUsage !== null ? (
+            <div className={styles.usageWidget}>
+              <button
+                type="button"
+                className={`${styles.usagePill} ${styles.antigravityUsage}`}
+                style={
+                  {
+                    '--pill-color': antigravityReady
+                      ? usagePillColor(antigravityUsage.used_percent)
+                      : 'var(--fg-faint)',
+                  } as React.CSSProperties
+                }
+                onClick={() => openModal('aiUsage')}
+                title={t('ui.titlebar.openUsageDetails')}
+                aria-label={t('ui.titlebar.openUsageDetails')}
+              >
+                <AntigravityIcon size={13} />
+                <span>{antigravityReady ? formatPct(antigravityUsage.used_percent) : '—'}</span>
+              </button>
+              <div
+                className={styles.usagePopover}
+                role="tooltip"
+                aria-label={t('ui.titlebar.itemAntigravity')}
+              >
+                <div className={styles.usagePopoverTitle}>{t('ui.titlebar.itemAntigravity')}</div>
+                {antigravityReady ? (
+                  <>
+                    <div className={styles.usagePopoverMain}>
+                      <span>{t('widget.mostUsed')}</span>
+                      <strong>{formatPct(antigravityUsage.used_percent)}</strong>
+                    </div>
+                    {antigravityUsage.buckets.map((bucket) => (
+                      <div
+                        className={styles.usagePopoverLine}
+                        key={`${bucket.label}:${bucket.resets_at}`}
+                      >
+                        <span title={bucket.models.join(', ')}>{bucket.label}</span>
+                        <strong>
+                          {formatPct(bucket.used_percent)} · {formatResetTime(bucket.resets_at)}
+                        </strong>
+                      </div>
+                    ))}
+                  </>
+                ) : (
+                  <div className={styles.usagePopoverMain}>
+                    <span>{t('widget.statusLabel')}</span>
+                    <strong>
+                      {antigravityUsage.status === 'no_cli'
+                        ? t('widget.antigravityNotInstalled')
+                        : antigravityUsage.status === 'no_auth'
+                          ? t('widget.antigravityNotSignedIn')
+                          : t('widget.usageUnavailable')}
+                    </strong>
+                  </div>
+                )}
+                {antigravityUsage.cli_path ? (
+                  <div className={styles.usagePopoverFooter} title={antigravityUsage.cli_path}>
+                    {antigravityUsage.cli_path.split(/[\\/]/).pop()}
+                  </div>
+                ) : null}
+              </div>
+            </div>
+          ) : null}
+          {preferences.topbarShowMemory && ramMb !== null ? (
+            <MemoryPillButton ramMb={ramMb} />
+          ) : null}
+          <button
+            type="button"
+            className={styles.editWidgets}
+            title={t('ui.titlebar.customize')}
+            aria-label={t('ui.titlebar.customize')}
+            onClick={() => openModal('topbarSettings')}
+          >
+            <Pencil size={12} />
+          </button>
         </div>
       </div>
       {preferences.enabledFeatures.todos ? (
@@ -556,11 +660,23 @@ export function TitleBar() {
           type="button"
           className={`${styles.iconBtn} ${styles.rightSidebarBtn} ${preferences.rightSidebarVisible ? styles.iconBtnActive : ''}`}
           onClick={() => setPreferences({ rightSidebarVisible: !preferences.rightSidebarVisible })}
-          title={preferences.rightSidebarVisible ? t('ui.titlebar.closeTodoSidebar') : t('ui.titlebar.openTodoSidebar')}
-          aria-label={preferences.rightSidebarVisible ? t('ui.titlebar.closeTodoSidebar') : t('ui.titlebar.openTodoSidebar')}
+          title={
+            preferences.rightSidebarVisible
+              ? t('ui.titlebar.closeTodoSidebar')
+              : t('ui.titlebar.openTodoSidebar')
+          }
+          aria-label={
+            preferences.rightSidebarVisible
+              ? t('ui.titlebar.closeTodoSidebar')
+              : t('ui.titlebar.openTodoSidebar')
+          }
           aria-pressed={preferences.rightSidebarVisible}
         >
-          {preferences.rightSidebarVisible ? <PanelRightClose size={14} /> : <PanelRightOpen size={14} />}
+          {preferences.rightSidebarVisible ? (
+            <PanelRightClose size={14} />
+          ) : (
+            <PanelRightOpen size={14} />
+          )}
         </button>
       ) : null}
       <button

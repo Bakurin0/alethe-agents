@@ -24,9 +24,7 @@ function currentPolicy(): ResourcePolicyInput {
     // Hydrated stores created before automaticParkingOptIn existed can remain
     // alive across HMR. Treat them as monitor-only immediately as well.
     mode:
-      policy.automaticParkingOptIn === true && policy.mode === 'smart-lru'
-        ? 'smart-lru'
-        : 'manual',
+      policy.automaticParkingOptIn === true && policy.mode === 'smart-lru' ? 'smart-lru' : 'manual',
     memoryBudgetMb: policy.memoryBudgetMb,
     warningThresholdMb: policy.warningThresholdMb,
     recoveryTargetMb: policy.recoveryTargetMb,
@@ -232,10 +230,7 @@ export function useResourceSupervisor(hydrated: boolean): void {
 
     void listenResourcePressure((payload) => {
       if (cancelled) return
-      setSpawnPressureBlocked(
-        payload.spawnBlocked,
-        payload.spawnBlocked ? 'memory-pressure' : null,
-      )
+      setSpawnPressureBlocked(payload.spawnBlocked, payload.spawnBlocked ? 'memory-pressure' : null)
       onLevel(payload.level, payload.totalMb)
       if (payload.suspendedId && payload.suspendedId !== lastSuspendedId) {
         lastSuspendedId = payload.suspendedId

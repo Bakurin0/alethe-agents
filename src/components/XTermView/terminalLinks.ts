@@ -31,7 +31,8 @@ const LINE_COL_SUFFIX = /:\d+(?::\d+)?$/
 const MARKDOWN_EXT_PATTERN = /\.(md|markdown|mdx)$/i
 const IMAGE_EXT_PATTERN = /\.(png|jpe?g|gif|webp|bmp|avif|ico|svg)$/i
 const FILE_EXT_PATTERN = /\.[A-Za-z0-9]{1,12}$/
-const FILE_EXT_BOUNDARY_PATTERN = /\.(?:md|markdown|mdx|png|jpe?g|gif|webp|bmp|avif|ico|svg|txt|tsx?|jsx?|json|ya?ml|toml|csv|pdf)(?=$|[\s),.;:])/i
+const FILE_EXT_BOUNDARY_PATTERN =
+  /\.(?:md|markdown|mdx|png|jpe?g|gif|webp|bmp|avif|ico|svg|txt|tsx?|jsx?|json|ya?ml|toml|csv|pdf)(?=$|[\s),.;:])/i
 const LINK_TRAILING_PUNCTUATION = /[\s),.;:]+$/
 
 /** Remove o sufixo `:linha:coluna` de um path pra obter o arquivo real. */
