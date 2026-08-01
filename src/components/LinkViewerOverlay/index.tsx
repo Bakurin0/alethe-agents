@@ -1,6 +1,6 @@
 import { ExternalLink, X } from 'lucide-react'
-import { useEffect } from 'react'
 
+import { useOnEscape } from '../../hooks/useOnEscape'
 import { useT } from '../../lib/i18n'
 import { openInBrowser } from '../../lib/tauri'
 import { useUiStore } from '../../stores/uiStore'
@@ -17,17 +17,14 @@ export function LinkViewerOverlay() {
   const url = useUiStore((s) => s.linkViewerUrl)
   const close = useUiStore((s) => s.closeLinkViewer)
 
-  useEffect(() => {
-    if (!url) return
-    const onKey = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') {
-        e.preventDefault()
-        close()
-      }
-    }
-    window.addEventListener('keydown', onKey, true)
-    return () => window.removeEventListener('keydown', onKey, true)
-  }, [url, close])
+  useOnEscape(
+    (e) => {
+      e.preventDefault()
+      close()
+    },
+    Boolean(url),
+    { capture: true },
+  )
 
   if (!url) return null
 
