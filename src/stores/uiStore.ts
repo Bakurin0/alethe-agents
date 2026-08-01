@@ -8,6 +8,7 @@ import type {
 } from '../lib/tauri'
 import type { AgentType } from '../lib/types'
 import type { UpdateInfo } from '../lib/updater'
+import { basename } from '../lib/paths'
 
 /**
  * Estado de UI ephemeral — modais abertos, query do find/jump, drag em
@@ -174,7 +175,7 @@ export const useUiStore = create<UiState>((set) => ({
   openMarkdownSidebar: (path, title) =>
     set({
       rightSidebarMode: 'markdown',
-      rightSidebarMarkdown: { path, title: title || path.split(/[\\/]/).pop() || path },
+      rightSidebarMarkdown: { path, title: title || basename(path) || path },
     }),
   showTodoSidebar: () => set({ rightSidebarMode: 'todo', rightSidebarMarkdown: null }),
   setAgentCanvasSession: (session) => set({ agentCanvasSession: session }),

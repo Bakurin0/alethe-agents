@@ -1,6 +1,7 @@
 import { ChevronDown, ChevronRight, File, Folder, FolderOpen, RefreshCw } from 'lucide-react'
 import { useEffect, useState } from 'react'
 
+import { basename } from '../../lib/paths'
 import { getPtyCwd, listDirectory, type DirectoryEntry } from '../../lib/tauri'
 import styles from './FileExplorer.module.css'
 
@@ -143,6 +144,5 @@ function DirectoryNode({
 }
 
 function rootName(path: string): string {
-  const normalized = path.replace(/[\\/]+$/, '')
-  return normalized.split(/[\\/]/).pop() || normalized
+  return basename(path) || path
 }

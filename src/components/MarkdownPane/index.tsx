@@ -16,6 +16,7 @@ import {
 import { memo, useCallback, useEffect, useRef, useState } from 'react'
 
 import { useGridResize } from '../../hooks/useGridResize'
+import { pathSegments } from '../../lib/paths'
 import { useT } from '../../lib/i18n'
 import {
   listenFileChanged,
@@ -361,7 +362,7 @@ export const MarkdownPane = memo(function MarkdownPane({
 
 function shortPath(path: string): string {
   const cleaned = path.replace(/[\\/]+$/, '')
-  const parts = cleaned.split(/[\\/]/).filter(Boolean)
+  const parts = pathSegments(cleaned)
   if (parts.length <= 2) return cleaned
   return `…/${parts[parts.length - 2]}/${parts[parts.length - 1]}`
 }

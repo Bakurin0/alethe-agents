@@ -3,6 +3,7 @@ import { useEffect, useRef, useState } from 'react'
 
 import { AgentIcon } from '../icons/AgentIcons'
 import { fmtTokens, fmtUsd, costLevel } from '../../lib/costFormat'
+import { basename } from '../../lib/paths'
 import { useT } from '../../lib/i18n'
 import { useAgentCostStore, selectCostTotals } from '../../stores/agentCostStore'
 import { useProjectsStore } from '../../stores/projectsStore'
@@ -13,8 +14,7 @@ const POLL_MS = 4000
 
 /** Último segmento do cwd, pra rótulo curto. */
 function shortCwd(cwd: string): string {
-  const parts = cwd.replace(/[\\/]+$/, '').split(/[\\/]/)
-  return parts[parts.length - 1] || cwd
+  return basename(cwd) || cwd
 }
 
 /** Faixa de gasto → classe de cor (tokens do tema, sem hardcode). */

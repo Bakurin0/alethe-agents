@@ -1,6 +1,7 @@
 import { getLocale, translate } from './i18n'
 import type { AgentType } from './types'
 import { notifyAgentDone } from './notifications'
+import { pathSegments } from './paths'
 
 const RESPONSE_IDLE_MS = 4500
 const MIN_RESPONSE_MS = 700
@@ -128,7 +129,7 @@ function agentLabel(agent: Exclude<AgentType, 'shell'>): string {
 
 function shortPath(path: string): string {
   const cleaned = path.replace(/[\\/]+$/, '')
-  const parts = cleaned.split(/[\\/]/).filter(Boolean)
+  const parts = pathSegments(cleaned)
   if (parts.length <= 2) return cleaned
   return `${parts[parts.length - 2]}/${parts[parts.length - 1]}`
 }

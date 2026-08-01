@@ -1,5 +1,7 @@
 import { create } from 'zustand'
 
+import { basename } from '../lib/paths'
+
 /**
  * Fase 2 do agent canvas — estado compartilhado entre canvas e modal.
  *
@@ -86,7 +88,6 @@ function str(value: unknown): string | null {
 /** Resumo de uma linha por tool call, pro feed do card/modal. */
 export function summarizeTool(toolName: string, input?: Record<string, unknown>): string {
   if (!input) return ''
-  const basename = (p: string) => p.split(/[\\/]/).pop() ?? p
   const clip = (s: string, n = 80) => (s.length > n ? `${s.slice(0, n)}…` : s)
 
   const filePath = str(input.file_path) ?? str(input.notebook_path)

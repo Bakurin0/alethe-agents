@@ -2,6 +2,7 @@ import { CircleCheck, Folder, Info, Zap } from 'lucide-react'
 import { useEffect, useMemo, useState } from 'react'
 
 import { useUiStore } from '../../stores/uiStore'
+import { basename } from '../../lib/paths'
 import { getProjectDefaultCwd, useProjectsStore } from '../../stores/projectsStore'
 import { pickDirectory } from '../../lib/dialog'
 import { UNRESTRICTED_FLAG, type AgentRuntimeProfile, type AgentType } from '../../lib/types'
@@ -209,11 +210,7 @@ export function NewTerminalModal() {
             <span className={styles.recentLabel}>{t('term.recentFolders')}</span>
             <div className={styles.recentFolders}>
               {recentFolders.map((folder) => {
-                const label =
-                  folder.path
-                    .replace(/[\\/]+$/, '')
-                    .split(/[\\/]/)
-                    .pop() || folder.path
+                const label = basename(folder.path) || folder.path
                 return (
                   <button
                     key={folder.path}
