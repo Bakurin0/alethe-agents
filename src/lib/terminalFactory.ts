@@ -11,11 +11,29 @@ import { MAX_RECENT_PROJECT_TABS } from '../stores/projectsStore.constants'
 import type {
   AgentRuntimeProfile,
   AgentType,
+  LayoutMode,
   Project,
   SubTab,
   Terminal,
+  WorkspaceContainer,
   WorkspaceRecentTab,
 } from './types'
+
+/** Cria um container default pra um projeto. */
+export function newContainer(
+  projectId: string,
+  paneIds: string[],
+  layout: LayoutMode,
+): WorkspaceContainer {
+  return {
+    projectId,
+    paneIds,
+    lastUsedAt: Date.now(),
+    size: 0,
+    internalLayout: layout,
+    collapsed: false,
+  }
+}
 
 export function rememberProjectTab(
   recentProjectIds: string[] | undefined,
