@@ -13,6 +13,7 @@ import {
 } from 'lucide-react'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 
+import { readableError } from '../../lib/errors'
 import { useT, type MessageKey } from '../../lib/i18n'
 import {
   getPtyCwd,
@@ -607,10 +608,4 @@ function uniquePaths(items: GitFileChange[]): string[] {
 function errorCode(error: unknown): string {
   const value = String(error)
   return Object.keys(ERROR_KEYS).find((key) => value.includes(key)) ?? value
-}
-
-function readableError(error: unknown): string {
-  const value = String(error)
-  const separator = value.indexOf(':')
-  return separator >= 0 ? value.slice(separator + 1).trim() : value
 }
