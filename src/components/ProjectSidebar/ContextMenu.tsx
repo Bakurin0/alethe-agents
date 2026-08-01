@@ -1,4 +1,7 @@
-import { useEffect, useLayoutEffect, useRef, useState, type ReactNode } from 'react'
+import { useLayoutEffect, useRef, useState, type ReactNode } from 'react'
+
+import { useOnClickOutside } from '../../hooks/useOnClickOutside'
+import { useOnEscape } from '../../hooks/useOnEscape'
 import { createPortal } from 'react-dom'
 
 import styles from './ContextMenu.module.css'
@@ -18,20 +21,8 @@ export function ContextMenu({ x, y, items, onClose }: Props) {
   const ref = useRef<HTMLDivElement>(null)
   const [position, setPosition] = useState({ x, y })
 
-  useEffect(() => {
-    const onDown = (e: MouseEvent) => {
-      if (!ref.current?.contains(e.target as Node)) onClose()
-    }
-    const onKey = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') onClose()
-    }
-    document.addEventListener('mousedown', onDown)
-    document.addEventListener('keydown', onKey)
-    return () => {
-      document.removeEventListener('mousedown', onDown)
-      document.removeEventListener('keydown', onKey)
-    }
-  }, [onClose])
+  useOnClickOutside(ref, onClose)
+  useOnEscape(onClose)
 
   useLayoutEffect(() => {
     const menu = ref.current

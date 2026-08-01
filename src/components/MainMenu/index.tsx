@@ -12,7 +12,10 @@ import {
   Trash2,
   Upload,
 } from 'lucide-react'
-import { useEffect, useRef } from 'react'
+import { useRef } from 'react'
+
+import { useOnClickOutside } from '../../hooks/useOnClickOutside'
+import { useOnEscape } from '../../hooks/useOnEscape'
 
 import { useT } from '../../lib/i18n'
 import { pickFile, saveFile } from '../../lib/dialog'
@@ -39,21 +42,8 @@ export function MainMenu() {
 
   const ref = useRef<HTMLDivElement>(null)
 
-  useEffect(() => {
-    if (!open) return
-    const onDown = (e: MouseEvent) => {
-      if (!ref.current?.contains(e.target as Node)) toggle()
-    }
-    const onKey = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') toggle()
-    }
-    document.addEventListener('mousedown', onDown)
-    document.addEventListener('keydown', onKey)
-    return () => {
-      document.removeEventListener('mousedown', onDown)
-      document.removeEventListener('keydown', onKey)
-    }
-  }, [open, toggle])
+  useOnClickOutside(ref, () => toggle(), open)
+  useOnEscape(() => toggle(), open)
 
   if (!open) return null
 

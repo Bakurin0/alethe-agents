@@ -1,5 +1,5 @@
 import { X } from 'lucide-react'
-import { useEffect } from 'react'
+import { useOnEscape } from '../../hooks/useOnEscape'
 
 import { fmtTokens, fmtUsd, shortModel } from '../../lib/costFormat'
 import { intlLocale, useT } from '../../lib/i18n'
@@ -18,14 +18,7 @@ export function AgentModal() {
   const cost = useNodeCostStore((s) => (node ? (s.byNodeId[node.id] ?? null) : null))
   const select = useAgentCanvasStore((s) => s.select)
 
-  useEffect(() => {
-    if (!node) return
-    const onKey = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') select(null)
-    }
-    window.addEventListener('keydown', onKey)
-    return () => window.removeEventListener('keydown', onKey)
-  }, [node, select])
+  useOnEscape(() => select(null), Boolean(node))
 
   if (!node) return null
 
