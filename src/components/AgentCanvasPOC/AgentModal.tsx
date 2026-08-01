@@ -2,7 +2,7 @@ import { X } from 'lucide-react'
 import { useEffect } from 'react'
 
 import { fmtTokens, fmtUsd, shortModel } from '../../lib/costFormat'
-import { useT, intlLocale } from '../../lib/i18n'
+import { intlLocale, useT } from '../../lib/i18n'
 import { useAgentCanvasStore } from '../../stores/agentCanvasStore'
 import { useNodeCostStore } from '../../stores/nodeCostStore'
 import { useProjectsStore } from '../../stores/projectsStore'
