@@ -14,6 +14,9 @@
 /// Até lá, as funções são **stubs funcionais**: registram a intenção (log) e
 /// retornam Ok(()). O ResourceManager já enfileira as tarefas corretamente;
 /// quando os bindings COM forem adicionados, basta substituir o corpo.
+///
+/// Módulo inteiro só compila no Windows (`#[cfg(windows)] mod windows_webview;`
+/// em lib.rs) — sem `#[cfg(not(windows))]` aqui dentro.
 
 use serde::Serialize;
 
@@ -36,7 +39,6 @@ pub enum WebViewMemoryMode {
 ///         : COREWEBVIEW2_MEMORY_USAGE_TARGET_LEVEL_NORMAL
 /// );
 /// ```
-#[cfg(windows)]
 pub fn set_memory_mode(low: bool) -> Result<(), String> {
     if low {
         eprintln!("[WebView2] Memory mode → LOW (stub)");
@@ -47,11 +49,6 @@ pub fn set_memory_mode(low: bool) -> Result<(), String> {
     Ok(())
 }
 
-#[cfg(not(windows))]
-pub fn set_memory_mode(_low: bool) -> Result<(), String> {
-    Ok(())
-}
-
 /// Tenta suspender a WebView2 (libera RAM do processo msedgewebview2).
 /// O WebView2 consome ~40-80 MB mesmo em idle; suspender reduz para ~5-10 MB.
 ///
@@ -59,27 +56,15 @@ pub fn set_memory_mode(_low: bool) -> Result<(), String> {
 /// ```cpp
 /// HRESULT hr = webview->TrySuspend(&completed_handler);
 /// ```
-#[cfg(windows)]
 pub fn suspend() -> Result<(), String> {
     eprintln!("[WebView2] Suspend (stub)");
     // TODO: implementar bindings COM para TrySuspend
     Ok(())
 }
 
-#[cfg(not(windows))]
-pub fn suspend() -> Result<(), String> {
-    Ok(())
-}
-
 /// Retoma uma WebView2 suspensa.
-#[cfg(windows)]
 pub fn resume() -> Result<(), String> {
     eprintln!("[WebView2] Resume (stub)");
     // TODO: implementar bindings COM para TryResume
-    Ok(())
-}
-
-#[cfg(not(windows))]
-pub fn resume() -> Result<(), String> {
     Ok(())
 }

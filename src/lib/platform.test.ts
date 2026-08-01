@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, it, vi } from 'vitest'
 
-import { isMacOS, shouldUseNativeBackend } from './platform'
+import { formatShortcut, isMacOS, normalizeCwd, shouldUseNativeBackend } from './platform'
 
 function setUserAgent(ua: string) {
   vi.spyOn(navigator, 'userAgent', 'get').mockReturnValue(ua)
@@ -40,5 +40,35 @@ describe('shouldUseNativeBackend', () => {
   it('nunca usa nativo fora do macOS, mesmo com flag ligada', () => {
     // Garante que Windows/Linux NUNCA caem no caminho nativo — requisito central.
     expect(shouldUseNativeBackend(true, false)).toBe(false)
+  })
+})
+
+describe('normalizeCwd', () => {
+  it('remove barra final', () => {
+    expect(normalizeCwd('/home/user/project/')).toBe('/home/user/project')
+  })
+
+  it('uniformiza separador e caixa só quando o path tem letra de drive (Windows)', () => {
+    expect(normalizeCwd('C:/Users/Miguel/Project/')).toBe('c:\\users\\miguel\\project')
+    expect(normalizeCwd('C:\\Users\\Miguel\\Project')).toBe('c:\\users\\miguel\\project')
+  })
+
+  it('preserva caixa e separador em paths Unix (case-sensitive)', () => {
+    // Sem letra de drive: não pode lowercasear, senão /home/user/Project e
+    // /home/user/project (diretórios DIFERENTES no Linux) colidiriam.
+    expect(normalizeCwd('/home/user/Project')).toBe('/home/user/Project')
+    expect(normalizeCwd('/home/user/project')).toBe('/home/user/project')
+  })
+})
+
+describe('formatShortcut', () => {
+  it('retorna o texto original fora do macOS', () => {
+    expect(formatShortcut('Ctrl+Shift+P', false)).toBe('Ctrl+Shift+P')
+  })
+
+  it('converte pra glifos do macOS', () => {
+    expect(formatShortcut('Ctrl+T', true)).toBe('⌘T')
+    expect(formatShortcut('Ctrl+Shift+P', true)).toBe('⌘⇧P')
+    expect(formatShortcut('Ctrl+Shift+G', true)).toBe('⌘⇧G')
   })
 })

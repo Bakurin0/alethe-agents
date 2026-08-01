@@ -54,6 +54,7 @@ import { getCachedClaudeUsage } from '../../lib/claudeUsageCache'
 import { getCachedCodexUsage } from '../../lib/codexUsageCache'
 import { costLevel, fmtTokens, fmtUsd, shortModel } from '../../lib/costFormat'
 import { useT } from '../../lib/i18n'
+import { normalizeCwd } from '../../lib/platform'
 import {
   attachPty,
   getModelPricing,
@@ -168,11 +169,6 @@ function orchestrationRules(agentEndpoint: string, budgetUsd?: number | null) {
   `(6) Real workers are EXPENSIVE: each spawn is a full separate process using hundreds of megabytes of RAM, so prefer in-process subagents and teammates for almost everything, spawn AT MOST two real workers at a time, reuse them instead of respawning, and prefer a codex worker over a claude worker because codex is far lighter. To spawn one, POST JSON to ${agentEndpoint}/spawn with body {agent, task, mode}: agent is claude, codex or opencode; task is one self contained English instruction; mode is exec for one shot fire and forget or interactive. Use curl -s -X POST with the -d flag and single quoted JSON. It is fire and forget: you do not get the output back, so use it only for offloadable work, not results you must read.` +
   budget
   )
-}
-
-/** Normaliza paths Windows pra comparar cwd de eventos com a pasta da sessão. */
-function normalizePath(p: string): string {
-  return p.replace(/\\/g, '/').replace(/\/+$/, '').toLowerCase()
 }
 
 type InstalledAgent = { name: string; from_alethe: boolean }
@@ -837,7 +833,7 @@ function AgentCanvasInner() {
       // Qualquer sessão claude com hooks (outros projetos, testes headless)
       // posta na :9123 — o canvas só ingere eventos da SUA pasta.
       const cwd = (event.payload as { cwd?: string }).cwd
-      if (session && cwd && normalizePath(cwd) !== normalizePath(session.folder)) {
+      if (session && cwd && normalizeCwd(cwd) !== normalizeCwd(session.folder)) {
         console.log('[AgentCanvasPOC] evento de outra sessão ignorado (cwd):', cwd)
         return
       }

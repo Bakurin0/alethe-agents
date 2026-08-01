@@ -32,4 +32,12 @@ describe('savedConversationIdFor', () => {
       'D:/Work/Project',
     )).toBe('antigravity-chat')
   })
+
+  it('returns the saved OpenCode session id', () => {
+    expect(savedConversationIdFor(
+      { ...baseSession, agent: 'opencode', opencodeSessionId: 'opencode-chat' },
+      'opencode',
+      'D:/Work/Project',
+    )).toBe('opencode-chat')
+  })
 })

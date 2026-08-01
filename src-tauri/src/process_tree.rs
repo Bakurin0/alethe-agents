@@ -119,21 +119,20 @@ pub fn get_pty_tree(pty_id: &str) -> Option<PtyTreeInfo> {
 }
 
 /// Mata um PID (Windows via taskkill /F, Unix via SIGKILL).
-#[cfg(windows)]
 fn kill_pid(pid: u32) {
-    use std::os::windows::process::CommandExt;
-    const CREATE_NO_WINDOW: u32 = 0x0800_0000;
-    let _ = std::process::Command::new("taskkill")
-        .args(["/F", "/PID", &pid.to_string()])
-        .creation_flags(CREATE_NO_WINDOW)
-        .output();
-}
-
-#[cfg(not(windows))]
-fn kill_pid(pid: u32) {
-    let _ = std::process::Command::new("kill")
-        .args(["-9", &pid.to_string()])
-        .output();
+    #[cfg(windows)]
+    {
+        let mut command = std::process::Command::new("taskkill");
+        command.args(["/F", "/PID", &pid.to_string()]);
+        crate::git_control::hide_console(&mut command);
+        let _ = command.output();
+    }
+    #[cfg(not(windows))]
+    {
+        let _ = std::process::Command::new("kill")
+            .args(["-9", &pid.to_string()])
+            .output();
+    }
 }
 
 /// Mata a árvore inteira de um PTY (raiz + todos os descendentes).

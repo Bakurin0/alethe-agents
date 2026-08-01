@@ -35,7 +35,7 @@ import {
   useProjectsStore,
 } from '../../stores/projectsStore'
 import { useUiStore } from '../../stores/uiStore'
-import { resetLastSession } from '../../lib/resetLastSession'
+import { countLiveResumablePanes, resetLastSession } from '../../lib/resetLastSession'
 import type { AgentType } from '../../lib/types'
 import { ImageInput } from './ImageInput'
 import { useSchedulerStore } from '../../stores/schedulerStore'
@@ -570,6 +570,15 @@ function TerminalPage({ enabledCount }: { enabledCount: number }) {
 
   const onResetLastSession = async () => {
     if (resetting) return
+    const count = countLiveResumablePanes()
+    if (count === 0) {
+      pushToast({ title: t('prefs.resetSessionEmpty'), body: t('prefs.resetSessionEmptyBody') })
+      return
+    }
+    // Abrange TODOS os projetos/grupos com agente vivo em background, não só
+    // o visível — com vários acumulados isso reinicia muitos processos de
+    // uma vez, então confirma explicitamente mostrando a contagem real.
+    if (count > 1 && !window.confirm(t('prefs.resetSessionConfirm', { count }))) return
     setResetting(true)
     try {
       const { resumed, total } = await resetLastSession()

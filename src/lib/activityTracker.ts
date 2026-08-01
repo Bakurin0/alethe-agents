@@ -1,4 +1,5 @@
 import { AgentCompletionMonitor } from './agentCompletionMonitor'
+import { normalizeCwd } from './platform'
 import {
   listenOpenCodeBridgeStatus,
   listenPtyData,
@@ -11,13 +12,6 @@ import type { AgentType } from './types'
 import { useProjectsStore } from '../stores/projectsStore'
 import { useTerminalsStore } from '../stores/terminalsStore'
 import { useUiStore } from '../stores/uiStore'
-
-/** Normaliza pra comparar cwd do plugin (Bun, no processo do OpenCode) com o
- * cwd que o Alethe guarda pro tab — evita falso-negativo por caixa/separador/
- * barra final divergente entre os dois lados. */
-function normalizeCwd(path: string): string {
-  return path.trim().replace(/[\\/]+$/, '').replace(/\//g, '\\').toLowerCase()
-}
 
 const SAMPLE_MS = 5_000
 const FLUSH_MS = 30_000

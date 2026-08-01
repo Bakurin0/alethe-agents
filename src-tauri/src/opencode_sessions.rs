@@ -8,15 +8,18 @@ pub struct OpenCodeSessionSnapshot {
     pub modified_at_ms: u128,
 }
 
-/// Normaliza um path pra comparação: lowercase, separadores unificados e sem
-/// separador final. Windows é case-insensitive e o OpenCode grava `directory`
-/// com backslashes.
+/// Normaliza um path pra comparação: separadores unificados e sem separador
+/// final. Só uniformiza caixa no Windows (case-insensitive) — em Linux/macOS
+/// o filesystem é case-sensitive, então lowercasear incondicionalmente
+/// colidiria dois diretórios diferentes (ex.: `/home/u/Project` vs
+/// `/home/u/project`).
 fn normalize_path(path: &str) -> String {
-    let mut normalized = path.replace('\\', "/").to_lowercase();
-    while normalized.ends_with('/') {
-        normalized.pop();
+    let trimmed = path.trim().trim_end_matches(|c: char| c == '\\' || c == '/');
+    if cfg!(windows) {
+        trimmed.replace('/', "\\").to_ascii_lowercase()
+    } else {
+        trimmed.to_string()
     }
-    normalized
 }
 
 /// Executa `opencode session list --format json` NO cwd do projeto e parseia a

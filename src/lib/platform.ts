@@ -24,3 +24,29 @@ export function shouldUseNativeBackend(
 ): boolean {
   return Boolean(nativeTerminalMacos) && macOverride
 }
+
+/**
+ * Normaliza um cwd para comparação cross-plataforma: remove barra final e,
+ * só quando o path parece Windows (letra de drive, ex: "C:\..."), uniformiza
+ * separador (`\`) e caixa. Fora disso (Linux/macOS) deixa caminho intacto —
+ * o filesystem lá é case-sensitive e lowercasear cegamente pode colidir dois
+ * diretórios diferentes (ex: `/home/user/Project` vs `/home/user/project`).
+ */
+export function normalizeCwd(path: string): string {
+  const trimmed = path.trim().replace(/[\\/]+$/, '')
+  if (/^[a-z]:/i.test(trimmed)) return trimmed.replace(/\//g, '\\').toLowerCase()
+  return trimmed
+}
+
+/**
+ * Formata um atalho de teclado escrito na convenção Windows/Linux
+ * ("Ctrl+Shift+P") para os glifos do macOS ("⌘⇧P") quando `isMacOS()` — em
+ * qualquer outra plataforma retorna o texto original sem alteração.
+ */
+export function formatShortcut(shortcut: string, mac: boolean = isMacOS()): string {
+  if (!mac) return shortcut
+  return shortcut
+    .replace(/Ctrl\+/gi, '⌘')
+    .replace(/Shift\+/gi, '⇧')
+    .replace(/Alt\+/gi, '⌥')
+}

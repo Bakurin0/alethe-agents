@@ -65,22 +65,16 @@ pub fn open_in_vscode(path: String) -> Result<(), String> {
         .and_then(|s| s.to_str())
         .map(|s| s.eq_ignore_ascii_case("cmd"))
         .unwrap_or(false);
-    #[cfg(target_os = "windows")]
-    use std::os::windows::process::CommandExt;
-    #[cfg(target_os = "windows")]
-    const CREATE_NO_WINDOW: u32 = 0x0800_0000;
 
     let result = if is_cmd {
         let mut command = Command::new("cmd");
         command.arg("/C").arg(launcher.as_os_str()).arg(target.as_os_str());
-        #[cfg(target_os = "windows")]
-        command.creation_flags(CREATE_NO_WINDOW);
+        crate::git_control::hide_console(&mut command);
         command.spawn()
     } else {
         let mut command = Command::new(launcher.as_os_str());
         command.arg(target.as_os_str());
-        #[cfg(target_os = "windows")]
-        command.creation_flags(CREATE_NO_WINDOW);
+        crate::git_control::hide_console(&mut command);
         command.spawn()
     };
     result.map(|_| ()).map_err(|e| e.to_string())
@@ -145,6 +139,30 @@ pub fn read_clipboard_text() -> Result<String, String> {
     }
 }
 
+/// Payload unificado do clipboard: texto, paths de arquivo (CF_HDROP) ou uma
+/// imagem crua (CF_DIB / formato "PNG" registrado) já salva num PNG temporario.
+#[derive(serde::Serialize)]
+#[serde(tag = "kind", rename_all = "snake_case")]
+pub enum ClipboardPayload {
+    Text { text: String },
+    Paths { paths: Vec<String> },
+    Image { path: String },
+    Empty,
+}
+
+#[tauri::command]
+pub fn read_clipboard_payload() -> Result<ClipboardPayload, String> {
+    #[cfg(target_os = "windows")]
+    {
+        windows_clipboard::read_payload()
+    }
+
+    #[cfg(not(target_os = "windows"))]
+    {
+        Err("clipboard backend indisponivel nesta plataforma".to_string())
+    }
+}
+
 #[cfg(target_os = "windows")]
 mod windows_clipboard {
     use std::ptr;
@@ -153,12 +171,19 @@ mod windows_clipboard {
     use windows_sys::Win32::Foundation::GlobalFree;
     use windows_sys::Win32::System::DataExchange::{
         CloseClipboard, EmptyClipboard, GetClipboardData, IsClipboardFormatAvailable, OpenClipboard,
-        SetClipboardData,
+        RegisterClipboardFormatW, SetClipboardData,
     };
-    use windows_sys::Win32::System::Memory::{GlobalAlloc, GlobalLock, GlobalUnlock, GMEM_MOVEABLE};
-    use windows_sys::Win32::System::Ole::CF_UNICODETEXT;
+    use windows_sys::Win32::System::Memory::{
+        GlobalAlloc, GlobalLock, GlobalSize, GlobalUnlock, GMEM_MOVEABLE,
+    };
+    use windows_sys::Win32::System::Ole::{CF_DIB, CF_HDROP, CF_UNICODETEXT};
+    use windows_sys::Win32::UI::Shell::{DragQueryFileW, HDROP};
+
+    use super::ClipboardPayload;
 
     const CF_UNICODETEXT_U32: u32 = CF_UNICODETEXT as u32;
+    const CF_HDROP_U32: u32 = CF_HDROP as u32;
+    const CF_DIB_U32: u32 = CF_DIB as u32;
 
     struct ClipboardGuard;
 
@@ -230,7 +255,12 @@ mod windows_clipboard {
         if available == 0 {
             return Ok(String::new());
         }
+        read_unicode_text_locked()
+    }
 
+    /// Le CF_UNICODETEXT assumindo que o clipboard ja esta aberto e o formato
+    /// disponivel foi verificado pelo chamador.
+    fn read_unicode_text_locked() -> Result<String, String> {
         let handle = unsafe { GetClipboardData(CF_UNICODETEXT_U32) };
         if handle.is_null() {
             return Err("GetClipboardData falhou".to_string());
@@ -251,6 +281,134 @@ mod windows_clipboard {
             GlobalUnlock(handle);
             Ok(text)
         }
+    }
+
+    /// Enumera os paths de CF_HDROP (arquivos copiados no Windows Explorer).
+    /// O handle de CF_HDROP e usado diretamente por DragQueryFileW — sem
+    /// GlobalLock/GlobalUnlock, diferente dos outros formatos deste modulo.
+    fn read_hdrop_paths() -> Result<Vec<String>, String> {
+        let handle = unsafe { GetClipboardData(CF_HDROP_U32) };
+        if handle.is_null() {
+            return Err("GetClipboardData falhou".to_string());
+        }
+        let hdrop = handle as HDROP;
+
+        let count = unsafe { DragQueryFileW(hdrop, u32::MAX, ptr::null_mut(), 0) };
+        let mut paths = Vec::with_capacity(count as usize);
+        for i in 0..count {
+            let len = unsafe { DragQueryFileW(hdrop, i, ptr::null_mut(), 0) };
+            if len == 0 {
+                continue;
+            }
+            let mut buf = vec![0u16; len as usize + 1];
+            let written = unsafe { DragQueryFileW(hdrop, i, buf.as_mut_ptr(), buf.len() as u32) };
+            if written == 0 {
+                continue;
+            }
+            paths.push(String::from_utf16_lossy(&buf[..written as usize]));
+        }
+        Ok(paths)
+    }
+
+    /// Le os bytes crus de um formato de clipboard ja verificado como
+    /// disponivel (via GlobalLock/GlobalSize).
+    fn read_format_bytes(format: u32) -> Result<Vec<u8>, String> {
+        let handle = unsafe { GetClipboardData(format) };
+        if handle.is_null() {
+            return Err("GetClipboardData falhou".to_string());
+        }
+        let size = unsafe { GlobalSize(handle) };
+        let locked = unsafe { GlobalLock(handle) } as *const u8;
+        if locked.is_null() {
+            return Err("GlobalLock clipboard falhou".to_string());
+        }
+        let bytes = unsafe {
+            let slice = std::slice::from_raw_parts(locked, size);
+            let owned = slice.to_vec();
+            GlobalUnlock(handle);
+            owned
+        };
+        Ok(bytes)
+    }
+
+    fn write_bytes_to_temp_png(bytes: &[u8]) -> Result<String, String> {
+        let path =
+            std::env::temp_dir().join(format!("alethe-clipboard-img-{}.png", nanoid::nanoid!(8)));
+        std::fs::write(&path, bytes).map_err(|e| e.to_string())?;
+        Ok(path.to_string_lossy().into_owned())
+    }
+
+    /// Se o clipboard tiver o formato registrado "PNG" (Chrome/Edge colocam
+    /// isso ao copiar uma imagem da web), os bytes ja sao um PNG valido —
+    /// grava direto em disco, sem recodificar.
+    fn read_registered_png() -> Option<Result<String, String>> {
+        let name: Vec<u16> = "PNG".encode_utf16().chain(std::iter::once(0)).collect();
+        let format = unsafe { RegisterClipboardFormatW(name.as_ptr()) };
+        if format == 0 || unsafe { IsClipboardFormatAvailable(format) } == 0 {
+            return None;
+        }
+        Some(read_format_bytes(format).and_then(|bytes| write_bytes_to_temp_png(&bytes)))
+    }
+
+    /// CF_DIB devolve um BITMAPINFOHEADER + pixels, sem o BITMAPFILEHEADER de
+    /// 14 bytes que um .bmp de verdade tem. Prepende esse header manualmente
+    /// pra poder decodificar com a crate `image` e reexportar como PNG.
+    fn read_dib_as_png() -> Result<String, String> {
+        let dib = read_format_bytes(CF_DIB_U32)?;
+        if dib.len() < 40 {
+            return Err("dados DIB invalidos".to_string());
+        }
+
+        let header_size = u32::from_le_bytes(dib[0..4].try_into().unwrap()) as usize;
+        let bit_count = u16::from_le_bytes(dib[14..16].try_into().unwrap());
+        let colors_used = u32::from_le_bytes(dib[32..36].try_into().unwrap());
+        let palette_entries = if colors_used != 0 {
+            colors_used as usize
+        } else if bit_count <= 8 {
+            1usize << bit_count
+        } else {
+            0
+        };
+        let pixel_offset = 14 + header_size + palette_entries * 4;
+        let file_size = 14 + dib.len();
+
+        let mut bmp = Vec::with_capacity(file_size);
+        bmp.extend_from_slice(b"BM");
+        bmp.extend_from_slice(&(file_size as u32).to_le_bytes());
+        bmp.extend_from_slice(&0u16.to_le_bytes());
+        bmp.extend_from_slice(&0u16.to_le_bytes());
+        bmp.extend_from_slice(&(pixel_offset as u32).to_le_bytes());
+        bmp.extend_from_slice(&dib);
+
+        let img = image::load_from_memory_with_format(&bmp, image::ImageFormat::Bmp)
+            .map_err(|e| e.to_string())?;
+        let path =
+            std::env::temp_dir().join(format!("alethe-clipboard-img-{}.png", nanoid::nanoid!(8)));
+        img.save_with_format(&path, image::ImageFormat::Png)
+            .map_err(|e| e.to_string())?;
+        Ok(path.to_string_lossy().into_owned())
+    }
+
+    pub fn read_payload() -> Result<ClipboardPayload, String> {
+        let _guard = open_clipboard()?;
+
+        if unsafe { IsClipboardFormatAvailable(CF_UNICODETEXT_U32) } != 0 {
+            return read_unicode_text_locked().map(|text| ClipboardPayload::Text { text });
+        }
+
+        if unsafe { IsClipboardFormatAvailable(CF_HDROP_U32) } != 0 {
+            return read_hdrop_paths().map(|paths| ClipboardPayload::Paths { paths });
+        }
+
+        if let Some(result) = read_registered_png() {
+            return result.map(|path| ClipboardPayload::Image { path });
+        }
+
+        if unsafe { IsClipboardFormatAvailable(CF_DIB_U32) } != 0 {
+            return read_dib_as_png().map(|path| ClipboardPayload::Image { path });
+        }
+
+        Ok(ClipboardPayload::Empty)
     }
 }
 

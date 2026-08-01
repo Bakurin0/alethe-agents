@@ -37,6 +37,7 @@ import { useShallow } from 'zustand/react/shallow'
 
 import { preparePtyRuntimeLaunch } from '../../lib/agentRuntimeAdapter'
 import { useT } from '../../lib/i18n'
+import { formatShortcut } from '../../lib/platform'
 import { buildAgentLaunch } from '../../lib/sessionLaunch'
 import { agentCliCommand, type AgentType, type Group, type LayoutMode, type Project, type Terminal } from '../../lib/types'
 import { getPtyCwd, gitStatus, openInFileExplorer, openInVscode, restartPty } from '../../lib/tauri'
@@ -751,7 +752,7 @@ export function ProjectSidebar() {
               setActiveView('home')
             }
           }}
-          title={t('ui.sidebar.homeTitle', { shortcut: 'Ctrl+Shift+H' })}
+          title={t('ui.sidebar.homeTitle', { shortcut: formatShortcut('Ctrl+Shift+H') })}
           aria-label={t('ui.sidebar.home')}
         >
           <Home size={14} />
@@ -835,7 +836,7 @@ export function ProjectSidebar() {
               type="button"
               className={styles.iconBtn}
               onClick={() => openModal('newGroup')}
-              title={t('ui.sidebar.newGroupTitle', { shortcut: 'Ctrl+Shift+G' })}
+              title={t('ui.sidebar.newGroupTitle', { shortcut: formatShortcut('Ctrl+Shift+G') })}
               aria-label={t('ui.sidebar.newGroup')}
             >
               <FolderPlus size={14} />
@@ -844,7 +845,7 @@ export function ProjectSidebar() {
               type="button"
               className={styles.iconBtn}
               onClick={() => openModal('newProject')}
-              title={t('ui.sidebar.newProjectTitle', { shortcut: 'Ctrl+Shift+P' })}
+              title={t('ui.sidebar.newProjectTitle', { shortcut: formatShortcut('Ctrl+Shift+P') })}
               aria-label={t('ui.sidebar.newProject')}
             >
               <Plus size={14} />
