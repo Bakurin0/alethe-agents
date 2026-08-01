@@ -29,7 +29,7 @@ export function createCloseCoordinator(deps: CloseCoordinatorDependencies): {
     if (confirming || closing) return
 
     confirming = true
-    let confirmed = false
+    let confirmed: boolean
     try {
       confirmed = await deps.confirmNative()
     } catch (error) {

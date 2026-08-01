@@ -36,6 +36,9 @@ export default tseslint.config(
       'simple-import-sort': simpleImportSort,
     },
     rules: {
+      // App de terminal: regexes casam sequências ANSI/controle (\x1b, \x07…)
+      // de propósito — a regra é só falso-positivo aqui.
+      'no-control-regex': 'off',
       // Hooks — a regra dura fica em error (bug real), deps fica em warn.
       'react-hooks/rules-of-hooks': 'error',
       'react-hooks/exhaustive-deps': 'warn',
