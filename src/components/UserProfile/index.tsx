@@ -1,6 +1,8 @@
 import { LogOut, Settings, Users } from 'lucide-react'
-import { useEffect, useRef, useState } from 'react'
+import { useRef, useState } from 'react'
 
+import { useOnClickOutside } from '../../hooks/useOnClickOutside'
+import { useOnEscape } from '../../hooks/useOnEscape'
 import { useT } from '../../lib/i18n'
 import { getProfileImageUrl, getProfileInitial } from '../../lib/profile'
 import { useProjectsStore } from '../../stores/projectsStore'
@@ -31,21 +33,8 @@ export function UserProfile() {
     setOpen(false)
   }
 
-  useEffect(() => {
-    if (!open) return
-    const onDown = (e: MouseEvent) => {
-      if (!ref.current?.contains(e.target as Node)) setOpen(false)
-    }
-    const onKey = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') setOpen(false)
-    }
-    document.addEventListener('mousedown', onDown)
-    document.addEventListener('keydown', onKey)
-    return () => {
-      document.removeEventListener('mousedown', onDown)
-      document.removeEventListener('keydown', onKey)
-    }
-  }, [open])
+  useOnClickOutside(ref, () => setOpen(false), open)
+  useOnEscape(() => setOpen(false), open)
 
   return (
     <div ref={ref} className={styles.wrap}>

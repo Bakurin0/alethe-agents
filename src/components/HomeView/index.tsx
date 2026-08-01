@@ -154,19 +154,19 @@ export function HomeView() {
   const [quickProjectId, setQuickProjectId] = useState(() => fallbackQuickTarget?.id ?? '')
   const quickTarget =
     projects.find((project) => project.id === quickProjectId) ?? fallbackQuickTarget
-  const [quickAgent, setQuickAgent] = useState<AgentType>('claude')
+  const [quickAgentRaw, setQuickAgent] = useState<AgentType>('claude')
   const quickAgentMenuRef = useRef<HTMLDetailsElement>(null)
   const quickModeMenuRef = useRef<HTMLDetailsElement>(null)
   const [quickUnrestricted, setQuickUnrestricted] = useState(false)
   const quickPromptRef = useRef<HTMLInputElement>(null)
   const [quickCwd, setQuickCwd] = useState('')
+  // Agente efetivo derivado no render: se o escolhido não está mais habilitado,
+  // cai no primeiro disponível — sem precisar de um useEffect de correção.
+  const quickAgent = quickAgents.some((agent) => agent.type === quickAgentRaw)
+    ? quickAgentRaw
+    : (quickAgents[0]?.type ?? 'claude')
   const quickAgentLabel =
     QUICK_AGENTS.find((agent) => agent.type === quickAgent)?.label ?? quickAgent
-
-  useEffect(() => {
-    if (quickAgents.some((agent) => agent.type === quickAgent)) return
-    setQuickAgent(quickAgents[0]?.type ?? 'claude')
-  }, [quickAgent, quickAgents])
 
   useEffect(() => {
     if (quickTarget && quickTarget.id !== quickProjectId) setQuickProjectId(quickTarget.id)
