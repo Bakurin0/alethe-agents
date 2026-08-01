@@ -113,6 +113,7 @@ eventos Tauri `pty://data/{id}` e `pty://exit/{id}`.
 
 ## 9. Aprofundar
 
+- [`../docs/CODE_STANDARDS.md`](../docs/CODE_STANDARDS.md) — padrões de código (estilo, estrutura, TS, IPC, reuso, useEffect, Zustand, lint/format). **Leitura obrigatória** antes de escrever ou revisar código.
 - [`../docs/CONTEXTO_IA.md`](../docs/CONTEXTO_IA.md) — índice de onboarding e mapa de todos os docs.
 - [`../docs/GLOSSARY.md`](../docs/GLOSSARY.md) — vocabulário do domínio (Grupo, Projeto, Container, Pane, Terminal, Sub-tab, PTY). **Leitura obrigatória** antes de mexer em workspace/layout.
 - [`../docs/FEATURES.md`](../docs/FEATURES.md) — features em detalhe. [`../docs/HANDOFF_STATUS.md`](../docs/HANDOFF_STATUS.md) / [`../docs/CURRENT_STEP.md`](../docs/CURRENT_STEP.md) — estado atual e pendências.
