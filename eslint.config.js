@@ -70,7 +70,7 @@ export default tseslint.config(
   },
   {
     // Wrappers de IPC — os únicos autorizados a chamar invoke() diretamente.
-    files: ['src/lib/tauri.ts', 'src/lib/spotify.ts'],
+    files: ['src/lib/tauri/**', 'src/lib/spotify.ts'],
     rules: { 'no-restricted-imports': 'off' },
   },
   {
