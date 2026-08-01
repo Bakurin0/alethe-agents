@@ -47,10 +47,9 @@ import {
   touchTerminalUsage,
 } from '../lib/terminalFactory'
 import { collectGroupProjectIds, migrate } from './projectsStore.migrations'
+import { createGroupsSlice, createProjectsSlice } from './projectsStore.projectSlices'
 import {
-  createGroupsSlice,
   createPreferencesSlice,
-  createProjectsSlice,
   createSubTabsSlice,
   createTodosSlice,
 } from './projectsStore.slices'
