@@ -391,6 +391,32 @@ fn branch_info(root: &Path) -> Result<(String, bool, u32, u32), String> {
 }
 
 #[tauri::command]
+pub fn git_diff(repo_root: String, path: String, staged: bool) -> Result<String, String> {
+    let mut args = vec!["diff"];
+    if staged {
+        args.push("--staged");
+    }
+    args.push("--");
+    // Normalize path to relative if it starts with repo_root
+    let relative_path = if path.starts_with(&repo_root) {
+        path.strip_prefix(&repo_root).unwrap_or(&path).trim_start_matches(['/', '\\']).to_string()
+    } else {
+        path
+    };
+    args.push(&relative_path);
+
+    let output = checked_output(Path::new(&repo_root), &args)?;
+    
+    // Check if it's a binary file based on git diff output
+    let stdout = String::from_utf8_lossy(&output.stdout).to_string();
+    if stdout.contains("Binary files ") && stdout.contains(" differ") {
+        return Err("Binary file cannot be displayed as text".to_string());
+    }
+
+    Ok(stdout)
+}
+
+#[tauri::command]
 pub fn git_status(path: String) -> Result<GitRepositoryStatus, String> {
     let root = repository_root(&path)?;
     let status = checked_output(

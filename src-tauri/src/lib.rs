@@ -230,6 +230,7 @@ pub fn run() {
             github_sync::github_sync_push,
             github_sync::github_sync_pull,
             git_control::git_status,
+            git_control::git_diff,
             git_control::git_stage,
             git_control::git_unstage,
             git_control::git_discard,
