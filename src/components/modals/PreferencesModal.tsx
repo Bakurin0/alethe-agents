@@ -264,7 +264,7 @@ export function PreferencesModal() {
             ) : (
               <nav className={styles.nav} aria-label={t('prefs.title')}>
                 <span className={styles.navLabel}>{t('prefs.settingsLabel')}</span>
-                {categories.map(({ id, label, Icon }) => (
+                {categories.map(({ id, label, description, Icon }) => (
                   <button
                     key={id}
                     type="button"
@@ -276,7 +276,10 @@ export function PreferencesModal() {
                     }}
                   >
                     <Icon size={16} />
-                    <span>{label}</span>
+                    <span className={styles.navCopy}>
+                      <strong>{label}</strong>
+                      <small>{description}</small>
+                    </span>
                   </button>
                 ))}
               </nav>

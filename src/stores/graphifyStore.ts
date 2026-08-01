@@ -1,6 +1,7 @@
 import { create } from 'zustand'
 import {
   graphifyDetect,
+  graphifyEnsureGraph,
   graphifyReadGraph,
   graphifySnapshot,
   graphifyListSnapshots,
@@ -25,6 +26,7 @@ type GraphifyState = {
   error: string | null
 
   load: (repo: string) => Promise<void>
+  generateGraph: () => Promise<void>
   refreshGraph: () => Promise<void>
   snapshot: (projectId?: string) => Promise<void>
   rollback: (snapshotId: string, projectId?: string) => Promise<void>
@@ -51,9 +53,47 @@ export const useGraphifyStore = create<GraphifyState>((set, get) => ({
       try {
         graph = await graphifyReadGraph(repo)
       } catch (err) {
-        error = String(err)
+        // Ausência do arquivo é o estado vazio esperado; erros de leitura ou
+        // JSON inválido continuam visíveis para facilitar o diagnóstico.
+        error = String(err) === 'graph_not_found' ? null : String(err)
       }
       set({ status, snapshots, graph, error })
+    } catch (err) {
+      set({ error: String(err) })
+    } finally {
+      set({ loading: false })
+    }
+  },
+
+  generateGraph: async () => {
+    const { repo } = get()
+    if (!repo) return
+
+    set({ loading: true, error: null })
+    try {
+      const result = await graphifyEnsureGraph(repo)
+      if (result === 'unavailable') {
+        set({ error: 'graphify_unavailable' })
+        return
+      }
+
+      // O comando gera o arquivo em background. Aguarde por um período curto
+      // para que o painel se atualize sozinho, sem bloquear o terminal.
+      const deadline = Date.now() + 60_000
+      while (Date.now() < deadline) {
+        await new Promise((resolve) => window.setTimeout(resolve, 500))
+        try {
+          const graph = await graphifyReadGraph(repo)
+          if (graph.nodes.length > 0) {
+            set({ graph, error: null })
+            return
+          }
+        } catch {
+          // O arquivo ainda não existe ou está sendo escrito; tente novamente.
+        }
+      }
+
+      set({ error: 'graphify_generation_timeout' })
     } catch (err) {
       set({ error: String(err) })
     } finally {
@@ -68,7 +108,7 @@ export const useGraphifyStore = create<GraphifyState>((set, get) => ({
       const graph = await graphifyReadGraph(repo)
       set({ graph, error: null })
     } catch (err) {
-      set({ graph: null, error: String(err) })
+      set({ graph: null, error: String(err) === 'graph_not_found' ? null : String(err) })
     }
   },
 

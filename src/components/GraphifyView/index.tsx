@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef } from 'react'
 import cytoscape from 'cytoscape'
-import { RefreshCw, Camera, Scissors, RotateCcw, X } from 'lucide-react'
+import { RefreshCw, Camera, Scissors, RotateCcw, X, Network, Loader2 } from 'lucide-react'
 import { useGraphifyStore } from '../../stores/graphifyStore'
 import { useProjectsStore } from '../../stores/projectsStore'
 import { useT } from '../../lib/i18n'
@@ -32,7 +32,7 @@ type GraphifyViewProps = {
  */
 export function GraphifyView({ repo, projectId, terminalId }: GraphifyViewProps) {
   const t = useT()
-  const { graph, snapshots, error, loading, load, refreshGraph, snapshot, rollback, prune } =
+  const { graph, snapshots, error, loading, load, generateGraph, refreshGraph, snapshot, rollback, prune } =
     useGraphifyStore()
   const deleteTerminal = useProjectsStore((state) => state.deleteTerminal)
   const canvasRef = useRef<HTMLDivElement>(null)
@@ -195,7 +195,19 @@ export function GraphifyView({ repo, projectId, terminalId }: GraphifyViewProps)
           <div ref={canvasRef} className={styles.canvas} />
         ) : (
           <div className={`${styles.empty} ${error ? styles.error : ''}`}>
-            {error ? error : t('graphify.empty')}
+            <Network size={30} strokeWidth={1.5} />
+            <strong>{error === 'graphify_unavailable' ? t('graphify.unavailableTitle') : t('graphify.emptyTitle')}</strong>
+            <span>
+              {error === 'graphify_unavailable'
+                ? t('graphify.unavailable')
+                : error === 'graphify_generation_timeout'
+                  ? t('graphify.generationTimeout')
+                  : error || t('graphify.emptyDescription')}
+            </span>
+            <button className={`${styles.button} ${styles.generateButton}`} onClick={() => void generateGraph()} disabled={loading}>
+              {loading ? <Loader2 size={13} className={styles.spin} /> : <Network size={13} />}
+              {loading ? t('graphify.generating') : t('graphify.generate')}
+            </button>
           </div>
         )}
 

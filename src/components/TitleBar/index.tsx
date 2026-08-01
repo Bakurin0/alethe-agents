@@ -1,5 +1,5 @@
 import { getCurrentWindow } from '@tauri-apps/api/window'
-import { ArrowLeft, ArrowRight, Maximize2, Menu, Minus, PanelLeftClose, PanelLeftOpen, PanelRightClose, PanelRightOpen, Pencil, Pin, RefreshCw, Users, Workflow, X } from 'lucide-react'
+import { ArrowLeft, ArrowRight, Maximize2, Menu, Minus, PanelLeftClose, PanelLeftOpen, PanelRightClose, PanelRightOpen, Pencil, Pin, RefreshCw, Sparkles, Users, Workflow, X } from 'lucide-react'
 import { useEffect, useRef, useState } from 'react'
 
 import { ContextMenu, type MenuItem } from '../ProjectSidebar/ContextMenu'
@@ -81,6 +81,7 @@ export function TitleBar() {
   const claudeUsage = useUiStore((s) => s.claudeUsage)
   const codexUsage = useUiStore((s) => s.codexUsage)
   const antigravityUsage = useUiStore((s) => s.antigravityUsage)
+  const updateInfo = useUiStore((s) => s.updateInfo)
   const setClaudeUsage = useUiStore((s) => s.setClaudeUsage)
   const setCodexUsage = useUiStore((s) => s.setCodexUsage)
   const setAntigravityUsage = useUiStore((s) => s.setAntigravityUsage)
@@ -240,28 +241,31 @@ export function TitleBar() {
 
   return (
     <div className={styles.bar} data-tauri-drag-region>
-      <button
-        type="button"
-        className={styles.iconBtn}
-        onClick={toggleMainMenu}
-        title={t('ui.titlebar.menu')}
-        aria-label={t('ui.titlebar.menu')}
-      >
-        <Menu size={14} />
-      </button>
-      <button
-        type="button"
-        className={`${styles.iconBtn} ${preferences.leftSidebarVisible ? styles.iconBtnActive : ''}`}
-        onClick={() => setPreferences({ leftSidebarVisible: !preferences.leftSidebarVisible })}
-        title={preferences.leftSidebarVisible ? t('ui.titlebar.closeSidebar') : t('ui.titlebar.openSidebar')}
-        aria-label={preferences.leftSidebarVisible ? t('ui.titlebar.closeSidebar') : t('ui.titlebar.openSidebar')}
-        aria-pressed={preferences.leftSidebarVisible}
-      >
-        {preferences.leftSidebarVisible ? <PanelLeftClose size={14} /> : <PanelLeftOpen size={14} />}
-      </button>
-      <span className={styles.title} data-tauri-drag-region>
-        {APP_TITLE}
-      </span>
+      <div className={styles.barStart}>
+        <button
+          type="button"
+          className={styles.iconBtn}
+          onClick={toggleMainMenu}
+          title={t('ui.titlebar.menu')}
+          aria-label={t('ui.titlebar.menu')}
+        >
+          <Menu size={14} />
+        </button>
+        <button
+          type="button"
+          className={`${styles.iconBtn} ${preferences.leftSidebarVisible ? styles.iconBtnActive : ''}`}
+          onClick={() => setPreferences({ leftSidebarVisible: !preferences.leftSidebarVisible })}
+          title={preferences.leftSidebarVisible ? t('ui.titlebar.closeSidebar') : t('ui.titlebar.openSidebar')}
+          aria-label={preferences.leftSidebarVisible ? t('ui.titlebar.closeSidebar') : t('ui.titlebar.openSidebar')}
+          aria-pressed={preferences.leftSidebarVisible}
+        >
+          {preferences.leftSidebarVisible ? <PanelLeftClose size={14} /> : <PanelLeftOpen size={14} />}
+        </button>
+        <span className={styles.title} data-tauri-drag-region>
+          <span className={styles.titleMark}>A</span>
+          {APP_TITLE}
+        </span>
+      </div>
       {workspaceTabs.length > 0 || agentCanvasSession ? (
         <div
           className={styles.groupTabs}
@@ -401,17 +405,30 @@ export function TitleBar() {
       ) : null}
       <div className={styles.spacer} data-tauri-drag-region />
       <div className={styles.widgets}>
-        {preferences.topbarShowSync ? (
+        <div className={styles.utilityGroup}>
+          <button
+          type="button"
+          className={`${styles.iconBtn} ${updateInfo ? styles.whatsNewPending : ''}`}
+          onClick={() => openModal('whatsNew')}
+          title={t('whatsNew.button')}
+          aria-label={t('whatsNew.button')}
+        >
+          <Sparkles size={13} />
+          {updateInfo ? <span className={styles.whatsNewDot} /> : null}
+          </button>
+          {preferences.topbarShowSync ? (
           <button type="button" className={styles.syncPill} title={t('sync.title')} aria-label={t('sync.title')} onClick={() => openModal('sync')}>
             <RefreshCw size={12} />
           </button>
-        ) : null}
-        {preferences.topbarShowProfile ? (
+          ) : null}
+          {preferences.topbarShowProfile ? (
           <button type="button" className={styles.profilePill} title={t('profile.manageAccounts')} onClick={() => openModal('profiles')}>
             <Users size={12} />
             <span className={styles.profilePillLabel}>{activeProfile?.name ?? t('profile.localAccount')}</span>
           </button>
-        ) : null}
+          ) : null}
+        </div>
+        <div className={styles.statusGroup}>
         {preferences.topbarShowClaudeUsage && claudeUsage !== null ? (
           <div className={styles.usageWidget}>
             <button
@@ -532,11 +549,12 @@ export function TitleBar() {
         <button type="button" className={styles.editWidgets} title={t('ui.titlebar.customize')} aria-label={t('ui.titlebar.customize')} onClick={() => openModal('topbarSettings')}>
           <Pencil size={12} />
         </button>
+        </div>
       </div>
       {preferences.enabledFeatures.todos ? (
         <button
           type="button"
-          className={`${styles.iconBtn} ${preferences.rightSidebarVisible ? styles.iconBtnActive : ''}`}
+          className={`${styles.iconBtn} ${styles.rightSidebarBtn} ${preferences.rightSidebarVisible ? styles.iconBtnActive : ''}`}
           onClick={() => setPreferences({ rightSidebarVisible: !preferences.rightSidebarVisible })}
           title={preferences.rightSidebarVisible ? t('ui.titlebar.closeTodoSidebar') : t('ui.titlebar.openTodoSidebar')}
           aria-label={preferences.rightSidebarVisible ? t('ui.titlebar.closeTodoSidebar') : t('ui.titlebar.openTodoSidebar')}

@@ -5,15 +5,16 @@ import {
   useSensors,
   type DragEndEvent,
 } from '@dnd-kit/core'
-import { FolderPlus, TerminalSquare } from 'lucide-react'
+import { FolderOpen, FolderPlus, TerminalSquare } from 'lucide-react'
 import { Group as PanelGroup, Panel, Separator } from 'react-resizable-panels'
-import { useEffect, useMemo } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 
 import {
   selectActiveProject,
   useProjectsStore,
 } from '../../stores/projectsStore'
 import { useUiStore } from '../../stores/uiStore'
+import { pickDirectory } from '../../lib/dialog'
 import { useT } from '../../lib/i18n'
 import { cellStyle, gridContainerStyle, reconcileGridLayout } from '../../lib/gridLayout'
 import type {
@@ -60,10 +61,13 @@ export function WorkspaceView() {
   const setGroupGridLayout = useProjectsStore((s) => s.setGroupGridLayout)
   const setProjectGridLayout = useProjectsStore((s) => s.setProjectGridLayout)
   const activeProject = useProjectsStore(selectActiveProject)
+  const recentProjectIds = useProjectsStore((s) => s.workspace.recentProjectIds)
+  const openProjectWorkspace = useProjectsStore((s) => s.openProjectWorkspace)
   const openModal = useUiStore((s) => s.openModal_)
   const activeGroupTabId = useProjectsStore((s) => s.workspace.activeGroupId)
   const focusedTerminalId = useProjectsStore((s) => s.workspace.focusedTerminalId)
   const requestPaneFocus = useUiStore((s) => s.requestPaneFocus)
+  const initialWorkspaceEnsured = useRef(false)
 
   const projectsById = useMemo(
     () => new Map(projects.map((p) => [p.id, p])),
@@ -87,6 +91,38 @@ export function WorkspaceView() {
     requestPaneFocus(focusedTerminalId)
   }, [focusedTerminalId, requestPaneFocus])
 
+  // Um projects.json pode ter projetos válidos, mas nenhuma aba/container
+  // restaurável (por exemplo, depois de um primeiro boot ou de uma migração).
+  // Nesse caso, abrir a Workspace vazia e pedir "Criar projeto" é enganoso:
+  // selecione o projeto recente com terminais uma única vez.
+  useEffect(() => {
+    if (
+      initialWorkspaceEnsured.current ||
+      allContainers.length > 0 ||
+      activeGroupTabId !== null ||
+      projects.length === 0
+    ) return
+
+    const recent = recentProjectIds
+      .map((id) => projectsById.get(id))
+      .find((project) => project && project.terminals.length > 0)
+    const candidate = activeProject?.terminals.length
+      ? activeProject
+      : recent ?? projects.find((project) => project.terminals.length > 0)
+    if (!candidate) return
+
+    initialWorkspaceEnsured.current = true
+    openProjectWorkspace(candidate.id)
+  }, [
+    activeGroupTabId,
+    activeProject,
+    allContainers.length,
+    openProjectWorkspace,
+    projects,
+    projectsById,
+    recentProjectIds,
+  ])
+
   // Container/projeto de fullscreenContainerId pode deixar de existir nesta
   // vista (removido, filtrado por grupo, etc.) — sem isso o botão de tela
   // cheia "trava": o estado fica preso apontando pra um alvo que nunca mais
@@ -99,7 +135,7 @@ export function WorkspaceView() {
   }, [fullscreenId, containers, projectsById, setFullscreenContainer])
 
   const sensors = useSensors(
-    useSensor(PointerSensor, { activationConstraint: { distance: 6 } }),
+    useSensor(PointerSensor, { activationConstraint: { distance: 8 } }),
   )
 
   const onDragEnd = (e: DragEndEvent) => {
@@ -540,18 +576,68 @@ function NoWorkspace({
 }) {
   const t = useT()
   const openContainerWithAllPanes = useProjectsStore((s) => s.openContainerWithAllPanes)
+  const createProject = useProjectsStore((s) => s.createProject)
+  const createTerminal = useProjectsStore((s) => s.createTerminal)
+  const openTerminalWorkspace = useProjectsStore((s) => s.openTerminalWorkspace)
+  const setGraphifyEnabled = useProjectsStore((s) => s.setGraphifyEnabled)
+  const [folder, setFolder] = useState('')
+  const [graphifyEnabled, setGraphifyEnabledState] = useState(false)
+
+  const browseFolder = async () => {
+    const selected = await pickDirectory({ defaultPath: folder || undefined })
+    if (selected) setFolder(selected)
+  }
+
+  const openFolderAsProject = () => {
+    const cwd = folder.trim()
+    if (!cwd) return
+    const normalized = cwd.replace(/[\\/]+$/, '')
+    const name = normalized.split(/[\\/]/).filter(Boolean).pop() || normalized
+    const project = createProject({ name, defaultCwd: cwd })
+    if (graphifyEnabled) setGraphifyEnabled(project.id, true)
+    const terminal = createTerminal(project.id, {
+      name: 'Claude',
+      cwd,
+      firstTab: { type: 'claude', cwd, runtimeProfile: 'lean' },
+    })
+    openTerminalWorkspace(project.id, terminal.id)
+  }
   if (!project) {
     return (
       <div className={styles.emptyShell}>
-        <EmptyState
-          icon={<FolderPlus size={22} />}
-          title={t('ws.emptyProjectTitle')}
-          description={t('ws.emptyProjectDesc')}
-          primaryAction={{
-            label: t('ws.emptyProjectAction'),
-            onClick: onAddTerminal,
-          }}
-        />
+        <div className={styles.emptyProjectCard}>
+          <EmptyState
+            icon={<FolderPlus size={22} />}
+            title={t('ws.emptyProjectTitle')}
+            description={t('ws.emptyProjectDesc')}
+          />
+          <div className={styles.emptyFolderLabel}>{t('ws.emptyFolderLabel')}</div>
+          <div className={styles.emptyFolderRow}>
+            <button type="button" className={styles.emptyFolderButton} onClick={() => void browseFolder()}>
+              <FolderOpen size={14} />
+              <span>{folder || t('ws.emptyFolderPlaceholder')}</span>
+            </button>
+            <button
+              type="button"
+              className={styles.emptyFolderAction}
+              disabled={!folder.trim()}
+              onClick={openFolderAsProject}
+            >
+              {t('ws.emptyFolderAction')}
+            </button>
+          </div>
+          <label className={styles.emptyGraphifyToggle}>
+            <input
+              type="checkbox"
+              checked={graphifyEnabled}
+              onChange={(event) => setGraphifyEnabledState(event.target.checked)}
+            />
+            <span>{t('project.graphifyEnabled')}</span>
+          </label>
+          <button type="button" className={styles.emptySecondaryAction} onClick={onAddTerminal}>
+            {t('ws.emptyModalAction')}
+          </button>
+        </div>
       </div>
     )
   }

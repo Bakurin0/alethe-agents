@@ -76,6 +76,16 @@ pub fn read_text_file(path: String) -> Result<String, String> {
     fs::read_to_string(&file).map_err(|error| error.to_string())
 }
 
+/// Escreve texto UTF-8 em um arquivo existente. Usado pelo editor Markdown.
+#[tauri::command]
+pub fn write_text_file(path: String, content: String) -> Result<(), String> {
+    let file = PathBuf::from(path.trim());
+    if !file.is_file() {
+        return Err("file not found".to_string());
+    }
+    fs::write(&file, content).map_err(|error| error.to_string())
+}
+
 #[tauri::command]
 pub fn ensure_todo_template(directory: String) -> Result<String, String> {
     let dir = PathBuf::from(directory.trim());

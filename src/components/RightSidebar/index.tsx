@@ -1,8 +1,8 @@
-import { ArrowLeft, FileText, PanelRightClose, RefreshCw } from 'lucide-react'
-import { useEffect, useState } from 'react'
+import { ArrowLeft, ClipboardCopy, FileText, PanelRightClose, RefreshCw } from 'lucide-react'
+import { useEffect, useMemo, useState } from 'react'
 
 import { useT } from '../../lib/i18n'
-import { readTextFile } from '../../lib/tauri'
+import { readTextFile, writeClipboardText } from '../../lib/tauri'
 import { useProjectsStore } from '../../stores/projectsStore'
 import { useUiStore } from '../../stores/uiStore'
 import { MarkdownRenderer } from '../MarkdownPane/MarkdownRenderer'
@@ -19,15 +19,29 @@ function MarkdownSidebarViewer() {
   const t = useT()
   const markdown = useUiStore((state) => state.rightSidebarMarkdown)
   const showTodoSidebar = useUiStore((state) => state.showTodoSidebar)
+  const pushToast = useUiStore((state) => state.pushToast)
+  const activeProjectId = useProjectsStore((state) => state.activeProjectId)
+  const projects = useProjectsStore((state) => state.projects)
   const setPreferences = useProjectsStore((state) => state.setPreferences)
   const dark = useProjectsStore((state) => state.preferences.uiTheme !== 'light' && state.preferences.uiTheme !== 'min-light')
   const [content, setContent] = useState<string | null>(null)
   const [error, setError] = useState<string | null>(null)
+  const [copied, setCopied] = useState(false)
+  const [selectedPath, setSelectedPath] = useState(markdown?.path ?? '')
+
+  const readmeTabs = useMemo(() => {
+    const project = projects.find((item) => item.id === activeProjectId)
+    return (project?.terminals ?? [])
+      .filter((terminal) => terminal.kind === 'markdown' && terminal.filePath)
+      .map((terminal) => ({ path: terminal.filePath!, title: terminal.name }))
+  }, [activeProjectId, projects])
+  const selected = readmeTabs.find((tab) => tab.path === selectedPath) ??
+    (markdown ? { path: markdown.path, title: markdown.title } : null)
 
   const load = async () => {
-    if (!markdown?.path) return
+    if (!selected?.path) return
     try {
-      setContent(await readTextFile(markdown.path))
+      setContent(await readTextFile(selected.path))
       setError(null)
     } catch (err) {
       setError(String(err))
@@ -40,7 +54,23 @@ function MarkdownSidebarViewer() {
     setError(null)
     void load()
     // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [markdown?.path, selectedPath])
+
+  useEffect(() => {
+    if (markdown?.path) setSelectedPath(markdown.path)
   }, [markdown?.path])
+
+  const copyMarkdown = async () => {
+    if (content === null) return
+    try {
+      await writeClipboardText(content)
+      setCopied(true)
+      pushToast({ title: t('ui.markdown.copied'), body: '' })
+      window.setTimeout(() => setCopied(false), 1500)
+    } catch {
+      setCopied(false)
+    }
+  }
 
   if (!markdown) {
     return <TodoSidebar />
@@ -51,7 +81,7 @@ function MarkdownSidebarViewer() {
       <header className={styles.header}>
         <div className={styles.heading}>
           <FileText size={15} />
-          <span title={markdown.title}>{markdown.title}</span>
+          <span title={selected?.title ?? markdown.title}>{selected?.title ?? markdown.title}</span>
         </div>
         <div className={styles.headerActions}>
           <button
@@ -62,6 +92,16 @@ function MarkdownSidebarViewer() {
             aria-label={t('ui.markdown.refresh')}
           >
             <RefreshCw size={15} />
+          </button>
+          <button
+            type="button"
+            className={styles.headerAction}
+            onClick={() => void copyMarkdown()}
+            disabled={content === null}
+            title={copied ? t('ui.markdown.copied') : t('ui.markdown.copySource')}
+            aria-label={copied ? t('ui.markdown.copied') : t('ui.markdown.copySource')}
+          >
+            <ClipboardCopy size={15} />
           </button>
           <button
             type="button"
@@ -83,8 +123,26 @@ function MarkdownSidebarViewer() {
           </button>
         </div>
       </header>
-      <div className={styles.path} title={markdown.path}>
-        {markdown.path}
+      {readmeTabs.length > 1 ? (
+        <div className={styles.readmeTabs} role="tablist" aria-label={t('rightSidebar.markdownTabs')}>
+          {readmeTabs.map((tab) => (
+            <button
+              key={tab.path}
+              type="button"
+              role="tab"
+              aria-selected={selected?.path === tab.path}
+              className={`${styles.readmeTab} ${selected?.path === tab.path ? styles.readmeTabActive : ''}`}
+              onClick={() => setSelectedPath(tab.path)}
+              title={tab.path}
+            >
+              <FileText size={11} />
+              <span>{tab.title}</span>
+            </button>
+          ))}
+        </div>
+      ) : null}
+      <div className={styles.path} title={selected?.path ?? markdown.path}>
+        {selected?.path ?? markdown.path}
       </div>
       <div className={styles.content}>
         {error ? (

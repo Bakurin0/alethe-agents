@@ -31,6 +31,7 @@ const LINE_COL_SUFFIX = /:\d+(?::\d+)?$/
 const MARKDOWN_EXT_PATTERN = /\.(md|markdown|mdx)$/i
 const IMAGE_EXT_PATTERN = /\.(png|jpe?g|gif|webp|bmp|avif|ico|svg)$/i
 const FILE_EXT_PATTERN = /\.[A-Za-z0-9]{1,12}$/
+const FILE_EXT_BOUNDARY_PATTERN = /\.(?:md|markdown|mdx|png|jpe?g|gif|webp|bmp|avif|ico|svg|txt|tsx?|jsx?|json|ya?ml|toml|csv|pdf)(?=$|[\s),.;:])/i
 const LINK_TRAILING_PUNCTUATION = /[\s),.;:]+$/
 
 /** Remove o sufixo `:linha:coluna` de um path pra obter o arquivo real. */
@@ -76,6 +77,11 @@ function findLinkEnd(line: string, start: number, isUrl: boolean): number {
       if (/^(?:https?:\/\/|[A-Za-z]:\\|\\\\|~\/|\/)/.test(remainder)) break
     }
     end += 1
+    // Agentes frequentemente imprimem um caminho seguido de uma frase com
+    // apenas um espaço (ex.: `arquivo.md com as projeções...`). Não deixe o
+    // texto explicativo virar parte do link; extensões conhecidas encerram o
+    // alvo quando o próximo caractere já é um delimitador natural.
+    if (!isUrl && FILE_EXT_BOUNDARY_PATTERN.test(line.slice(start, end))) break
   }
   return end
 }

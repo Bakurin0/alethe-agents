@@ -28,7 +28,6 @@ import {
   Power,
   Search,
   Sidebar as SidebarIcon,
-  SlidersHorizontal,
   Trash2,
   type LucideIcon,
 } from 'lucide-react'
@@ -161,7 +160,7 @@ export function ProjectSidebar() {
   const selectedSubTab = selectedTerminal?.tabs.find((tab) => tab.id === selectedTerminal.activeTabId)
     ?? selectedTerminal?.tabs[0]
 
-  const sensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 4 } }))
+  const sensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 8 } }))
 
   const onDragEnd = (event: DragEndEvent) => {
     const { active, over } = event
@@ -731,7 +730,12 @@ export function ProjectSidebar() {
         renderProject={renderProject}
         renderChildGroup={renderGroup}
         onMenu={(e) => setMenu({ x: e.clientX, y: e.clientY, items: groupMenu(g) })}
-        onAddProject={() => openModal('newProject', { groupId: g.id })}
+        onAddProject={() =>
+          openModal('newProject', {
+            groupId: g.id,
+            createTerminalAfterCreate: projectsInGroup.length === 0 && childGroups.length === 0,
+          })
+        }
         onToggle={() => actions.toggleGroupCollapsed(g.id)}
         onOpenAll={() => onGroupOpenAll(g)}
         onOpenOnly={() => onGroupOpenAll(g, 'only')}
@@ -823,15 +827,6 @@ export function ProjectSidebar() {
         <header className={styles.header}>
           <span className={styles.title}>{t('ui.sidebar.projects')}</span>
           <div className={styles.headerActions}>
-            <button
-              type="button"
-              className={styles.iconBtn}
-              onClick={() => openModal('topbarSettings')}
-              title={t('ui.titlebar.customize')}
-              aria-label={t('ui.titlebar.customize')}
-            >
-              <SlidersHorizontal size={13} />
-            </button>
             <button
               type="button"
               className={styles.iconBtn}

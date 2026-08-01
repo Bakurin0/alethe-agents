@@ -574,6 +574,9 @@ export function XTermView({
     let linkProviderDisposable: { dispose: () => void } | null = null
     let linkScrollDisposable: { dispose: () => void } | null = null
     let writeRecoveryPending = false
+    let queuedInput = ''
+    let inputFlushScheduled = false
+    let inputWriteChain = Promise.resolve()
 
     const resourcePolicy = useProjectsStore.getState().preferences.resourcePolicy
     const terminal = new Terminal({
@@ -857,8 +860,14 @@ export function XTermView({
     })
 
     const focusTerminal = () => terminal.focus()
+    const restoreHoveredFocus = () => {
+      if (document.visibilityState === 'hidden' || !container.matches(':hover')) return
+      terminal.focus()
+    }
     container.addEventListener('pointerdown', focusTerminal, true)
     container.addEventListener('click', focusTerminal)
+    window.addEventListener('focus', restoreHoveredFocus)
+    document.addEventListener('visibilitychange', restoreHoveredFocus)
 
     const onPaste = (event: ClipboardEvent) => {
       const raw = event.clipboardData?.getData('text/plain') ?? ''
@@ -872,6 +881,33 @@ export function XTermView({
         })
     }
     container.addEventListener('paste', onPaste)
+
+    const flushInput = () => {
+      inputFlushScheduled = false
+      if (disposed || !queuedInput) return
+      const id = ptyIdRef.current
+      if (!id) return
+      const chunk = queuedInput
+      queuedInput = ''
+      inputWriteChain = inputWriteChain.then(() => writePty(id, chunk)).catch((error) => {
+        console.warn(`[pty-input] falha ao escrever em ${id}; solicitando recuperaÃ§Ã£o`, error)
+        if (disposed || writeRecoveryPending) return
+        writeRecoveryPending = true
+        window.dispatchEvent(
+          new CustomEvent('alethe:terminal-restart-request', { detail: { ptyId: id } }),
+        )
+        window.setTimeout(() => {
+          writeRecoveryPending = false
+        }, 5_000)
+      })
+    }
+    const queueInput = (id: string, data: string) => {
+      if (id !== ptyIdRef.current || !data) return
+      queuedInput += data
+      if (inputFlushScheduled) return
+      inputFlushScheduled = true
+      queueMicrotask(flushInput)
+    }
 
     const runResize = () => {
       resizeTimer = null
@@ -998,17 +1034,7 @@ export function XTermView({
       if (trackedPtyId) recordAgentActivityInput(trackedPtyId, data)
       if (container.scrollWidth > container.clientWidth + 2) scheduleResize(true)
       clampHorizontalScroll()
-      void writePty(id, data).catch((error) => {
-        console.warn(`[pty-input] falha ao escrever em ${id}; solicitando recuperação`, error)
-        if (disposed || writeRecoveryPending) return
-        writeRecoveryPending = true
-        window.dispatchEvent(
-          new CustomEvent('alethe:terminal-restart-request', { detail: { ptyId: id } }),
-        )
-        window.setTimeout(() => {
-          writeRecoveryPending = false
-        }, 5_000)
-      })
+      queueInput(id, data)
     })
 
     const RESUMABLE_AGENTS = ['claude', 'codex', 'opencode', 'antigravity']
@@ -1387,6 +1413,8 @@ export function XTermView({
       container.removeEventListener('pointerdown', focusTerminal, true)
       container.removeEventListener('click', focusTerminal)
       container.removeEventListener('paste', onPaste)
+      window.removeEventListener('focus', restoreHoveredFocus)
+      document.removeEventListener('visibilitychange', restoreHoveredFocus)
       window.removeEventListener('alethe:zoom-changed', scheduleObservedResize)
       window.removeEventListener('alethe:terminal-resize-request', onResizeRequest)
       ro.disconnect()
@@ -1394,6 +1422,7 @@ export function XTermView({
       if (writeFrame !== null) window.cancelAnimationFrame(writeFrame)
       pendingWrites = []
       pendingWriteLength = 0
+      queuedInput = ''
       window.clearTimeout(initialFitTimer)
       unlistenData?.()
       unlistenExit?.()

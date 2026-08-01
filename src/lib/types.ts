@@ -55,6 +55,8 @@ export type TodoItem = {
   title: string
   completed: boolean
   tags: string[]
+  /** Projeto ao qual a tarefa está vinculada, quando aplicável. */
+  projectId?: string
 }
 
 export type SubTab = {
@@ -147,6 +149,8 @@ export type Project = {
   iconUrl?: string
   /** ID do grupo. null = solto (sem grupo). v2. */
   groupId: string | null
+  /** Pasta padrão usada ao criar novos terminais neste projeto. */
+  defaultCwd?: string
   terminals: Terminal[]
   layoutMode: LayoutMode
   /** Definição do grid quando layoutMode === 'grid'. Persistida pra restaurar. */

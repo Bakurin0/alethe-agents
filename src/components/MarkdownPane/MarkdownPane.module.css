@@ -251,6 +251,21 @@
   tab-size: 2;
 }
 
+.editor {
+  flex: 1;
+  width: 100%;
+  min-height: 0;
+  resize: none;
+  box-sizing: border-box;
+  padding: 18px 22px;
+  border: 0;
+  outline: none;
+  background: var(--bg-sunken);
+  color: var(--fg);
+  font: 400 13px/1.6 var(--font-mono);
+  tab-size: 2;
+}
+
 /* ---- Tipografia do markdown — só tokens, sem cor literal ---- */
 .markdownBody {
   padding: 20px 24px;

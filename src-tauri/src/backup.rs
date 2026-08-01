@@ -5,14 +5,38 @@ use tauri::AppHandle;
 use zip::write::FileOptions;
 use zip::{CompressionMethod, ZipArchive, ZipWriter};
 
-use crate::paths::{activity_stats_file_path, app_data_dir, projects_file_path};
+use crate::paths::{activity_stats_file_path, app_data_dir};
+use crate::profiles::profile_data_dir_for_id;
 
-/// Empacota `projects.json` + `scrollback/` num zip salvo em `target_path`.
+/// Empacota os dados locais do perfil (`projects.json`, métricas, tokens e
+/// `scrollback/`) num zip salvo em `target_path`.
 /// Não inclui `spawn.log` (debug-only) nem `tmp` (artefatos do save atômico).
 #[tauri::command]
 pub fn export_backup(app: AppHandle, target_path: String) -> Result<(), String> {
-    let dir = app_data_dir(&app)?;
+    export_backup_from_dir(app_data_dir(&app)?, target_path)
+}
+
+#[tauri::command]
+pub fn export_profile_backup(
+    app: AppHandle,
+    profile_id: String,
+    target_path: String,
+) -> Result<(), String> {
+    let dir = profile_data_dir_for_id(&app, &profile_id)?;
+    export_backup_from_dir(dir, target_path)
+}
+
+fn export_backup_from_dir(dir: PathBuf, target_path: String) -> Result<(), String> {
     let target = PathBuf::from(target_path);
+    let source_root = dir.canonicalize().map_err(|e| e.to_string())?;
+    let target_parent = target
+        .parent()
+        .unwrap_or_else(|| Path::new("."))
+        .canonicalize()
+        .map_err(|e| e.to_string())?;
+    if target_parent.starts_with(&source_root) {
+        return Err("backup_inside_profile".to_string());
+    }
     if let Some(parent) = target.parent() {
         fs::create_dir_all(parent).map_err(|e| e.to_string())?;
     }
@@ -21,7 +45,7 @@ pub fn export_backup(app: AppHandle, target_path: String) -> Result<(), String> 
     let opts = FileOptions::default().compression_method(CompressionMethod::Deflated);
 
     // projects.json (se existir)
-    let projects = projects_file_path(&app)?;
+    let projects = dir.join("projects.json");
     if projects.is_file() {
         zip.start_file("projects.json", opts)
             .map_err(|e| e.to_string())?;
@@ -30,11 +54,20 @@ pub fn export_backup(app: AppHandle, target_path: String) -> Result<(), String> 
     }
 
     // Métricas de tempo pertencem ao perfil e acompanham seu backup.
-    let activity_stats = activity_stats_file_path(&app)?;
+    let activity_stats = dir.join("activity-stats.json");
     if activity_stats.is_file() {
         zip.start_file("activity-stats.json", opts)
             .map_err(|e| e.to_string())?;
         let bytes = fs::read(&activity_stats).map_err(|e| e.to_string())?;
+        zip.write_all(&bytes).map_err(|e| e.to_string())?;
+    }
+
+    // Tokens do not leave this local profile unless the user explicitly exports it.
+    let spotify_tokens = dir.join("spotify_tokens.json");
+    if spotify_tokens.is_file() {
+        zip.start_file("spotify_tokens.json", opts)
+            .map_err(|e| e.to_string())?;
+        let bytes = fs::read(&spotify_tokens).map_err(|e| e.to_string())?;
         zip.write_all(&bytes).map_err(|e| e.to_string())?;
     }
 

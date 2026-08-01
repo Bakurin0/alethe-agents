@@ -2,6 +2,7 @@ import {
   Check,
   CheckCircle2,
   Circle,
+  FolderKanban,
   GripVertical,
   ListTodo,
   PanelRightClose,
@@ -24,9 +25,11 @@ import styles from './TodoSidebar.module.css'
 export function TodoSidebar() {
   const t = useT()
   const todos = useProjectsStore((state) => state.todos)
+  const projects = useProjectsStore((state) => state.projects)
   const createTodo = useProjectsStore((state) => state.createTodo)
   const renameTodo = useProjectsStore((state) => state.renameTodo)
   const updateTodoTags = useProjectsStore((state) => state.updateTodoTags)
+  const setTodoProject = useProjectsStore((state) => state.setTodoProject)
   const toggleTodo = useProjectsStore((state) => state.toggleTodo)
   const deleteTodo = useProjectsStore((state) => state.deleteTodo)
   const reorderTodo = useProjectsStore((state) => state.reorderTodo)
@@ -34,6 +37,7 @@ export function TodoSidebar() {
   const openModal = useUiStore((state) => state.openModal_)
   const [title, setTitle] = useState('')
   const [tagDraft, setTagDraft] = useState('')
+  const [projectDraft, setProjectDraft] = useState('')
   const [editingId, setEditingId] = useState<string | null>(null)
   const [editTitle, setEditTitle] = useState('')
   const [draggedId, setDraggedId] = useState<string | null>(null)
@@ -42,9 +46,10 @@ export function TodoSidebar() {
   const completed = todos.filter((todo) => todo.completed)
 
   const submit = () => {
-    if (!createTodo(title, parseTags(tagDraft))) return
+    if (!createTodo(title, parseTags(tagDraft), projectDraft || undefined)) return
     setTitle('')
     setTagDraft('')
+    setProjectDraft('')
   }
 
   const startEditing = (todo: TodoItem) => {
@@ -143,13 +148,15 @@ export function TodoSidebar() {
                     aria-label={t('todo.edit')}
                   />
                 ) : (
-                  <button
-                    type="button"
-                    className={styles.todoTitle}
-                    onClick={() => startEditing(todo)}
-                    title={todo.title}
-                  >
-                    <span className={styles.todoTitleText}>{todo.title}</span>
+                  <div className={styles.todoTitle}>
+                    <button
+                      type="button"
+                      className={styles.titleButton}
+                      onClick={() => startEditing(todo)}
+                      title={todo.title}
+                    >
+                      <span className={styles.todoTitleText}>{todo.title}</span>
+                    </button>
                     {todo.tags.length > 0 ? (
                       <span className={styles.tags}>
                         {todo.tags.map((tag) => (
@@ -157,7 +164,23 @@ export function TodoSidebar() {
                         ))}
                       </span>
                     ) : null}
-                  </button>
+                    <span className={styles.projectLink}>
+                      <FolderKanban size={11} aria-hidden="true" />
+                      <select
+                        value={todo.projectId ?? ''}
+                        onChange={(event) => setTodoProject(todo.id, event.target.value || null)}
+                        onClick={(event) => event.stopPropagation()}
+                        onMouseDown={(event) => event.stopPropagation()}
+                        title={t('todo.linkProject')}
+                        aria-label={t('todo.linkProject')}
+                      >
+                        <option value="">{t('todo.noProject')}</option>
+                        {projects.map((project) => (
+                          <option key={project.id} value={project.id}>{project.name}</option>
+                        ))}
+                      </select>
+                    </span>
+                  </div>
                 )}
 
                 <div className={styles.rowActions}>
@@ -284,6 +307,19 @@ export function TodoSidebar() {
             aria-label={t('todo.tagsPlaceholder')}
           />
         </div>
+        <label className={styles.projectInputWrap}>
+          <FolderKanban size={13} aria-hidden="true" />
+          <select
+            value={projectDraft}
+            onChange={(event) => setProjectDraft(event.target.value)}
+            aria-label={t('todo.linkProject')}
+          >
+            <option value="">{t('todo.noProject')}</option>
+            {projects.map((project) => (
+              <option key={project.id} value={project.id}>{project.name}</option>
+            ))}
+          </select>
+        </label>
         <button
           type="submit"
           className={styles.addButton}

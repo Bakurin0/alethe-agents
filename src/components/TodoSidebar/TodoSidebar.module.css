@@ -76,6 +76,48 @@
   border-bottom: 1px solid var(--border);
 }
 
+.projectInputWrap {
+  min-width: 0;
+  height: 26px;
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  padding: 0 7px;
+  color: var(--fg-faint);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  position: relative;
+}
+
+.projectInputWrap::after,
+.projectLink::after {
+  content: '⌄';
+  position: absolute;
+  right: 6px;
+  color: var(--fg-faint);
+  font-size: 11px;
+  pointer-events: none;
+}
+
+.projectInputWrap select,
+.projectLink select {
+  min-width: 0;
+  width: 100%;
+  overflow: hidden;
+  color: var(--fg-muted);
+  background: transparent;
+  border: 0;
+  outline: none;
+  font: inherit;
+  text-overflow: ellipsis;
+  appearance: none;
+  -webkit-appearance: none;
+  padding-right: 14px;
+}
+
+.projectInputWrap select { font-size: 11px; }
+.projectInputWrap:focus-within { border-color: var(--border-strong); box-shadow: 0 0 0 2px var(--accent-ring); }
+
 .tagInputWrap {
   min-width: 0;
   height: 26px;
@@ -258,6 +300,19 @@
   text-align: left;
 }
 
+.titleButton {
+  display: block;
+  width: 100%;
+  min-width: 0;
+  padding: 0;
+  overflow: hidden;
+  color: inherit;
+  background: transparent;
+  border: 0;
+  font: inherit;
+  text-align: left;
+}
+
 .todoTitleText {
   display: block;
   min-width: 0;
@@ -265,6 +320,18 @@
   text-overflow: ellipsis;
   white-space: nowrap;
 }
+
+.projectLink {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  max-width: 100%;
+  margin-top: 3px;
+  color: var(--fg-faint);
+  position: relative;
+}
+
+.projectLink select { font-size: 10px; }
 
 .tags {
   display: flex;

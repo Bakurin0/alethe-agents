@@ -20,6 +20,10 @@ type Entry = { resetsAt: number; notified: boolean; agent: AgentType; kind: Wind
 
 const entries = new Map<string, Entry>()
 const HEARTBEAT_MS = 60_000
+// Um timestamp futuro pode mudar levemente entre respostas da API sem que a
+// janela tenha resetado. Só tratamos uma mudança como reset quando o timestamp
+// anterior já venceu (com pequena margem para atrasos de polling).
+const RESET_ROLLOVER_GRACE_MS = 5 * 60_000
 let heartbeat: number | null = null
 
 function agentLabel(agent: AgentType): string {
@@ -69,7 +73,9 @@ function observe(key: string, agent: AgentType, kind: WindowKind, resetsAt: numb
   if (resetsAt > prev.resetsAt) {
     // Janela rolou pra frente => resetou desde a última leitura. Se o heartbeat
     // ainda não avisou dessa rolagem, avisa agora; depois re-arma a nova janela.
-    if (!prev.notified) fire(prev)
+    if (prev.resetsAt <= Date.now() + RESET_ROLLOVER_GRACE_MS && !prev.notified) {
+      fire(prev)
+    }
     entries.set(key, { resetsAt, notified: false, agent, kind })
   }
   // resetsAt === prev.resetsAt: mesma janela, nada a fazer.

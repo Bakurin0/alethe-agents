@@ -2,12 +2,16 @@ import { useDraggable, useDroppable } from '@dnd-kit/core'
 import {
   FileCode,
   FileText,
+  ClipboardCopy,
   FolderOpen,
   GripVertical,
   Maximize2,
   Minimize2,
+  Pencil,
   RefreshCw,
+  Save,
   Trash2,
+  X,
 } from 'lucide-react'
 import { memo, useCallback, useEffect, useRef, useState } from 'react'
 
@@ -17,6 +21,8 @@ import {
   listenFileChanged,
   openInFileExplorer,
   readTextFile,
+  writeTextFile,
+  writeClipboardText,
   unwatchFile,
   watchFile,
 } from '../../lib/tauri'
@@ -45,7 +51,12 @@ export const MarkdownPane = memo(function MarkdownPane({
   const t = useT()
   const filePath = terminal.filePath ?? ''
   const [content, setContent] = useState<string | null>(null)
+  const [draft, setDraft] = useState('')
+  const [editing, setEditing] = useState(false)
+  const [saving, setSaving] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  const [copied, setCopied] = useState(false)
+  const editingRef = useRef(false)
 
   const focusedTerminalId = useUiStore((s) => s.focusedTerminalId)
   const isFocusMode = inFocusOverlay || focusedTerminalId === terminal.id
@@ -55,6 +66,7 @@ export const MarkdownPane = memo(function MarkdownPane({
   const setProjectGridLayout = useProjectsStore((s) => s.setProjectGridLayout)
   const setFocusedTerminal = useUiStore((s) => s.setFocusedTerminal)
   const setActiveTerminal = useUiStore((s) => s.setActiveTerminal)
+  const pushToast = useUiStore((s) => s.pushToast)
 
   const draggable = useDraggable({ id: `pane:${terminal.id}`, disabled: isFocusMode || preview })
   const droppable = useDroppable({ id: `pane:${terminal.id}`, disabled: isFocusMode || preview })
@@ -73,15 +85,47 @@ export const MarkdownPane = memo(function MarkdownPane({
     try {
       const text = await readTextFile(filePath)
       setContent(text)
+      if (!editingRef.current) setDraft(text)
       setError(null)
     } catch (err) {
       setError(err instanceof Error ? err.message : String(err))
     }
   }, [filePath])
 
+  const startEditing = () => {
+    if (content === null) return
+    setDraft(content)
+    editingRef.current = true
+    setEditing(true)
+  }
+
+  const cancelEditing = () => {
+    editingRef.current = false
+    setDraft(content ?? '')
+    setEditing(false)
+  }
+
+  const saveEditing = async () => {
+    if (!filePath || content === null || saving) return
+    setSaving(true)
+    try {
+      await writeTextFile(filePath, draft)
+      setContent(draft)
+      editingRef.current = false
+      setEditing(false)
+      setError(null)
+    } catch (err) {
+      setError(err instanceof Error ? err.message : String(err))
+    } finally {
+      setSaving(false)
+    }
+  }
+
   // Carrega + observa o arquivo. Recarrega sozinho quando muda no disco.
   useEffect(() => {
     if (!filePath) return
+    editingRef.current = false
+    setEditing(false)
     void reload()
     void watchFile(filePath).catch(() => {})
     const unlisten = listenFileChanged((changed) => {
@@ -115,6 +159,18 @@ export const MarkdownPane = memo(function MarkdownPane({
     if (window.confirm(t('ui.markdown.confirmClose', { name: terminal.name }))) {
       deleteTerminal(projectId, terminal.id)
       if (isFocusMode) setFocusedTerminal(null)
+    }
+  }
+
+  const copyMarkdown = async () => {
+    if (content === null) return
+    try {
+      await writeClipboardText(content)
+      setCopied(true)
+      pushToast({ title: t('ui.markdown.copied'), body: '' })
+      window.setTimeout(() => setCopied(false), 1500)
+    } catch {
+      setCopied(false)
     }
   }
 
@@ -169,6 +225,51 @@ export const MarkdownPane = memo(function MarkdownPane({
               >
                 <RefreshCw size={12} />
               </button>
+              <button
+                type="button"
+                className={styles.action}
+                onClick={() => void copyMarkdown()}
+                disabled={content === null}
+                title={copied ? t('ui.markdown.copied') : t('ui.markdown.copySource')}
+                aria-label={copied ? t('ui.markdown.copied') : t('ui.markdown.copySource')}
+              >
+                <ClipboardCopy size={12} />
+              </button>
+              {editing ? (
+                <>
+                  <button
+                    type="button"
+                    className={styles.action}
+                    onClick={() => void saveEditing()}
+                    disabled={saving || content === null}
+                    title={saving ? t('ui.markdown.saving') : t('ui.markdown.save')}
+                    aria-label={saving ? t('ui.markdown.saving') : t('ui.markdown.save')}
+                  >
+                    <Save size={12} />
+                  </button>
+                  <button
+                    type="button"
+                    className={styles.action}
+                    onClick={cancelEditing}
+                    disabled={saving}
+                    title={t('ui.markdown.cancelEdit')}
+                    aria-label={t('ui.markdown.cancelEdit')}
+                  >
+                    <X size={12} />
+                  </button>
+                </>
+              ) : (
+                <button
+                  type="button"
+                  className={styles.action}
+                  onClick={startEditing}
+                  disabled={content === null}
+                  title={t('ui.markdown.edit')}
+                  aria-label={t('ui.markdown.edit')}
+                >
+                  <Pencil size={12} />
+                </button>
+              )}
               <button
                 type="button"
                 className={styles.action}
@@ -227,6 +328,15 @@ export const MarkdownPane = memo(function MarkdownPane({
           <div className={styles.empty}>
             <span>{t('ui.markdown.loading')}</span>
           </div>
+        ) : editing ? (
+          <textarea
+            className={styles.editor}
+            value={draft}
+            onChange={(event) => setDraft(event.target.value)}
+            spellCheck={false}
+            autoFocus
+            aria-label={t('ui.markdown.edit')}
+          />
         ) : terminal.kind === 'file' ? (
           <div className={styles.scroll}>
             <pre className={styles.textView}>{content}</pre>

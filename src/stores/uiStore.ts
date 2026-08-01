@@ -31,6 +31,7 @@ type ModalKind =
   | 'todoSettings'
   | 'topbarSettings'
   | 'updateAvailable'
+  | 'whatsNew'
   | null
 
 export type ActiveView = 'home' | 'workspace' | 'agentCanvas'

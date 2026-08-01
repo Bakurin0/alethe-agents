@@ -1,12 +1,34 @@
-import { ArrowLeftRight, Check, PencilLine, Plus, Trash2 } from 'lucide-react'
+import { ArrowLeftRight, Check, Download, Loader2, PencilLine, Plus, ShieldCheck, Trash2, X } from 'lucide-react'
 import { useEffect, useMemo, useState } from 'react'
 
+import { saveFile } from '../../lib/dialog'
 import { useT } from '../../lib/i18n'
-import { createProfile, deleteProfile, renameProfile, setActiveProfile } from '../../lib/tauri'
+import {
+  createProfile,
+  deleteProfile,
+  exportProfileBackup,
+  listProfileSummaries,
+  renameProfile,
+  setActiveProfile,
+  suspendPty,
+  type ProfileSummary,
+} from '../../lib/tauri'
 import { useProjectsStore } from '../../stores/projectsStore'
 import { useUiStore } from '../../stores/uiStore'
 import { Modal } from './Modal'
 import controls from './controls.module.css'
+import styles from './ProfilesModal.module.css'
+
+type BusyAction = null | 'load' | 'create' | 'rename' | 'switch' | 'backup' | 'delete'
+
+function formatDate(ms: number, locale: string): string {
+  if (!ms) return '—'
+  try {
+    return new Intl.DateTimeFormat(locale, { dateStyle: 'medium' }).format(new Date(ms))
+  } catch {
+    return new Date(ms).toLocaleDateString()
+  }
+}
 
 export function ProfilesModal() {
   const t = useT()
@@ -14,248 +36,313 @@ export function ProfilesModal() {
   const closeModal = useUiStore((s) => s.closeModal)
   const profiles = useProjectsStore((s) => s.profiles)
   const activeProfileId = useProjectsStore((s) => s.activeProfileId)
+  const projects = useProjectsStore((s) => s.projects)
+  const language = useProjectsStore((s) => s.preferences.language)
 
+  const [summaries, setSummaries] = useState<ProfileSummary[]>([])
   const [newName, setNewName] = useState('')
   const [editingId, setEditingId] = useState<string | null>(null)
   const [editingName, setEditingName] = useState('')
+  const [pendingDelete, setPendingDelete] = useState<ProfileSummary | null>(null)
+  const [confirmName, setConfirmName] = useState('')
+  const [backupReady, setBackupReady] = useState(false)
+  const [busy, setBusy] = useState<BusyAction>(null)
+  const [error, setError] = useState<string | null>(null)
+  const [notice, setNotice] = useState<string | null>(null)
+
+  const load = async () => {
+    setBusy('load')
+    setError(null)
+    try {
+      setSummaries(await listProfileSummaries())
+    } catch (err) {
+      setError(t('profiles.loadError', { error: String(err) }))
+    } finally {
+      setBusy(null)
+    }
+  }
 
   useEffect(() => {
-    if (open) return
-    setNewName('')
-    setEditingId(null)
-    setEditingName('')
+    if (!open) {
+      setNewName('')
+      setEditingId(null)
+      setEditingName('')
+      setPendingDelete(null)
+      setConfirmName('')
+      setBackupReady(false)
+      setError(null)
+      setNotice(null)
+      return
+    }
+    void load()
   }, [open])
 
-  const sortedProfiles = useMemo(() => profiles, [profiles])
-  const activeProfile = sortedProfiles.find((profile) => profile.id === activeProfileId) ?? null
+  const fallbackSummaries = useMemo<ProfileSummary[]>(
+    () => profiles.map((profile) => ({
+      id: profile.id,
+      name: profile.name,
+      created_at_ms: profile.created_at_ms,
+      last_used_at_ms: profile.last_used_at_ms,
+      project_count: profile.id === activeProfileId ? projects.length : 0,
+      terminal_count: profile.id === activeProfileId
+        ? projects.reduce((total, project) => total + project.terminals.length, 0)
+        : 0,
+      is_active: profile.id === activeProfileId,
+    })),
+    [activeProfileId, profiles, projects],
+  )
+  const items = summaries.length > 0 ? summaries : fallbackSummaries
+  const activeProfile = items.find((profile) => profile.is_active || profile.id === activeProfileId) ?? null
+  const currentPtyIds = projects.flatMap((project) =>
+    project.terminals.flatMap((terminal) => terminal.tabs.map((tab) => tab.ptyId).filter(Boolean) as string[]),
+  )
 
-  /** alinha ícone + texto dentro dos botões de ação. */
-  const iconBtn = { display: 'inline-flex', alignItems: 'center', gap: 6 } as const
+  const mapError = (err: unknown) => {
+    const raw = String(err)
+    if (raw.includes('profile_name_exists')) return t('profiles.nameExists')
+    if (raw.includes('backup_inside_profile')) return t('profiles.backupInsideProfile')
+    return t('profiles.operationError', { error: raw })
+  }
+
+  const parkCurrentProfile = async () => {
+    const ids = [...new Set(currentPtyIds)]
+    await Promise.all(ids.map((id) => suspendPty(id)))
+  }
 
   const reload = () => window.location.reload()
 
   const create = async () => {
     const trimmed = newName.trim()
     if (!trimmed) {
-      window.alert(t('profiles.nameRequired'))
+      setError(t('profiles.nameRequired'))
       return
     }
+    setBusy('create')
+    setError(null)
+    if (items.some((profile) => profile.name.trim().toLowerCase() === trimmed.toLowerCase())) {
+      setBusy(null)
+      setError(t('profiles.nameExists'))
+      return
+    }
+    let parked = false
     try {
-      await createProfile(trimmed)
+      const created = await createProfile(trimmed)
+      const createdProfile = created.profiles.find((profile) => profile.name === trimmed)
+      if (!createdProfile) throw new Error('created profile not found')
+      await parkCurrentProfile()
+      parked = true
+      await setActiveProfile(createdProfile.id)
       reload()
     } catch (err) {
-      window.alert(t('common.errorPrefix', { message: String(err) }))
+      setError(mapError(err))
+      setBusy(null)
+      if (parked) window.setTimeout(reload, 300)
     }
   }
 
-  const switchProfile = async (profileId: string) => {
-    if (profileId === activeProfileId) return
+  const switchProfile = async (profile: ProfileSummary) => {
+    if (profile.id === activeProfileId) return
+    setBusy('switch')
+    setError(null)
+    setNotice(t('profiles.switchBusy'))
     try {
-      await setActiveProfile(profileId)
+      await parkCurrentProfile()
+      await setActiveProfile(profile.id)
       reload()
     } catch (err) {
-      window.alert(t('common.errorPrefix', { message: String(err) }))
+      setBusy(null)
+      setError(t('profiles.switchError', { error: String(err) }))
     }
-  }
-
-  const startRename = (profileId: string, currentName: string) => {
-    setEditingId(profileId)
-    setEditingName(currentName)
   }
 
   const saveRename = async () => {
     if (!editingId) return
     const trimmed = editingName.trim()
     if (!trimmed) {
-      window.alert(t('profiles.nameRequired'))
+      setError(t('profiles.nameRequired'))
       return
     }
+    setBusy('rename')
+    setError(null)
     try {
       await renameProfile(editingId, trimmed)
       reload()
     } catch (err) {
-      window.alert(t('common.errorPrefix', { message: String(err) }))
+      setBusy(null)
+      setError(mapError(err))
     }
   }
 
-  const removeProfile = async (profileId: string) => {
-    if (!window.confirm(t('profiles.deleteConfirm'))) return
+  const exportPendingBackup = async () => {
+    if (!pendingDelete) return
+    setBusy('backup')
+    setError(null)
     try {
-      await deleteProfile(profileId)
+      const targetPath = await saveFile({
+        title: t('profiles.backupDialogTitle'),
+        defaultPath: `alethe-${pendingDelete.name.replace(/[^a-z0-9-_]+/gi, '-').toLowerCase()}-backup.zip`,
+        filters: [{ name: t('profiles.backupFileType'), extensions: ['zip'] }],
+      })
+      if (!targetPath) return
+      await exportProfileBackup(pendingDelete.id, targetPath)
+      setBackupReady(true)
+      setNotice(t('profiles.backupReady'))
+    } catch (err) {
+      setError(mapError(err))
+    } finally {
+      setBusy(null)
+    }
+  }
+
+  const removeProfile = async () => {
+    if (!pendingDelete || !backupReady || confirmName.trim() !== pendingDelete.name) return
+    setBusy('delete')
+    setError(null)
+    try {
+      if (pendingDelete.id === activeProfileId) await parkCurrentProfile()
+      await deleteProfile(pendingDelete.id)
       reload()
     } catch (err) {
-      window.alert(t('common.errorPrefix', { message: String(err) }))
+      setBusy(null)
+      setError(mapError(err))
     }
+  }
+
+  const startDelete = (profile: ProfileSummary) => {
+    setPendingDelete(profile)
+    setConfirmName('')
+    setBackupReady(false)
+    setError(null)
+    setNotice(null)
   }
 
   return (
-    <Modal open={open} onClose={closeModal} title={t('profiles.title')} width={640}>
-      <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
-        <div style={{ color: 'var(--fg-muted)', fontSize: 12, lineHeight: 1.45 }}>
-          {t('profiles.subtitle')}
+    <Modal open={open} onClose={closeModal} title={t('profiles.title')} width={760}>
+      <div className={styles.root}>
+        <div className={styles.intro}>
+          <div className={styles.introIcon}><ShieldCheck size={18} /></div>
+          <div>
+            <strong>{t('profiles.localTitle')}</strong>
+            <p>{t('profiles.subtitle')}</p>
+          </div>
         </div>
 
-        <div className={controls.field}>
-          <label className={controls.label}>{t('profiles.createTitle')}</label>
-          <div className={controls.inputActionRow}>
+        {error ? <div className={styles.feedbackError} role="alert">{error}</div> : null}
+        {notice ? <div className={styles.feedbackNotice} role="status">{notice}</div> : null}
+
+        <section className={styles.createCard}>
+          <div>
+            <h3>{t('profiles.createTitle')}</h3>
+            <p>{t('profiles.createDescription')}</p>
+          </div>
+          <div className={styles.createRow}>
             <input
               className={controls.input}
               value={newName}
-              onChange={(e) => setNewName(e.target.value)}
+              onChange={(event) => setNewName(event.target.value)}
               placeholder={t('profiles.createPlaceholder')}
-              onKeyDown={(e) => {
-                if (e.key === 'Enter') void create()
-              }}
+              onKeyDown={(event) => { if (event.key === 'Enter') void create() }}
+              disabled={busy !== null}
             />
-            <button
-              type="button"
-              className={`${controls.btn} ${controls.btnPrimary}`}
-              style={iconBtn}
-              onClick={() => void create()}
-            >
-              <Plus size={14} />
-              <span>{t('profiles.createButton')}</span>
+            <button type="button" className={`${controls.btn} ${controls.btnPrimary}`} onClick={() => void create()} disabled={busy !== null}>
+              {busy === 'create' ? <Loader2 size={14} className={styles.spin} /> : <Plus size={14} />}
+              {t('profiles.createButton')}
             </button>
           </div>
-        </div>
+        </section>
 
-        <div className={controls.field}>
-          <label className={controls.label}>
-            {t('profiles.current')}
-            {activeProfile ? ` · ${activeProfile.name}` : ''}
-          </label>
-          <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-            {sortedProfiles.length === 0 ? (
-              <div
-                style={{
-                  padding: '12px 14px',
-                  borderRadius: 'var(--radius-md)',
-                  border: '1px solid var(--border)',
-                  background: 'var(--bg-sunken)',
-                  color: 'var(--fg-muted)',
-                  fontSize: 13,
-                }}
-              >
-                {t('profiles.noProfiles')}
-              </div>
-            ) : (
-              sortedProfiles.map((profile) => {
-                const isActive = profile.id === activeProfileId
+        <section className={styles.listSection}>
+          <div className={styles.sectionHeader}>
+            <div>
+              <h3>{t('profiles.listTitle')}</h3>
+              <p>{t('profiles.listDescription')}</p>
+            </div>
+            {busy === 'load' ? <Loader2 size={15} className={styles.spin} /> : null}
+          </div>
+
+          {items.length === 0 ? (
+            <div className={styles.empty}>{t('profiles.noProfiles')}</div>
+          ) : (
+            <div className={styles.profileList}>
+              {items.map((profile) => {
                 const isEditing = editingId === profile.id
+                const isBusy = busy !== null
                 return (
-                  <div
-                    key={profile.id}
-                    style={{
-                      border: '1px solid var(--border)',
-                      borderRadius: 'var(--radius-md)',
-                      background: 'var(--bg-sunken)',
-                      padding: 12,
-                      display: 'flex',
-                      flexDirection: 'column',
-                      gap: 10,
-                    }}
-                  >
-                    <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-                      <div style={{ minWidth: 0, flex: 1 }}>
-                        <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                          <strong style={{ fontSize: 14, color: 'var(--fg)' }}>{profile.name}</strong>
-                          {isActive ? (
-                            <span className={controls.pill} style={{ padding: '3px 8px', minHeight: 0 }}>
-                              <Check size={12} />
-                              {t('profiles.current')}
-                            </span>
-                          ) : null}
-                        </div>
-                        <div
-                          style={{
-                            fontSize: 11,
-                            color: 'var(--fg-muted)',
-                            overflow: 'hidden',
-                            textOverflow: 'ellipsis',
-                            whiteSpace: 'nowrap',
-                          }}
-                        >
-                          {profile.id}
-                        </div>
+                  <article key={profile.id} className={`${styles.profileCard} ${profile.is_active ? styles.profileCardActive : ''}`}>
+                    <div className={styles.profileMain}>
+                      <div className={styles.profileTitleRow}>
+                        <strong>{profile.name}</strong>
+                        {profile.is_active ? <span className={styles.currentBadge}><Check size={11} />{t('profiles.current')}</span> : null}
                       </div>
-                      {!isEditing ? (
-                        <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', justifyContent: 'flex-end' }}>
-                          <button
-                            type="button"
-                            className={controls.btn}
-                            style={iconBtn}
-                            onClick={() => void switchProfile(profile.id)}
-                            disabled={isActive}
-                          >
-                            <ArrowLeftRight size={14} />
-                            <span>{t('profiles.switchButton')}</span>
-                          </button>
-                          <button
-                            type="button"
-                            className={controls.btn}
-                            style={iconBtn}
-                            onClick={() => startRename(profile.id, profile.name)}
-                          >
-                            <PencilLine size={14} />
-                            <span>{t('profiles.renameButton')}</span>
-                          </button>
-                          <button
-                            type="button"
-                            className={`${controls.btn} ${controls.btnDanger}`}
-                            style={iconBtn}
-                            onClick={() => void removeProfile(profile.id)}
-                            disabled={profiles.length <= 1}
-                          >
-                            <Trash2 size={14} />
-                            <span>{t('profiles.deleteButton')}</span>
-                          </button>
-                        </div>
-                      ) : null}
+                      <div className={styles.stats}>
+                        <span>{t('profiles.projects', { count: profile.project_count })}</span>
+                        <span>{t('profiles.terminals', { count: profile.terminal_count })}</span>
+                        <span>{t('profiles.lastUsed', { date: formatDate(profile.last_used_at_ms, language === 'pt-BR' ? 'pt-BR' : 'en-US') })}</span>
+                      </div>
                     </div>
-
                     {isEditing ? (
-                      <div className={controls.inputActionRow}>
+                      <div className={styles.renameRow}>
                         <input
                           className={controls.input}
                           value={editingName}
-                          onChange={(e) => setEditingName(e.target.value)}
+                          onChange={(event) => setEditingName(event.target.value)}
                           placeholder={t('profiles.renamePlaceholder')}
-                          onKeyDown={(e) => {
-                            if (e.key === 'Enter') void saveRename()
-                            if (e.key === 'Escape') {
-                              setEditingId(null)
-                              setEditingName('')
-                            }
-                          }}
                           autoFocus
-                        />
-                        <button
-                          type="button"
-                          className={`${controls.btn} ${controls.btnPrimary}`}
-                          style={iconBtn}
-                          onClick={() => void saveRename()}
-                        >
-                          <Check size={14} />
-                          <span>{t('common.save')}</span>
-                        </button>
-                        <button
-                          type="button"
-                          className={controls.btn}
-                          onClick={() => {
-                            setEditingId(null)
-                            setEditingName('')
+                          onKeyDown={(event) => {
+                            if (event.key === 'Enter') void saveRename()
+                            if (event.key === 'Escape') setEditingId(null)
                           }}
-                        >
-                          {t('common.cancel')}
-                        </button>
+                        />
+                        <button type="button" className={`${controls.btn} ${controls.btnPrimary}`} onClick={() => void saveRename()} disabled={isBusy}><Check size={14} />{t('common.save')}</button>
+                        <button type="button" className={controls.btn} onClick={() => setEditingId(null)} disabled={isBusy}><X size={14} />{t('common.cancel')}</button>
                       </div>
-                    ) : null}
-                  </div>
+                    ) : (
+                      <div className={styles.actions}>
+                        {!profile.is_active ? (
+                          <button type="button" className={`${controls.btn} ${controls.btnPrimary}`} onClick={() => void switchProfile(profile)} disabled={isBusy}>
+                            {busy === 'switch' ? <Loader2 size={14} className={styles.spin} /> : <ArrowLeftRight size={14} />}
+                            {t('profiles.switchButton')}
+                          </button>
+                        ) : null}
+                        <button type="button" className={controls.btn} onClick={() => { setEditingId(profile.id); setEditingName(profile.name); setError(null) }} disabled={isBusy}><PencilLine size={14} />{t('profiles.renameButton')}</button>
+                        <button type="button" className={`${controls.btn} ${controls.btnDanger}`} onClick={() => startDelete(profile)} disabled={isBusy || items.length <= 1}><Trash2 size={14} />{t('profiles.deleteButton')}</button>
+                      </div>
+                    )}
+                  </article>
                 )
-              })
-            )}
-          </div>
-        </div>
+              })}
+            </div>
+          )}
+        </section>
+
+        {activeProfile ? <div className={styles.footerHint}>{t('profiles.activeHint', { name: activeProfile.name })}</div> : null}
+
+        {pendingDelete ? (
+          <section className={styles.deletePanel}>
+            <div className={styles.deleteHeader}>
+              <div>
+                <h3>{t('profiles.deleteTitle', { name: pendingDelete.name })}</h3>
+                <p>{t('profiles.deleteDescription', { projects: pendingDelete.project_count, terminals: pendingDelete.terminal_count })}</p>
+              </div>
+              <button type="button" className={styles.closeDelete} onClick={() => setPendingDelete(null)} aria-label={t('common.close')}><X size={15} /></button>
+            </div>
+            <button type="button" className={controls.btn} onClick={() => void exportPendingBackup()} disabled={busy !== null || backupReady}>
+              {busy === 'backup' ? <Loader2 size={14} className={styles.spin} /> : <Download size={14} />}
+              {backupReady ? t('profiles.backupDone') : t('profiles.exportBackup')}
+            </button>
+            <label className={controls.field}>
+              <span className={controls.label}>{t('profiles.confirmDeleteInput')}</span>
+              <input className={controls.input} value={confirmName} onChange={(event) => setConfirmName(event.target.value)} placeholder={pendingDelete.name} disabled={!backupReady || busy !== null} />
+            </label>
+            <div className={styles.deleteActions}>
+              <button type="button" className={controls.btn} onClick={() => setPendingDelete(null)} disabled={busy !== null}>{t('common.cancel')}</button>
+              <button type="button" className={`${controls.btn} ${controls.btnDanger}`} onClick={() => void removeProfile()} disabled={!backupReady || confirmName.trim() !== pendingDelete.name || busy !== null}>
+                {busy === 'delete' ? <Loader2 size={14} className={styles.spin} /> : <Trash2 size={14} />}
+                {t('profiles.confirmDeleteButton')}
+              </button>
+            </div>
+          </section>
+        ) : null}
       </div>
     </Modal>
   )

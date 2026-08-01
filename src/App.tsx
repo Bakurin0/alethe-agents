@@ -34,6 +34,7 @@ import { ThemePickerModal } from './components/modals/ThemePickerModal'
 import { TodoSettingsModal } from './components/modals/TodoSettingsModal'
 import { TopbarSettingsModal } from './components/modals/TopbarSettingsModal'
 import { UpdateModal } from './components/modals/UpdateModal'
+import { WhatsNewModal } from './components/modals/WhatsNewModal'
 import { WelcomeModal } from './components/modals/WelcomeModal'
 import { useKeybindings } from './hooks/useKeybindings'
 import { useDiscordPresence } from './hooks/useDiscordPresence'
@@ -446,6 +447,7 @@ export default function App() {
       <TopbarSettingsModal />
       <AiUsageModal />
       <UpdateModal />
+      <WhatsNewModal />
       </ErrorBoundary>
       <InAppNotifications />
       {activeView === 'agentCanvas' ? <TokenHud /> : null}

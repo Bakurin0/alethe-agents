@@ -432,7 +432,7 @@ function LibraryItem({
 }
 
 export function AgentCanvasPOC() {
-  const sensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 6 } }))
+  const sensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 8 } }))
   const [draggingAgent, setDraggingAgent] = useState<string | null>(null)
   return (
     <DndContext

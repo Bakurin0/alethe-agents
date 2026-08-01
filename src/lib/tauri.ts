@@ -27,8 +27,22 @@ export type ProfilesState = {
   profiles: ProfileMeta[]
 }
 
+export type ProfileSummary = {
+  id: string
+  name: string
+  created_at_ms: number
+  last_used_at_ms: number
+  project_count: number
+  terminal_count: number
+  is_active: boolean
+}
+
 export async function listProfiles(): Promise<ProfilesState> {
   return invoke<ProfilesState>('list_profiles')
+}
+
+export async function listProfileSummaries(): Promise<ProfileSummary[]> {
+  return invoke<ProfileSummary[]>('list_profile_summaries')
 }
 
 export async function getActiveProfile(): Promise<ProfileMeta> {
@@ -281,6 +295,10 @@ export async function gitPull(repoRoot: string): Promise<string> {
 
 export async function readTextFile(path: string): Promise<string> {
   return invoke<string>('read_text_file', { path })
+}
+
+export async function writeTextFile(path: string, content: string): Promise<void> {
+  await invoke('write_text_file', { path, content })
 }
 
 export async function ensureTodoTemplate(directory: string): Promise<string> {
@@ -558,6 +576,10 @@ export async function findCliLauncher(agent: string): Promise<string | null> {
 
 export async function exportBackup(targetPath: string): Promise<void> {
   await invoke('export_backup', { targetPath })
+}
+
+export async function exportProfileBackup(profileId: string, targetPath: string): Promise<void> {
+  await invoke('export_profile_backup', { profileId, targetPath })
 }
 
 export async function importBackup(sourcePath: string): Promise<void> {

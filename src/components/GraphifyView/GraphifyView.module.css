@@ -139,6 +139,7 @@
 
 .empty {
   display: flex;
+  flex-direction: column;
   flex: 1;
   align-items: center;
   justify-content: center;
@@ -146,6 +147,29 @@
   text-align: center;
   font-size: 13px;
   color: var(--fg-muted);
+}
+
+.empty strong {
+  margin-top: 10px;
+  color: var(--fg);
+  font-size: 14px;
+}
+
+.empty span {
+  max-width: 420px;
+  margin-top: 6px;
+}
+
+.generateButton {
+  margin-top: 14px;
+}
+
+.spin {
+  animation: graphify-spin 0.9s linear infinite;
+}
+
+@keyframes graphify-spin {
+  to { transform: rotate(360deg); }
 }
 
 .error {

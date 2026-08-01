@@ -5,6 +5,7 @@ import {
   Maximize2,
   Minimize2,
   Minus,
+  Network,
   TerminalSquare,
 } from 'lucide-react'
 import { memo, useMemo } from 'react'
@@ -39,6 +40,8 @@ export const ProjectContainer = memo(function ProjectContainer({
   const setWorkspaceFlat = useProjectsStore((s) => s.setWorkspaceFlat)
   const closeContainer = useProjectsStore((s) => s.closeContainer)
   const openContainerWithAllPanes = useProjectsStore((s) => s.openContainerWithAllPanes)
+  const createGraphifyPane = useProjectsStore((s) => s.createGraphifyPane)
+  const setGraphifyEnabled = useProjectsStore((s) => s.setGraphifyEnabled)
   const setWorkspaceGridLayout = useProjectsStore((s) => s.setWorkspaceGridLayout)
   const setGroupGridLayout = useProjectsStore((s) => s.setGroupGridLayout)
   const workspaceGridLayout = useProjectsStore(
@@ -160,6 +163,8 @@ export const ProjectContainer = memo(function ProjectContainer({
       .map((id) => map.get(id))
       .filter((t): t is Terminal => Boolean(t))
   }, [project.terminals, container.paneIds])
+  const graphifyPaneOpen = terminals.some((terminal) => terminal.kind === 'graphify')
+  const graphifyCwd = terminals.find((terminal) => terminal.kind !== 'graphify' && terminal.cwd)?.cwd
 
   // Cor do container = cor do PROJETO (cada projeto fica visualmente único).
   // Cor do grupo fica reservada pro bullet/tag na sidebar (organização).
@@ -217,6 +222,21 @@ export const ProjectContainer = memo(function ProjectContainer({
         </span>
         <span className={styles.tagCount}>{container.paneIds.length}</span>
         <div className={styles.tagActions}>
+          {!graphifyPaneOpen && graphifyCwd ? (
+            <button
+              type="button"
+              className={styles.tagBtn}
+              onClick={(e) => {
+                e.stopPropagation()
+                setGraphifyEnabled(project.id, true)
+                createGraphifyPane(project.id, graphifyCwd)
+              }}
+              title={t('graphify.startInProject')}
+              aria-label={t('graphify.startInProject')}
+            >
+              <Network size={11} />
+            </button>
+          ) : null}
           <button
             type="button"
             className={styles.tagBtn}

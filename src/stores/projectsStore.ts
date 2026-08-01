@@ -83,6 +83,7 @@ type ProjectsState = ProjectsFile & {
     color?: string
     iconUrl?: string
     groupId?: string | null
+    defaultCwd?: string
   }) => Project
   renameProject: (id: string, name: string) => void
   setProjectColor: (id: string, color: string | undefined) => void
@@ -135,9 +136,10 @@ type ProjectsState = ProjectsFile & {
   setWorkspaceGridLayout: (layout: GridLayout | null) => void
 
   // todos globais
-  createTodo: (title: string, tags?: string[]) => TodoItem | null
+  createTodo: (title: string, tags?: string[], projectId?: string) => TodoItem | null
   renameTodo: (id: string, title: string) => void
   updateTodoTags: (id: string, tags: string[]) => void
+  setTodoProject: (id: string, projectId: string | null) => void
   resetTodosToDefault: () => void
   toggleTodo: (id: string) => void
   deleteTodo: (id: string) => void
@@ -459,6 +461,7 @@ export function getProjectDefaultCwd(
   projects: Project[] = [],
 ): string {
   if (!project) return ''
+  if (project.defaultCwd?.trim()) return project.defaultCwd.trim()
   const candidates = [project]
   if (project.groupId) {
     candidates.push(
@@ -590,7 +593,13 @@ function normalizeTodos(raw: unknown): TodoItem[] {
     const title = normalizeTodoTitle(item?.title)
     if (!id || !title || seen.has(id)) continue
     seen.add(id)
-    result.push({ id, title, completed: Boolean(item?.completed), tags: normalizeTodoTags(item?.tags) })
+    result.push({
+      id,
+      title,
+      completed: Boolean(item?.completed),
+      tags: normalizeTodoTags(item?.tags),
+      ...(typeof item?.projectId === 'string' && item.projectId ? { projectId: item.projectId } : {}),
+    })
   }
   return [
     ...result.filter((item) => !item.completed),
@@ -1450,13 +1459,14 @@ export const useProjectsStore = create<ProjectsState>((set, get) => {
 
     /* ------------ projects ------------ */
 
-    createProject: ({ name, color, iconUrl, groupId = null }) => {
+    createProject: ({ name, color, iconUrl, groupId = null, defaultCwd }) => {
       const project: Project = {
         id: nanoid(),
         name,
         color,
         iconUrl,
         groupId,
+        ...(defaultCwd?.trim() ? { defaultCwd: defaultCwd.trim() } : {}),
         terminals: [],
         layoutMode: 'auto',
         collapsed: false,
@@ -1602,6 +1612,12 @@ export const useProjectsStore = create<ProjectsState>((set, get) => {
         if (!project) return
         cleanupPtys(collectTerminalPtyIds(project.terminals))
         const projects = state.projects.filter((p) => p.id !== id)
+        const todos = state.todos.map((item) => {
+          if (item.projectId !== id) return item
+          const next = { ...item }
+          delete next.projectId
+          return next
+        })
         const groups = state.groups.map((g) =>
           g.id === project.groupId
             ? { ...g, projectIds: g.projectIds.filter((pid) => pid !== id) }
@@ -1639,6 +1655,7 @@ export const useProjectsStore = create<ProjectsState>((set, get) => {
           }))
         return {
           projects,
+          todos,
           groups,
           ungroupedOrder,
           workspace: {
@@ -2206,13 +2223,44 @@ export const useProjectsStore = create<ProjectsState>((set, get) => {
       })),
 
     setWorkspaceGridLayout: (layout) =>
-      update((state) => ({
-        preferences: {
+      update((state) => {
+        const workspaceGridLayout = layout ?? undefined
+        const preferences = {
           ...state.preferences,
           workspaceFlat: false,
-          workspaceGridLayout: layout ?? undefined,
-        },
-      })),
+          workspaceGridLayout,
+        }
+        const activeTab = state.workspace.tabs.find(
+          (tab) => tab.id === state.workspace.activeTabId,
+        )
+        if (!activeTab) return { preferences }
+
+        // O redimensionamento acontece em `preferences`, mas cada aba salva
+        // seu próprio snapshot. Atualizar os dois evita que a navegação restaure
+        // o grid antigo/default ao voltar para o projeto.
+        const snapshot = captureWorkspaceSnapshot({
+          containers: state.workspace.containers,
+          activeProjectId: state.activeProjectId,
+          activeGroupId: state.workspace.activeGroupId,
+          focusedTerminalId: state.workspace.focusedTerminalId,
+          preferences,
+        })
+        const updatedTab = { ...activeTab, snapshot, updatedAt: Date.now() }
+        return {
+          preferences,
+          workspace: {
+            ...state.workspace,
+            tabs: state.workspace.tabs.map((tab) =>
+              tab.id === updatedTab.id ? updatedTab : tab,
+            ),
+            history: replaceCurrentHistorySnapshot(
+              state.workspace.history,
+              state.workspace.historyIndex,
+              updatedTab,
+            ),
+          },
+        }
+      }),
 
     /* ------------ terminals ------------ */
 
@@ -2231,7 +2279,13 @@ export const useProjectsStore = create<ProjectsState>((set, get) => {
           },
         })
         const projects = state.projects.map((p) =>
-          p.id === projectId ? { ...p, terminals: [...p.terminals, terminal] } : p,
+          p.id === projectId
+            ? {
+                ...p,
+                ...(!args.worktreeAgentId && finalCwd ? { defaultCwd: finalCwd } : {}),
+                terminals: [...p.terminals, terminal],
+              }
+            : p,
         )
         const project = projects.find((p) => p.id === projectId)
         const layout = project?.layoutMode ?? 'auto'
@@ -2798,10 +2852,16 @@ export const useProjectsStore = create<ProjectsState>((set, get) => {
 
     /* ------------ todos globais ------------ */
 
-    createTodo: (rawTitle, rawTags = []) => {
+    createTodo: (rawTitle, rawTags = [], projectId) => {
       const title = normalizeTodoTitle(rawTitle)
       if (!title) return null
-      const todo: TodoItem = { id: nanoid(), title, completed: false, tags: normalizeTodoTags(rawTags) }
+      const todo: TodoItem = {
+        id: nanoid(),
+        title,
+        completed: false,
+        tags: normalizeTodoTags(rawTags),
+        ...(projectId ? { projectId } : {}),
+      }
       update((state) => {
         const completedIndex = state.todos.findIndex((item) => item.completed)
         const insertAt = completedIndex === -1 ? state.todos.length : completedIndex
@@ -2829,6 +2889,17 @@ export const useProjectsStore = create<ProjectsState>((set, get) => {
         todos: state.todos.map((item) =>
           item.id === id ? { ...item, tags: normalizeTodoTags(tags) } : item,
         ),
+      })),
+
+    setTodoProject: (id, projectId) =>
+      update((state) => ({
+        todos: state.todos.map((item) => {
+          if (item.id !== id) return item
+          const next = { ...item }
+          if (projectId) next.projectId = projectId
+          else delete next.projectId
+          return next
+        }),
       })),
 
     resetTodosToDefault: () =>

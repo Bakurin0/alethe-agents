@@ -1,6 +1,7 @@
 use std::fs;
 use std::path::{Path, PathBuf};
 
+use serde_json::Value;
 use serde::{Deserialize, Serialize};
 use tauri::{AppHandle, Manager};
 
@@ -32,6 +33,17 @@ pub struct ProfilesState {
     pub profiles: Vec<ProfileMeta>,
 }
 
+#[derive(Serialize, Deserialize, Clone, Debug)]
+pub struct ProfileSummary {
+    pub id: String,
+    pub name: String,
+    pub created_at_ms: u64,
+    pub last_used_at_ms: u64,
+    pub project_count: usize,
+    pub terminal_count: usize,
+    pub is_active: bool,
+}
+
 fn root_data_dir(app: &AppHandle) -> Result<PathBuf, String> {
     app.path()
         .app_local_data_dir()
@@ -48,6 +60,15 @@ fn registry_path(root: &Path) -> PathBuf {
 
 fn profile_dir(root: &Path, id: &str) -> PathBuf {
     profiles_root_dir(root).join(id)
+}
+
+pub fn profile_data_dir_for_id(app: &AppHandle, profile_id: &str) -> Result<PathBuf, String> {
+    let root = root_data_dir(app)?;
+    let index = ensure_profiles_index(app)?;
+    if !index.profiles.iter().any(|profile| profile.id == profile_id) {
+        return Err("profile not found".to_string());
+    }
+    Ok(profile_dir(&root, profile_id))
 }
 
 pub fn now_ms() -> u64 {
@@ -113,6 +134,52 @@ fn profiles_state_from(index: &ProfilesIndex) -> ProfilesState {
         active_profile_id: index.active_profile_id.clone(),
         profiles,
     }
+}
+
+fn profile_summary(root: &Path, profile: &ProfileMeta, active_profile_id: &str) -> Result<ProfileSummary, String> {
+    let projects_path = profile_dir(root, &profile.id).join("projects.json");
+    let (project_count, terminal_count) = if projects_path.is_file() {
+        let raw = fs::read_to_string(projects_path).map_err(|error| error.to_string())?;
+        let value: Value = serde_json::from_str(&raw).map_err(|error| error.to_string())?;
+        let projects = value.get("projects").and_then(Value::as_array);
+        let project_count = projects.map_or(0, Vec::len);
+        let terminal_count = projects
+            .into_iter()
+            .flat_map(|items| items.iter())
+            .filter_map(|project| project.get("terminals").and_then(Value::as_array))
+            .map(Vec::len)
+            .sum();
+        (project_count, terminal_count)
+    } else {
+        (0, 0)
+    };
+
+    Ok(ProfileSummary {
+        id: profile.id.clone(),
+        name: profile.name.clone(),
+        created_at_ms: profile.created_at_ms,
+        last_used_at_ms: profile.last_used_at_ms,
+        project_count,
+        terminal_count,
+        is_active: profile.id == active_profile_id,
+    })
+}
+
+pub fn list_profile_summaries_state(app: &AppHandle) -> Result<Vec<ProfileSummary>, String> {
+    let root = root_data_dir(app)?;
+    let index = ensure_profiles_index(app)?;
+    let mut summaries = index
+        .profiles
+        .iter()
+        .map(|profile| profile_summary(&root, profile, &index.active_profile_id))
+        .collect::<Result<Vec<_>, _>>()?;
+    summaries.sort_by(|a, b| {
+        b.is_active
+            .cmp(&a.is_active)
+            .then_with(|| b.last_used_at_ms.cmp(&a.last_used_at_ms))
+            .then_with(|| a.name.cmp(&b.name))
+    });
+    Ok(summaries)
 }
 
 fn load_index(root: &Path) -> Result<ProfilesIndex, String> {
@@ -323,13 +390,20 @@ pub fn create_profile_state(app: &AppHandle, name: Option<String>) -> Result<Pro
     let mut index = ensure_profiles_index(app)?;
     let id = nanoid::nanoid!(10);
     let now = now_ms();
+    let profile_name = normalize_profile_name(name.as_deref());
+    if index
+        .profiles
+        .iter()
+        .any(|existing| existing.name.eq_ignore_ascii_case(&profile_name))
+    {
+        return Err("profile_name_exists".to_string());
+    }
     let profile = ProfileMeta {
         id: id.clone(),
-        name: normalize_profile_name(name.as_deref()),
+        name: profile_name,
         created_at_ms: now,
         last_used_at_ms: now,
     };
-    index.active_profile_id = id.clone();
     index.profiles.push(profile);
     ensure_profile_dirs(&root, &index)?;
     write_profiles_index(&root, &index)?;
@@ -344,6 +418,13 @@ pub fn rename_profile_state(
     let root = root_data_dir(app)?;
     let mut index = ensure_profiles_index(app)?;
     let updated = normalize_profile_name(Some(&name));
+    if index
+        .profiles
+        .iter()
+        .any(|profile| profile.id != profile_id && profile.name.eq_ignore_ascii_case(&updated))
+    {
+        return Err("profile_name_exists".to_string());
+    }
     let mut found = false;
     for profile in &mut index.profiles {
         if profile.id == profile_id {
@@ -411,6 +492,11 @@ pub fn active_profile_state(app: &AppHandle) -> Result<ProfileMeta, String> {
 #[tauri::command]
 pub fn list_profiles(app: AppHandle) -> Result<ProfilesState, String> {
     list_profiles_state(&app)
+}
+
+#[tauri::command]
+pub fn list_profile_summaries(app: AppHandle) -> Result<Vec<ProfileSummary>, String> {
+    list_profile_summaries_state(&app)
 }
 
 #[tauri::command]

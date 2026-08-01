@@ -109,6 +109,7 @@ export function UserProfile() {
               setOpen(false)
             }}
           >
+            <Settings size={13} />
             {t('profile.preferences')}
           </button>
           <button
