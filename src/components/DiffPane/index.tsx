@@ -1,5 +1,6 @@
 import { X } from 'lucide-react'
 import { memo, useEffect, useState } from 'react'
+import { useT } from '../../lib/i18n'
 import { gitDiff } from '../../lib/tauri'
 import { type Terminal } from '../../lib/types'
 import { useProjectsStore } from '../../stores/projectsStore'
@@ -12,6 +13,7 @@ export type DiffPaneProps = {
 }
 
 export const DiffPane = memo(function DiffPane({ projectId, terminal }: DiffPaneProps) {
+  const t = useT()
   const [diffText, setDiffText] = useState<string | null>(null)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
@@ -31,17 +33,18 @@ export const DiffPane = memo(function DiffPane({ projectId, terminal }: DiffPane
         const diff = await gitDiff(terminal.cwd, terminal.filePath, !!terminal.staged)
 
         if (diff.length > 2 * 1024 * 1024) {
-          throw new Error('Diff is too large to display (> 2MB)')
+          throw new Error(t('diff.error.tooLarge'))
         }
 
         if (!cancelled) {
-          setDiffText(diff || 'No changes to display.')
+          setDiffText(diff || t('diff.empty'))
         }
       } catch (err: unknown) {
         if (!cancelled) {
-          const errMsg = err instanceof Error ? err.message : String(err)
+          const raw = err instanceof Error ? err.message : String(err)
+          const errMsg = raw.includes('Binary file') ? t('diff.error.binary') : raw
           setError(errMsg)
-          pushToast({ title: 'Diff Error', body: errMsg })
+          pushToast({ title: t('diff.error.generic'), body: errMsg })
         }
       } finally {
         if (!cancelled) {
@@ -83,21 +86,21 @@ export const DiffPane = memo(function DiffPane({ projectId, terminal }: DiffPane
         <div className={styles.headerLeft}>
           <span className={styles.title}>{terminal.name}</span>
           <span className={styles.path} title={terminal.filePath}>
-            {terminal.filePath} {terminal.staged ? '(Staged)' : '(Changes)'}
+            {terminal.filePath} {terminal.staged ? t('diff.staged') : t('diff.unstaged')}
           </span>
         </div>
         <button
           type="button"
           className={styles.closeButton}
           onClick={() => closePane(projectId, terminal.id)}
-          title="Close Diff"
+          title={t('diff.close')}
         >
           <X size={14} />
         </button>
       </div>
       <div className={styles.content}>
         {loading ? (
-          <div className={styles.message}>Carregando diff...</div>
+          <div className={styles.message}>{t('diff.loading')}</div>
         ) : error ? (
           <div className={styles.message}>{error}</div>
         ) : diffText ? (

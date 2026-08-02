@@ -319,8 +319,7 @@ function TreeNodeView({ projectId, repoRoot, node, kind, depth, disabled, onPrim
   const handleDoubleClick = (filePath: string) => {
     if (kind === 'untracked') return
     const isStaged = kind === 'staged'
-    const absolutePath = repoRoot + (repoRoot.endsWith('/') || repoRoot.endsWith('\\') ? '' : '/') + filePath
-    const pane = createDiffPane(projectId, { filePath: absolutePath, repoRoot, staged: isStaged })
+    const pane = createDiffPane(projectId, { filePath, repoRoot, staged: isStaged })
     openPane(projectId, pane.id)
     requestPaneFocus(pane.id)
   }

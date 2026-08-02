@@ -2309,16 +2309,23 @@ export const useProjectsStore = create<ProjectsState>((set, get) => {
         const projects = state.projects.map((p) =>
           p.id === projectId ? { ...p, terminals: [...p.terminals, pane] } : p,
         )
-        const workspace = { ...state.workspace }
-        const container = workspace.containers.find((c) => c.projectId === projectId)
-        if (container) {
-          workspace.containers = workspace.containers.map((c) =>
-            c.projectId === projectId ? { ...c, paneIds: [...c.paneIds, pane.id] } : c,
-          )
-        } else {
-          workspace.containers = [...workspace.containers, newContainer(projectId, [pane.id], 'auto')]
+        const project = projects.find((p) => p.id === projectId)
+        const layout = project?.layoutMode ?? 'auto'
+        const existing = state.workspace.containers.find((c) => c.projectId === projectId)
+        const containers = existing
+          ? state.workspace.containers.map((c) =>
+              c.projectId === projectId
+                ? { ...c, paneIds: [...c.paneIds, pane.id], lastUsedAt: Date.now() }
+                : c,
+            )
+          : [...state.workspace.containers, newContainer(projectId, [pane.id], layout)]
+        return {
+          projects,
+          workspace: {
+            ...state.workspace,
+            containers,
+          },
         }
-        return { projects, workspace }
       })
       return pane
     },

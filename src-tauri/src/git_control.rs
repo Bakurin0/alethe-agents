@@ -397,17 +397,10 @@ pub fn git_diff(repo_root: String, path: String, staged: bool) -> Result<String,
         args.push("--staged");
     }
     args.push("--");
-    // Normalize path to relative if it starts with repo_root
-    let relative_path = if path.starts_with(&repo_root) {
-        path.strip_prefix(&repo_root).unwrap_or(&path).trim_start_matches(['/', '\\']).to_string()
-    } else {
-        path
-    };
-    args.push(&relative_path);
+    args.push(&path);
 
     let output = checked_output(Path::new(&repo_root), &args)?;
-    
-    // Check if it's a binary file based on git diff output
+
     let stdout = String::from_utf8_lossy(&output.stdout).to_string();
     if stdout.contains("Binary files ") && stdout.contains(" differ") {
         return Err("Binary file cannot be displayed as text".to_string());
@@ -669,6 +662,61 @@ mod tests {
         // eventualmente ter sucesso sem o chamador precisar saber disso.
         let result = checked_output(&root, &["status"]);
         assert!(result.is_ok(), "esperava sucesso após o lock transitório sumir: {result:?}");
+
+        fs::remove_dir_all(root).unwrap();
+    }
+
+    #[test]
+    fn git_diff_returns_unstaged_changes() {
+        let root = temp_dir("diff-unstaged");
+        let root_string = root.to_string_lossy().into_owned();
+        checked_output(&root, &["init"]).unwrap();
+        fs::write(root.join("file.txt"), "line1\n").unwrap();
+        checked_output(&root, &["add", "file.txt"]).unwrap();
+        checked_output(&root, &["commit", "-m", "initial"]).unwrap();
+        fs::write(root.join("file.txt"), "line1\nline2\n").unwrap();
+
+        let diff = git_diff(root_string.clone(), "file.txt".to_string(), false).unwrap();
+        assert!(diff.contains("+line2"), "diff must contain the added line");
+
+        fs::remove_dir_all(root).unwrap();
+    }
+
+    #[test]
+    fn git_diff_returns_staged_changes() {
+        let root = temp_dir("diff-staged");
+        let root_string = root.to_string_lossy().into_owned();
+        checked_output(&root, &["init"]).unwrap();
+        fs::write(root.join("file.txt"), "line1\n").unwrap();
+        checked_output(&root, &["add", "file.txt"]).unwrap();
+        checked_output(&root, &["commit", "-m", "initial"]).unwrap();
+        fs::write(root.join("file.txt"), "line1\nline2\n").unwrap();
+        checked_output(&root, &["add", "file.txt"]).unwrap();
+
+        let diff = git_diff(root_string.clone(), "file.txt".to_string(), true).unwrap();
+        assert!(diff.contains("+line2"), "staged diff must contain the added line");
+
+        fs::remove_dir_all(root).unwrap();
+    }
+
+    #[test]
+    fn git_diff_rejects_binary_file() {
+        let root = temp_dir("diff-binary");
+        let root_string = root.to_string_lossy().into_owned();
+        checked_output(&root, &["init"]).unwrap();
+        fs::write(root.join("bin.dat"), &0u8.to_le_bytes()).unwrap();
+        checked_output(&root, &["add", "bin.dat"]).unwrap();
+        checked_output(&root, &["commit", "-m", "initial"]).unwrap();
+        // Modify binary content
+        fs::write(root.join("bin.dat"), &[0u8, 1, 2, 3]).unwrap();
+        checked_output(&root, &["add", "bin.dat"]).unwrap();
+
+        let result = git_diff(root_string.clone(), "bin.dat".to_string(), true);
+        assert!(result.is_err(), "binary file should return an error");
+        assert!(
+            result.unwrap_err().contains("Binary file"),
+            "error must mention binary file"
+        );
 
         fs::remove_dir_all(root).unwrap();
     }

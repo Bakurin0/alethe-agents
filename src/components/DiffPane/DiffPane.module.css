@@ -3,8 +3,8 @@
   flex-direction: column;
   height: 100%;
   width: 100%;
-  background-color: var(--color-bg-primary);
-  color: var(--color-text-primary);
+  background-color: var(--bg);
+  color: var(--fg-muted);
   overflow: hidden;
 }
 
@@ -13,8 +13,8 @@
   align-items: center;
   justify-content: space-between;
   padding: 8px 12px;
-  background-color: var(--color-bg-secondary);
-  border-bottom: 1px solid var(--color-border);
+  background-color: var(--bg-elevated);
+  border-bottom: 1px solid var(--border);
   flex-shrink: 0;
   height: 36px;
 }
@@ -32,16 +32,15 @@
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
-  color: var(--color-text-primary);
+  color: var(--fg-muted);
 }
 
 .path {
   font-size: 11px;
-  color: var(--color-text-secondary);
+  color: var(--fg-faint);
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
-  opacity: 0.8;
 }
 
 .closeButton {
@@ -53,7 +52,7 @@
   border-radius: 4px;
   border: none;
   background: transparent;
-  color: var(--color-text-secondary);
+  color: var(--fg-faint);
   cursor: pointer;
   opacity: 0.6;
   transition: all 0.2s;
@@ -61,8 +60,8 @@
 }
 
 .closeButton:hover {
-  background-color: var(--color-bg-hover);
-  color: var(--color-text-primary);
+  background-color: var(--bg-sunken);
+  color: var(--fg-muted);
   opacity: 1;
 }
 
@@ -83,27 +82,26 @@
 }
 
 .added {
-  color: #2ea043;
-  background-color: rgba(46, 160, 67, 0.15);
+  color: var(--status-working);
+  background-color: var(--status-working-soft);
   display: block;
   min-width: fit-content;
 }
 
 .removed {
-  color: #f85149;
-  background-color: rgba(248, 81, 73, 0.15);
+  color: var(--status-offline);
+  background-color: var(--status-offline-soft);
   display: block;
   min-width: fit-content;
 }
 
 .headerLine {
-  color: var(--color-text-secondary);
-  opacity: 0.8;
+  color: var(--fg-faint);
 }
 
 .hunk {
-  color: #58a6ff;
-  background-color: rgba(56, 139, 253, 0.15);
+  color: var(--accent);
+  background-color: var(--accent-bg-soft);
   display: block;
   min-width: fit-content;
 }
@@ -113,7 +111,7 @@
   align-items: center;
   justify-content: center;
   height: 100%;
-  color: var(--color-text-secondary);
+  color: var(--fg-faint);
   font-size: 13px;
   padding: 24px;
   text-align: center;
