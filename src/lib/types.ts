@@ -98,7 +98,7 @@ export const UNRESTRICTED_FLAG: Record<AgentType, string | null> = {
  * Tipo de pane. Ausente = 'terminal' (back-compat, sem migração).
  * Viewers usam `tabs: []`; arquivos usam `filePath` e páginas web usam `url`.
  */
-export type PaneKind = 'terminal' | 'markdown' | 'file' | 'image' | 'web' | 'graphify'
+export type PaneKind = 'terminal' | 'markdown' | 'file' | 'image' | 'web' | 'graphify' | 'diff'
 
 export type Terminal = {
   id: string
@@ -118,6 +118,8 @@ export type Terminal = {
   url?: string
   /** RFC-003 — id da worktree onde este pane vive (habilita o botão "Integrar"). */
   worktreeAgentId?: string
+  /** Argumento específico para diff viewer, true se staged. */
+  staged?: boolean
 }
 
 /**

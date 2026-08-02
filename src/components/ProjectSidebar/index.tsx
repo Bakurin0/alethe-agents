@@ -158,8 +158,17 @@ export function ProjectSidebar() {
       .filter((terminal) => visible.size === 0 || visible.has(terminal.id))
       .sort((a, b) => (b.lastUsedAt ?? 0) - (a.lastUsedAt ?? 0))[0] ?? null
   }, [activeProject, activeTerminalRef, containers])
-  const selectedSubTab = selectedTerminal?.tabs.find((tab) => tab.id === selectedTerminal.activeTabId)
-    ?? selectedTerminal?.tabs[0]
+
+  // Terminal real (com cwd/tabs) para o explorer e git — ignora viewers (file/diff/web)
+  const sidebarTerminal = useMemo(() => {
+    if (selectedTerminal && !selectedTerminal.kind) return selectedTerminal
+    if (!activeProject) return null
+    return [...activeProject.terminals]
+      .filter((t) => !t.kind)
+      .sort((a, b) => (b.lastUsedAt ?? 0) - (a.lastUsedAt ?? 0))[0] ?? null
+  }, [selectedTerminal, activeProject])
+  const sidebarSubTab = sidebarTerminal?.tabs.find((tab) => tab.id === sidebarTerminal.activeTabId)
+    ?? sidebarTerminal?.tabs[0]
 
   const sensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 4 } }))
 
@@ -860,11 +869,12 @@ export function ProjectSidebar() {
             <span className={styles.explorerLabel}>{t('ui.sidebar.explorer')}</span>
             <MoreHorizontal size={14} />
           </div>
-          {selectedTerminal && selectedSubTab ? (
+          {sidebarTerminal && sidebarSubTab && activeProject ? (
             <FileExplorer
-              cwd={selectedSubTab.cwd || selectedTerminal.cwd}
-              ptyId={selectedSubTab.ptyId}
-              terminalName={selectedTerminal.name}
+              projectId={activeProject.id}
+              cwd={sidebarSubTab.cwd || sidebarTerminal.cwd}
+              ptyId={sidebarSubTab.ptyId}
+              terminalName={sidebarTerminal.name}
             />
           ) : (
             <div className={styles.explorerEmpty}>
@@ -888,12 +898,13 @@ export function ProjectSidebar() {
           <div className={styles.explorerHeader}>
             <span className={styles.explorerLabel}>{t('ui.sidebar.sourceControl')}</span>
           </div>
-          {selectedTerminal && selectedSubTab ? (
-            <GitControl
-              cwd={selectedSubTab.cwd || selectedTerminal.cwd}
-              ptyId={selectedSubTab.ptyId}
-              terminalName={selectedTerminal.name}
-            />
+          {sidebarTerminal && sidebarSubTab && activeProject ? (
+              <GitControl
+                projectId={activeProject.id}
+                cwd={sidebarSubTab.cwd || sidebarTerminal.cwd}
+                ptyId={sidebarSubTab.ptyId}
+                terminalName={sidebarTerminal.name}
+              />
           ) : (
             <div className={styles.explorerEmpty}>
               <EmptyState

@@ -6,6 +6,7 @@ import type { GridLayout, LayoutMode, Terminal } from '../../lib/types'
 import { MarkdownPane } from '../MarkdownPane'
 import { TerminalPane } from '../TerminalPane'
 import { WebPane } from '../WebPane'
+import { DiffPane } from '../DiffPane'
 import { GraphifyView } from '../GraphifyView'
 import styles from './WorkspaceView.module.css'
 
@@ -27,6 +28,9 @@ function Pane({
   }
   if (terminal.kind === 'web') {
     return <WebPane projectId={projectId} terminal={terminal} />
+  }
+  if (terminal.kind === 'diff') {
+    return <DiffPane projectId={projectId} terminal={terminal} />
   }
   return <TerminalPane projectId={projectId} terminal={terminal} paneDragEnabled={paneDragEnabled} />
 }

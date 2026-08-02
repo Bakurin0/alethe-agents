@@ -255,6 +255,10 @@ export async function gitStatus(path: string): Promise<GitRepositoryStatus> {
   return invoke<GitRepositoryStatus>('git_status', { path })
 }
 
+export async function gitDiff(repoRoot: string, path: string, staged: boolean): Promise<string> {
+  return invoke<string>('git_diff', { repoRoot, path, staged })
+}
+
 export async function gitStage(repoRoot: string, paths: string[]): Promise<void> {
   return invoke('git_stage', { repoRoot, paths })
 }

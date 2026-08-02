@@ -167,6 +167,8 @@ type ProjectsState = ProjectsFile & {
       firstTab: { type: AgentType; cwd: string; extraArgs?: string[]; runtimeProfile?: AgentRuntimeProfile }
     },
   ) => Promise<Terminal>
+  /** Cria um pane viewer de diff de git e adiciona ao grid do projeto. */
+  createDiffPane: (projectId: string, args: { filePath: string; repoRoot: string; staged: boolean; name?: string }) => Terminal
   /** Cria um pane viewer (markdown/arquivo) e adiciona ao grid do projeto. */
   createFilePane: (projectId: string, args: { filePath: string; name?: string }) => Terminal
   /** Cria um pane web persistente e adiciona ao grid do projeto. */
@@ -374,6 +376,23 @@ function makeFilePane(args: { filePath: string; name?: string }): Terminal {
     tabs: [],
     kind: classifyPaneKind(filePath),
     filePath,
+  }
+}
+
+function makeDiffPane(args: { filePath: string; repoRoot: string; staged: boolean; name?: string }): Terminal {
+  const filePath = args.filePath.trim().replace(/:\d+(?::\d+)?$/, '')
+  return {
+    id: nanoid(),
+    name: args.name?.trim() || `Diff: ${fileNameFromPath(filePath)}`,
+    cwd: args.repoRoot,
+    activeTabId: '',
+    disabled: false,
+    laneVisible: null,
+    lastUsedAt: Date.now(),
+    tabs: [],
+    kind: 'diff',
+    filePath,
+    staged: args.staged,
   }
 }
 
@@ -2282,6 +2301,33 @@ export const useProjectsStore = create<ProjectsState>((set, get) => {
         }
       }
       return get().createTerminal(projectId, args)
+    },
+
+    createDiffPane: (projectId, args) => {
+      const pane = makeDiffPane(args)
+      update((state) => {
+        const projects = state.projects.map((p) =>
+          p.id === projectId ? { ...p, terminals: [...p.terminals, pane] } : p,
+        )
+        const project = projects.find((p) => p.id === projectId)
+        const layout = project?.layoutMode ?? 'auto'
+        const existing = state.workspace.containers.find((c) => c.projectId === projectId)
+        const containers = existing
+          ? state.workspace.containers.map((c) =>
+              c.projectId === projectId
+                ? { ...c, paneIds: [...c.paneIds, pane.id], lastUsedAt: Date.now() }
+                : c,
+            )
+          : [...state.workspace.containers, newContainer(projectId, [pane.id], layout)]
+        return {
+          projects,
+          workspace: {
+            ...state.workspace,
+            containers,
+          },
+        }
+      })
+      return pane
     },
 
     createFilePane: (projectId, args) => {
