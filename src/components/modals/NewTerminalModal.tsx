@@ -28,6 +28,8 @@ export function NewTerminalModal() {
   const context = useUiStore((s) => s.modalContext) as { projectId?: string } | null
   const closeModal = useUiStore((s) => s.closeModal)
   const createTerminal = useProjectsStore((s) => s.createTerminal)
+  const alwaysStartUnrestricted = useProjectsStore((s) => s.preferences.alwaysStartUnrestricted)
+  const setPreferences = useProjectsStore((s) => s.setPreferences)
   const project = useProjectsStore((s) =>
     context?.projectId ? (s.projects.find((p) => p.id === context.projectId) ?? null) : null,
   )
@@ -81,7 +83,16 @@ export function NewTerminalModal() {
     if (!open) return
     setCwd(inheritedCwd)
     setType(defaultType)
-  }, [open, context?.projectId, inheritedCwd, defaultType])
+    setUnrestricted({
+      shell: alwaysStartUnrestricted,
+      claude: alwaysStartUnrestricted,
+      codex: alwaysStartUnrestricted,
+      antigravity: alwaysStartUnrestricted,
+      opencode: alwaysStartUnrestricted,
+      freebuff: alwaysStartUnrestricted,
+      mimo: alwaysStartUnrestricted,
+    })
+  }, [open, context?.projectId, inheritedCwd, defaultType, alwaysStartUnrestricted])
 
   const reset = () => {
     setType(defaultType)
@@ -187,6 +198,16 @@ export function NewTerminalModal() {
               {unrestricted[type] ? t('term.unrestrictedOn') : t('term.unrestrictedOff')}
             </span>
           </button>
+        ) : null}
+        {UNRESTRICTED_FLAG[type] ? (
+          <label className={styles.alwaysUnrestricted}>
+            <input
+              type="checkbox"
+              checked={alwaysStartUnrestricted}
+              onChange={(event) => setPreferences({ alwaysStartUnrestricted: event.target.checked })}
+            />
+            <span>{t('term.alwaysUnrestricted')}</span>
+          </label>
         ) : null}
       </section>
 

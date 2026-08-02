@@ -9,6 +9,15 @@
   padding-left: 4px;
 }
 
+.bar[data-style='three-areas'] {
+  display: grid;
+  grid-template-columns: minmax(0, var(--topbar-left-width)) minmax(0, 1fr) minmax(
+      0,
+      var(--topbar-right-width)
+    );
+  padding-left: 0;
+}
+
 .barStart {
   display: inline-flex;
   align-items: center;
@@ -78,6 +87,14 @@
   color: var(--accent);
   font-size: 10px;
   font-weight: 750;
+}
+
+.barEnd {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  height: 100%;
+  flex-shrink: 0;
 }
 
 .groupTabs {
@@ -535,7 +552,8 @@
   cursor: pointer;
 }
 
-.widgets + .windowBtn {
+.barEnd > .widgets + .windowBtn,
+.barEnd > .rightSidebarBtn + .windowBtn {
   margin-left: 4px;
   border-left: 1px solid var(--border);
   padding-left: 6px;
@@ -548,4 +566,78 @@
 .close:hover {
   background: #e81123;
   color: #fff;
+}
+
+.bar[data-style='three-areas'] .barStart {
+  width: 100%;
+  box-sizing: border-box;
+  padding-left: 8px;
+  border-right: 1px solid var(--border);
+}
+
+.bar[data-style='three-areas'] .title {
+  display: none;
+}
+
+.bar[data-style='three-areas'] .groupTabs {
+  grid-column: 2;
+  width: 100%;
+  margin-left: 0;
+  padding: 0 8px;
+  box-sizing: border-box;
+}
+
+.bar[data-style='three-areas'] .spacer {
+  display: none;
+}
+
+.bar[data-style='three-areas'] .barEnd {
+  grid-column: 3;
+  min-width: 0;
+  justify-content: flex-end;
+  padding: 0 6px 0 10px;
+  border-left: 1px solid var(--border);
+  overflow: hidden;
+}
+
+.bar[data-style='three-areas'] .widgets {
+  min-width: 0;
+  gap: 6px;
+  overflow: hidden;
+}
+
+.bar[data-style='three-areas'] .utilityGroup,
+.bar[data-style='three-areas'] .statusGroup {
+  gap: 6px;
+}
+
+.bar[data-style='three-areas'] .statusGroup {
+  padding-left: 8px;
+}
+
+.bar[data-style='three-areas'] .usageWidget,
+.bar[data-style='three-areas'] .usagePill,
+.bar[data-style='three-areas'] .profilePill,
+.bar[data-style='three-areas'] .syncPill,
+.bar[data-style='three-areas'] .ramPill {
+  margin-right: 0;
+}
+
+.bar[data-style='three-areas'] .profilePill {
+  max-width: 120px;
+}
+
+.bar[data-style='three-areas'] .editWidgets {
+  opacity: 1;
+}
+
+.bar[data-style='three-areas'] .rightSidebarBtn {
+  width: 28px;
+  margin-left: 0;
+  padding-left: 0;
+  border-left: 0;
+}
+
+.bar[data-style='three-areas'] .windowBtn {
+  width: 28px;
 }

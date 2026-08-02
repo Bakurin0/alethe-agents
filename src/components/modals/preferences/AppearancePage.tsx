@@ -76,6 +76,23 @@ export function AppearancePage() {
       </SettingsSection>
 
       <SettingsSection
+        id="topbar-style"
+        title={t('prefs.topbarStyle')}
+        description={t('prefs.topbarStyleDesc')}
+      >
+        <select
+          value={preferences.topbarStyle}
+          onChange={(event) =>
+            setPreferences({ topbarStyle: event.target.value as 'classic' | 'three-areas' })
+          }
+          aria-label={t('prefs.topbarStyle')}
+        >
+          <option value="classic">{t('prefs.topbarStyleClassic')}</option>
+          <option value="three-areas">{t('prefs.topbarStyleThreeAreas')}</option>
+        </select>
+      </SettingsSection>
+
+      <SettingsSection
         id="window-opacity"
         title={t('prefs.windowOpacity')}
         description={t('prefs.windowOpacityDesc')}

@@ -1,4 +1,4 @@
-import { GitBranch, ListTodo } from 'lucide-react'
+import { BrainCircuit, GitBranch, ListTodo } from 'lucide-react'
 
 import { FEATURES } from '../../../lib/features'
 import { useT } from '../../../lib/i18n'
@@ -10,6 +10,7 @@ import { SettingsSection } from './primitives'
 const FEATURE_ICONS = {
   todos: ListTodo,
   git: GitBranch,
+  aiMemory: BrainCircuit,
 } as const
 
 export function FeaturesPage() {

@@ -4,6 +4,8 @@ import { useOnEscape } from '../../hooks/useOnEscape'
 import { useT } from '../../lib/i18n'
 import { openInBrowser } from '../../lib/tauri'
 import { useUiStore } from '../../stores/uiStore'
+import { VideoPreview } from '../VideoPreview'
+import { isVideoFilePath } from '../XTermView/terminalLinks'
 import styles from './LinkViewerOverlay.module.css'
 
 /**
@@ -27,6 +29,7 @@ export function LinkViewerOverlay() {
   )
 
   if (!url) return null
+  const video = isVideoFilePath(url)
 
   return (
     <div className={styles.backdrop} onClick={close}>
@@ -55,14 +58,18 @@ export function LinkViewerOverlay() {
           </button>
         </div>
         <div className={styles.body}>
-          <iframe
-            key={url}
-            src={url}
-            className={styles.frame}
-            title={url}
-            sandbox="allow-scripts allow-same-origin allow-forms allow-popups"
-            referrerPolicy="no-referrer"
-          />
+          {video ? (
+            <VideoPreview path={url} className={styles.video} />
+          ) : (
+            <iframe
+              key={url}
+              src={url}
+              className={styles.frame}
+              title={url}
+              sandbox="allow-scripts allow-same-origin allow-forms allow-popups"
+              referrerPolicy="no-referrer"
+            />
+          )}
         </div>
         <div className={styles.hint}>{t('linkViewer.embedHint')}</div>
       </div>

@@ -44,6 +44,7 @@ mod supervisor;
 mod merge_analyzer;
 mod conflict_resolution;
 mod graphify;
+mod ai_memory;
 mod plugins;
 mod opencode_sessions;
 mod opencode_bridge;
@@ -316,6 +317,10 @@ pub fn run() {
             graphify::graphify_diff_snapshot,
             graphify::graphify_rollback,
             graphify::graphify_prune_snapshots,
+            ai_memory::ai_memory_detect,
+            ai_memory::ai_memory_mcp_config_path,
+            ai_memory::ai_memory_opencode_config_write,
+            ai_memory::ai_memory_codex_config_write,
             plugins::plugins_list,
             plugins::plugin_install,
             plugins::plugin_uninstall,

@@ -153,6 +153,13 @@ export function PreferencesModal() {
         keywords: 'opacity opacidade transparency transparência desktop window janela',
       },
       {
+        category: 'appearance',
+        target: 'topbar-style',
+        label: t('prefs.topbarStyle'),
+        description: t('prefs.topbarStyleDesc'),
+        keywords: 'topbar barra superior layout areas tabs sidebar',
+      },
+      {
         category: 'features',
         target: 'optional-features',
         label: t('prefs.features'),

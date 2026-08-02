@@ -3,7 +3,6 @@ import { useEffect } from 'react'
 import {
   MAX_RECENT_PROJECT_TABS,
   UI_ZOOM_LIMITS,
-  getProjectDefaultCwd,
   selectActiveContainer,
   selectActiveProject,
   useProjectsStore,
@@ -80,27 +79,19 @@ export function useKeybindings() {
         return
       }
 
-      // Ctrl+T → cria shell rápido
+      // Ctrl+T → abre o modal de novo terminal
       if (ctrl && !e.shiftKey && !e.altKey && (e.key === 't' || e.key === 'T')) {
-        e.preventDefault()
-        const projects = useProjectsStore.getState()
-        const project = selectActiveProject(projects)
-        if (!project) return
-        const cwd = getProjectDefaultCwd(project)
-        projects.createTerminal(project.id, {
-          name: 'shell',
-          cwd,
-          firstTab: { type: 'shell', cwd },
-        })
-        return
-      }
-
-      // Ctrl+Shift+T → modal de novo terminal (escolhe tipo)
-      if (ctrl && e.shiftKey && (e.key === 'T' || e.key === 't')) {
         e.preventDefault()
         const project = selectActiveProject(useProjectsStore.getState())
         if (!project) return
         useUiStore.getState().openModal_('newTerminal', { projectId: project.id })
+        return
+      }
+
+      // Ctrl+Shift+T → reabre a última tab fechada
+      if (ctrl && e.shiftKey && (e.key === 'T' || e.key === 't')) {
+        e.preventDefault()
+        useProjectsStore.getState().reopenClosedWorkspaceTab()
         return
       }
 

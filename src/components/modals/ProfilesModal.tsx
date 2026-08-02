@@ -13,6 +13,7 @@ import { useEffect, useMemo, useState } from 'react'
 
 import { saveFile } from '../../lib/dialog'
 import { useT } from '../../lib/i18n'
+import { DEFAULT_PROFILE_IMAGE_URL, getProfileImageUrl, getProfileInitial } from '../../lib/profile'
 import {
   createProfile,
   deleteProfile,
@@ -25,6 +26,7 @@ import {
 } from '../../lib/tauri'
 import { useProjectsStore } from '../../stores/projectsStore'
 import { useUiStore } from '../../stores/uiStore'
+import { Avatar } from '../ui/Avatar'
 import { Modal } from './Modal'
 import controls from './controls.module.css'
 import styles from './ProfilesModal.module.css'
@@ -47,6 +49,7 @@ export function ProfilesModal() {
   const profiles = useProjectsStore((s) => s.profiles)
   const activeProfileId = useProjectsStore((s) => s.activeProfileId)
   const projects = useProjectsStore((s) => s.projects)
+  const preferences = useProjectsStore((s) => s.preferences)
   const language = useProjectsStore((s) => s.preferences.language)
 
   const [summaries, setSummaries] = useState<ProfileSummary[]>([])
@@ -92,6 +95,7 @@ export function ProfilesModal() {
       profiles.map((profile) => ({
         id: profile.id,
         name: profile.name,
+        profile_image_url: profile.id === activeProfileId ? preferences.profileImageUrl : '',
         created_at_ms: profile.created_at_ms,
         last_used_at_ms: profile.last_used_at_ms,
         project_count: profile.id === activeProfileId ? projects.length : 0,
@@ -101,7 +105,7 @@ export function ProfilesModal() {
             : 0,
         is_active: profile.id === activeProfileId,
       })),
-    [activeProfileId, profiles, projects],
+    [activeProfileId, preferences.profileImageUrl, profiles, projects],
   )
   const items = summaries.length > 0 ? summaries : fallbackSummaries
   const activeProfile =
@@ -308,6 +312,16 @@ export function ProfilesModal() {
                     key={profile.id}
                     className={`${styles.profileCard} ${profile.is_active ? styles.profileCardActive : ''}`}
                   >
+                    <Avatar
+                      src={
+                        profile.is_active
+                          ? getProfileImageUrl(preferences)
+                          : profile.profile_image_url || DEFAULT_PROFILE_IMAGE_URL
+                      }
+                      initial={getProfileInitial(profile.name)}
+                      className={styles.profileAvatar}
+                      alt={profile.name}
+                    />
                     <div className={styles.profileMain}>
                       <div className={styles.profileTitleRow}>
                         <strong>{profile.name}</strong>

@@ -75,6 +75,7 @@ export function normalizePreferences(raw: LegacyPreferences | undefined): Prefer
     rightSidebarWidth: Math.min(420, Math.max(260, Math.round(raw?.rightSidebarWidth ?? 300))),
     language: preferences.language === 'pt-BR' ? 'pt-BR' : 'en',
     accountCreated: legacyAccountCreated,
+    topbarStyle: preferences.topbarStyle === 'three-areas' ? 'three-areas' : 'classic',
     displayName: preferences.displayName.trim(),
     profileImageUrl: preferences.profileImageUrl.trim(),
     todoStoragePath: preferences.todoStoragePath.trim(),
@@ -164,6 +165,14 @@ export function migrateWorkspaceNavigation(base: {
       ...rawWorkspace,
       containers: currentSnapshot.containers,
       tabs,
+      closedTabs: Array.isArray(rawWorkspace.closedTabs)
+        ? rawWorkspace.closedTabs
+            .map((tab: WorkspaceTab) => ({
+              ...tab,
+              snapshot: sanitizeWorkspaceSnapshot(tab.snapshot ?? currentSnapshot, base.projects),
+            }))
+            .slice(0, MAX_WORKSPACE_TABS)
+        : [],
       activeTabId: tabIds.has(rawWorkspace.activeTabId)
         ? rawWorkspace.activeTabId
         : (tabs[0]?.id ?? null),
@@ -238,6 +247,7 @@ export function migrateWorkspaceNavigation(base: {
     recentProjectIds: (rawWorkspace.recentProjectIds ?? []).slice(0, MAX_RECENT_PROJECT_TABS),
     recentTabs: recentTabs.slice(0, MAX_RECENT_PROJECT_TABS),
     tabs,
+    closedTabs: [],
     activeTabId: activeTab?.id ?? null,
     activeGroupId: activeTab?.snapshot.activeGroupId ?? null,
     focusedTerminalId: activeTab?.snapshot.focusedTerminalId ?? null,

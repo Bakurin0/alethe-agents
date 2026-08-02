@@ -10,6 +10,7 @@ import { useEffect } from 'react'
 import { recordAgentActivityInput } from '../../lib/activityTracker'
 import { AgentCompletionMonitor } from '../../lib/agentCompletionMonitor'
 import { preparePtyRuntimeLaunch } from '../../lib/agentRuntimeAdapter'
+import { getLocale, translate } from '../../lib/i18n'
 import {
   claimDiscoveredSession,
   claimMostRecentSession,
@@ -25,6 +26,10 @@ import {
 import { waitForSessionHint } from '../../lib/sessionWatch'
 import { acquireSpawnSlot, releaseSpawnSlot } from '../../lib/spawnQueue'
 import {
+  aiMemoryCodexConfigWrite,
+  aiMemoryDetect,
+  aiMemoryMcpConfigPath,
+  aiMemoryOpenCodeConfigWrite,
   attachPty,
   findCliLauncher,
   graphifyCodexConfigWrite,
@@ -54,6 +59,7 @@ import {
 import { acquireWebglContext } from '../../lib/webglPool'
 import { useProjectsStore } from '../../stores/projectsStore'
 import { useTerminalsStore } from '../../stores/terminalsStore'
+import { useUiStore } from '../../stores/uiStore'
 import {
   formatDroppedPaths,
   getTerminalScrollbackRows,
@@ -72,6 +78,10 @@ import { getXtermTheme, type LinkActionState } from './xtermThemes'
 
 // Early exits trigger a single fresh-session retry.
 const EARLY_EXIT_MS = 4000
+
+// Avisa uma única vez por sessão do app quando a feature "AI Memory" está ligada
+// mas o binário ai-memory não foi encontrado — não bloqueia o spawn do agente.
+let aiMemoryMissingWarned = false
 
 type BootPhase = 'preparing' | 'queued' | 'spawning' | 'attaching' | 'ready'
 
@@ -760,14 +770,21 @@ export function useXtermSession(params: {
         // MCP nos 3 CLIs. Best-effort — falha do Graphify NUNCA bloqueia o spawn.
         // Claude recebe `--mcp-config`; Codex/OpenCode recebem por merge no config
         // do projeto (não têm flag), escrito antes do spawn.
-        let graphifyMcpPath: string | undefined
+        // Servidores MCP gerenciados pelo Alethe. Claude aceita `--mcp-config`
+        // repetido, então acumulamos os paths numa lista (Graphify + ai-memory
+        // coexistem sem um sobrescrever o outro). Codex/OpenCode recebem por merge
+        // no config do projeto (não têm flag). Tudo best-effort — nunca bloqueia
+        // o spawn.
+        const mcpConfigPaths: string[] = []
+        // RFC-004 — Graphify por projeto (flag em `project.graphifyEnabled`).
         if (
           graphifyRepo &&
           (command === 'claude' || command === 'codex' || command === 'opencode')
         ) {
           void graphifyEnsureGraph(graphifyRepo).catch(() => undefined)
           if (command === 'claude') {
-            graphifyMcpPath = await graphifyMcpConfigPath(graphifyRepo).catch(() => undefined)
+            const p = await graphifyMcpConfigPath(graphifyRepo).catch(() => undefined)
+            if (p) mcpConfigPaths.push(p)
           } else if (command === 'opencode') {
             await graphifyOpenCodeConfigWrite(graphifyRepo).catch(() => {})
           } else if (command === 'codex') {
@@ -775,8 +792,36 @@ export function useXtermSession(params: {
           }
           if (disposed) return
         }
+        // ai-memory — feature GLOBAL (preference `enabledFeatures.aiMemory`), não
+        // por-projeto. O servidor roteia o projeto pela cwd do agente. Só injeta
+        // se o binário estiver instalado; senão avisa uma vez e segue sem memória.
+        const aiMemoryEnabled = useProjectsStore.getState().preferences.enabledFeatures.aiMemory
+        if (
+          aiMemoryEnabled &&
+          cwd &&
+          (command === 'claude' || command === 'codex' || command === 'opencode')
+        ) {
+          const status = await aiMemoryDetect().catch(() => undefined)
+          if (status?.installed) {
+            if (command === 'claude') {
+              const p = await aiMemoryMcpConfigPath(cwd).catch(() => undefined)
+              if (p) mcpConfigPaths.push(p)
+            } else if (command === 'opencode') {
+              await aiMemoryOpenCodeConfigWrite(cwd).catch(() => {})
+            } else if (command === 'codex') {
+              await aiMemoryCodexConfigWrite(cwd).catch(() => {})
+            }
+          } else if (!aiMemoryMissingWarned) {
+            aiMemoryMissingWarned = true
+            useUiStore.getState().pushToast({
+              title: translate(getLocale(), 'aiMemory.notInstalledTitle'),
+              body: translate(getLocale(), 'aiMemory.notInstalledBody'),
+            })
+          }
+          if (disposed) return
+        }
         const launch = command
-          ? buildAgentLaunch(command, preparedRuntime.args, resumeId, undefined, graphifyMcpPath)
+          ? buildAgentLaunch(command, preparedRuntime.args, resumeId, undefined, mcpConfigPaths)
           : { args: preparedRuntime.args, sessionId: undefined, createdSession: false }
         const spawnArgs = launch.args.length > 0 ? launch.args : undefined
         if (command && command !== 'shell') {

@@ -37,6 +37,7 @@ pub struct ProfilesState {
 pub struct ProfileSummary {
     pub id: String,
     pub name: String,
+    pub profile_image_url: String,
     pub created_at_ms: u64,
     pub last_used_at_ms: u64,
     pub project_count: usize,
@@ -138,9 +139,15 @@ fn profiles_state_from(index: &ProfilesIndex) -> ProfilesState {
 
 fn profile_summary(root: &Path, profile: &ProfileMeta, active_profile_id: &str) -> Result<ProfileSummary, String> {
     let projects_path = profile_dir(root, &profile.id).join("projects.json");
-    let (project_count, terminal_count) = if projects_path.is_file() {
+    let (project_count, terminal_count, profile_image_url) = if projects_path.is_file() {
         let raw = fs::read_to_string(projects_path).map_err(|error| error.to_string())?;
         let value: Value = serde_json::from_str(&raw).map_err(|error| error.to_string())?;
+        let profile_image_url = value
+            .get("preferences")
+            .and_then(|preferences| preferences.get("profileImageUrl"))
+            .and_then(Value::as_str)
+            .unwrap_or_default()
+            .to_string();
         let projects = value.get("projects").and_then(Value::as_array);
         let project_count = projects.map_or(0, Vec::len);
         let terminal_count = projects
@@ -149,14 +156,15 @@ fn profile_summary(root: &Path, profile: &ProfileMeta, active_profile_id: &str) 
             .filter_map(|project| project.get("terminals").and_then(Value::as_array))
             .map(Vec::len)
             .sum();
-        (project_count, terminal_count)
+        (project_count, terminal_count, profile_image_url)
     } else {
-        (0, 0)
+        (0, 0, String::new())
     };
 
     Ok(ProfileSummary {
         id: profile.id.clone(),
         name: profile.name.clone(),
+        profile_image_url,
         created_at_ms: profile.created_at_ms,
         last_used_at_ms: profile.last_used_at_ms,
         project_count,

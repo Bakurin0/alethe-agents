@@ -95,9 +95,11 @@ export function makeDefaultTerminal(args: {
 }
 
 const MARKDOWN_FILE_PATTERN = /\.(md|markdown|mdx)$/i
+const VIDEO_FILE_PATTERN = /\.(mp4|m4v|mov|avi|mkv|webm|ogv)$/i
 
 /** Escolhe o viewer certo pela extensão. Imagem fica pra depois (precisa de backend). */
-function classifyPaneKind(filePath: string): 'markdown' | 'file' {
+function classifyPaneKind(filePath: string): 'markdown' | 'video' | 'file' {
+  if (VIDEO_FILE_PATTERN.test(filePath)) return 'video'
   return MARKDOWN_FILE_PATTERN.test(filePath) ? 'markdown' : 'file'
 }
 

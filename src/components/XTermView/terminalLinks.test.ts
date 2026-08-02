@@ -52,11 +52,15 @@ describe('terminal links', () => {
     expect(detectTerminalLinks('/tmp/shot.png')[0].fileKind).toBe('image')
     expect(detectTerminalLinks('/tmp/main.ts:42:10')[0].fileKind).toBe('text')
     expect(detectTerminalLinks('/tmp/notes.md')[0].fileKind).toBe('markdown')
+    expect(detectTerminalLinks('/tmp/trailer.mp4')[0].fileKind).toBe('video')
     expect(
       detectTerminalLinks(
         'Jogado em D:\\kauam\\Vaults\\Nostromo\\40-Conteudo\\youtube\\projecao-canal.md com as duas projeções',
       )[0].text,
     ).toBe('D:\\kauam\\Vaults\\Nostromo\\40-Conteudo\\youtube\\projecao-canal.md')
+    expect(
+      detectTerminalLinks('D:\\kauam\\Videos\\motion-kit-hype-video.mp4 e escuta')[0].text,
+    ).toBe('D:\\kauam\\Videos\\motion-kit-hype-video.mp4')
     expect(detectTerminalLinks('https://example.com/x')[0].fileKind).toBeUndefined()
   })
 

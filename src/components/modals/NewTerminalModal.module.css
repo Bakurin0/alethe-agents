@@ -155,6 +155,20 @@
   color: var(--status-waiting);
 }
 
+.alwaysUnrestricted {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  margin-top: 8px;
+  color: var(--fg-muted);
+  font-size: 11px;
+  cursor: pointer;
+}
+
+.alwaysUnrestricted input {
+  accent-color: var(--accent);
+}
+
 .folderRow {
   min-height: 40px;
   display: flex;

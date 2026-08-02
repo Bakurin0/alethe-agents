@@ -260,7 +260,17 @@ export function TitleBar() {
   }, [win])
 
   return (
-    <div className={styles.bar} data-tauri-drag-region>
+    <div
+      className={styles.bar}
+      data-style={preferences.topbarStyle}
+      data-tauri-drag-region
+      style={
+        {
+          '--topbar-left-width': `${preferences.leftSidebarVisible ? preferences.leftSidebarWidth : 0}px`,
+          '--topbar-right-width': `${preferences.rightSidebarVisible ? preferences.rightSidebarWidth : 0}px`,
+        } as React.CSSProperties
+      }
+    >
       <div className={styles.barStart}>
         <button
           type="button"
@@ -455,7 +465,8 @@ export function TitleBar() {
         </div>
       ) : null}
       <div className={styles.spacer} data-tauri-drag-region />
-      <div className={styles.widgets}>
+      <div className={styles.barEnd}>
+        <div className={styles.widgets}>
         <div className={styles.utilityGroup}>
           <button
             type="button"
@@ -654,8 +665,8 @@ export function TitleBar() {
             <Pencil size={12} />
           </button>
         </div>
-      </div>
-      {preferences.enabledFeatures.todos ? (
+        </div>
+        {preferences.enabledFeatures.todos ? (
         <button
           type="button"
           className={`${styles.iconBtn} ${styles.rightSidebarBtn} ${preferences.rightSidebarVisible ? styles.iconBtnActive : ''}`}
@@ -678,8 +689,8 @@ export function TitleBar() {
             <PanelRightOpen size={14} />
           )}
         </button>
-      ) : null}
-      <button
+        ) : null}
+        <button
         type="button"
         className={styles.windowBtn}
         onClick={() => void win.minimize()}
@@ -687,8 +698,8 @@ export function TitleBar() {
         aria-label={t('ui.titlebar.minimize')}
       >
         <Minus size={14} />
-      </button>
-      <button
+        </button>
+        <button
         type="button"
         className={styles.windowBtn}
         onClick={() => void win.toggleMaximize()}
@@ -696,8 +707,8 @@ export function TitleBar() {
         aria-label={t('ui.titlebar.maximize')}
       >
         <Maximize2 size={12} />
-      </button>
-      <button
+        </button>
+        <button
         type="button"
         className={`${styles.windowBtn} ${styles.close}`}
         onClick={() => void requestAppClose()}
@@ -705,7 +716,8 @@ export function TitleBar() {
         aria-label={t('ui.titlebar.close')}
       >
         <X size={14} />
-      </button>
+        </button>
+      </div>
       {tabMenu ? (
         <ContextMenu
           x={tabMenu.x}

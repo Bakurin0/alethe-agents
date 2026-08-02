@@ -249,7 +249,14 @@ export function createTerminalsSlice({ get, update, updateTerminal }: SliceCtx):
         if (terminal) cleanupPtys(collectTerminalPtyIds([terminal]))
         const projects = state.projects.map((p) => {
           if (p.id !== projectId) return p
-          return { ...p, terminals: p.terminals.filter((t) => t.id !== terminalId) }
+          const paneGroups = (p.paneGroups ?? [])
+            .map((group) => ({ ...group, paneIds: group.paneIds.filter((id) => id !== terminalId) }))
+            .filter((group) => group.paneIds.length > 1)
+          return {
+            ...p,
+            terminals: p.terminals.filter((t) => t.id !== terminalId),
+            paneGroups: paneGroups.length > 0 ? paneGroups : undefined,
+          }
         })
         // remove pane do container; se container ficou vazio, remove container
         const containers = state.workspace.containers
@@ -412,6 +419,8 @@ type ContainersSlice = Pick<
   | 'closeOtherContainers'
   | 'reorderContainers'
   | 'reorderPaneInContainer'
+  | 'groupPanes'
+  | 'ungroupPanes'
   | 'setContainerCollapsed'
   | 'setContainerInternalLayout'
   | 'setFullscreenContainer'
@@ -643,6 +652,33 @@ export function createContainersSlice({ get, update, updateContainer }: SliceCtx
         next.splice(toIndex, 0, moved)
         return { ...c, paneIds: next }
       }),
+
+    groupPanes: (projectId, paneIds) =>
+      update((state) => {
+        const project = state.projects.find((p) => p.id === projectId)
+        const validIds = [...new Set(paneIds)].filter((id) => project?.terminals.some((t) => t.id === id))
+        if (!project || validIds.length < 2) return
+        const selected = new Set(validIds)
+        const groups = project.paneGroups ?? []
+        const absorbed = groups.filter((group) => group.paneIds.some((id) => selected.has(id)))
+        const expandedIds = [...new Set(absorbed.flatMap((group) => group.paneIds).concat(validIds))]
+        const remaining = groups.filter((group) => !absorbed.includes(group))
+        remaining.push({ id: `pane-group-${Date.now()}`, paneIds: expandedIds })
+        return {
+          projects: state.projects.map((p) =>
+            p.id === projectId ? { ...p, paneGroups: remaining } : p,
+          ),
+        }
+      }),
+
+    ungroupPanes: (projectId, groupId) =>
+      update((state) => ({
+        projects: state.projects.map((p) =>
+          p.id === projectId
+            ? { ...p, paneGroups: (p.paneGroups ?? []).filter((group) => group.id !== groupId) }
+            : p,
+        ),
+      })),
 
     setContainerCollapsed: (projectId, collapsed) =>
       updateContainer(projectId, (c) => ({ ...c, collapsed })),

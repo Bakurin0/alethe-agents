@@ -399,7 +399,9 @@ export function XTermView({
             </button>
           </div>
           <div className={styles.linkMenuItems}>
-            {(linkActions.fileKind === 'markdown' || linkActions.fileKind === 'text') &&
+            {(linkActions.fileKind === 'markdown' ||
+              linkActions.fileKind === 'text' ||
+              linkActions.fileKind === 'video') &&
             projectId ? (
               <button
                 type="button"
@@ -414,7 +416,7 @@ export function XTermView({
                 <span>{t('xterm.openInGrid')}</span>
               </button>
             ) : null}
-            {linkActions.kind === 'url' ? (
+            {linkActions.kind === 'url' || linkActions.fileKind === 'video' ? (
               <button
                 type="button"
                 className={styles.linkMenuItem}
@@ -425,7 +427,9 @@ export function XTermView({
                 }}
               >
                 <AppWindow size={15} />
-                <span>{t('xterm.openInApp')}</span>
+                <span>
+                  {t(linkActions.fileKind === 'video' ? 'xterm.playInApp' : 'xterm.openInApp')}
+                </span>
               </button>
             ) : null}
             <button

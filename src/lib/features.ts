@@ -19,6 +19,11 @@ export const FEATURES: readonly FeatureDefinition[] = [
     titleKey: 'features.git.title',
     descriptionKey: 'features.git.description',
   },
+  // 'aiMemory' é intencionalmente OMITIDO daqui: a feature existe no código
+  // (FeatureId, default false, backend e injeção MCP em useXtermSession), mas
+  // fica "escondida" — não aparece no onboarding nem em Preferências → Features.
+  // Só é ativável editando `projects.json` (enabledFeatures.aiMemory) ou quando
+  // uma UI dedicada for wired no futuro.
 ]
 
 type StoredFeaturePreferences = {
@@ -34,10 +39,13 @@ export function normalizeEnabledFeatures(
     return {
       todos: raw.enabledFeatures.todos ?? true,
       git: raw.enabledFeatures.git ?? true,
+      // Opt-in explícito: nunca liga sem consentimento, mesmo em perfis já modulares.
+      aiMemory: raw.enabledFeatures.aiMemory ?? false,
     }
   }
   return {
     todos: raw === undefined,
     git: raw?.showGitControl ?? true,
+    aiMemory: false,
   }
 }

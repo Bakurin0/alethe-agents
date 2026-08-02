@@ -15,6 +15,7 @@ export type ProfilesState = {
 export type ProfileSummary = {
   id: string
   name: string
+  profile_image_url: string
   created_at_ms: number
   last_used_at_ms: number
   project_count: number

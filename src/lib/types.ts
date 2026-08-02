@@ -48,7 +48,7 @@ export type Theme =
   | 'orca'
 
 /** Módulos opcionais que podem ser ativados no onboarding ou nas Preferências. */
-export type FeatureId = 'todos' | 'git'
+export type FeatureId = 'todos' | 'git' | 'aiMemory'
 
 /** Item da lista pessoal global. A ordem do array é a ordem escolhida pelo usuário. */
 export type TodoItem = {
@@ -101,7 +101,7 @@ export const UNRESTRICTED_FLAG: Record<AgentType, string | null> = {
  * Tipo de pane. Ausente = 'terminal' (back-compat, sem migração).
  * Viewers usam `tabs: []`; arquivos usam `filePath` e páginas web usam `url`.
  */
-export type PaneKind = 'terminal' | 'markdown' | 'file' | 'image' | 'web' | 'graphify'
+export type PaneKind = 'terminal' | 'markdown' | 'file' | 'image' | 'video' | 'web' | 'graphify'
 
 export type Terminal = {
   id: string
@@ -121,6 +121,12 @@ export type Terminal = {
   url?: string
   /** RFC-003 — id da worktree onde este pane vive (habilita o botão "Integrar"). */
   worktreeAgentId?: string
+}
+
+/** Bloco visual persistente que reúne panes independentes dentro de um projeto. */
+export type PaneGroup = {
+  id: string
+  paneIds: string[]
 }
 
 /**
@@ -153,6 +159,8 @@ export type Project = {
   /** Pasta padrão usada ao criar novos terminais neste projeto. */
   defaultCwd?: string
   terminals: Terminal[]
+  /** Blocos visuais criados selecionando panes com Shift. */
+  paneGroups?: PaneGroup[]
   layoutMode: LayoutMode
   /** Definição do grid quando layoutMode === 'grid'. Persistida pra restaurar. */
   gridLayout?: GridLayout
@@ -271,6 +279,10 @@ export type Preferences = {
   accountCreated: boolean
   /** Se true, abre na Home mesmo se havia projeto ativo na última sessão. */
   alwaysStartOnHome: boolean
+  /** Se true, novos terminais começam com o modo irrestrito ativado. */
+  alwaysStartUnrestricted: boolean
+  /** Organização visual da faixa superior. */
+  topbarStyle: 'classic' | 'three-areas'
 
   /** Credenciais locais do Spotify Developer Dashboard para Now Playing. */
   spotifyClientId: string
@@ -348,6 +360,8 @@ export type ProjectsFile = {
     recentTabs: WorkspaceRecentTab[]
     /** Tabs restauráveis da workspace. */
     tabs: WorkspaceTab[]
+    /** Pilha das tabs removidas da topbar, da mais recente para a mais antiga. */
+    closedTabs?: WorkspaceTab[]
     activeTabId: string | null
     activeGroupId: string | null
     focusedTerminalId: string | null
@@ -381,6 +395,8 @@ export const DEFAULT_PREFERENCES: Preferences = {
   profileImageUrl: '',
   accountCreated: false,
   alwaysStartOnHome: false,
+  alwaysStartUnrestricted: false,
+  topbarStyle: 'classic',
   spotifyClientId: '',
   spotifyClientSecret: '',
   discordRichPresenceEnabled: true,
@@ -390,7 +406,7 @@ export const DEFAULT_PREFERENCES: Preferences = {
   topbarShowSync: true,
   topbarShowProfile: true,
   topbarShowMemory: true,
-  enabledFeatures: { todos: true, git: true },
+  enabledFeatures: { todos: true, git: true, aiMemory: false },
   todoStoragePath: '',
   leftSidebarVisible: true,
   rightSidebarVisible: true,
@@ -424,6 +440,7 @@ export const EMPTY_PROJECTS_FILE: ProjectsFile = {
     recentProjectIds: [],
     recentTabs: [],
     tabs: [],
+    closedTabs: [],
     activeTabId: null,
     activeGroupId: null,
     focusedTerminalId: null,

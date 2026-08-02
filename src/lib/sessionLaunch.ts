@@ -53,14 +53,14 @@ export function buildAgentLaunch(
   baseArgs: readonly string[] = [],
   sessionId?: string,
   createUuid: () => string = () => crypto.randomUUID(),
-  // RFC-004: quando o Graphify está habilitado para o projeto, o Alethe gera um
-  // `.mcp` (ver graphifyMcpConfigPath) e injeta aqui, sem tocar no `.claude/` do
-  // repo. Só o Claude Code usa uma flag de spawn (`--mcp-config`) — Codex e
-  // OpenCode leem MCP de um arquivo de config AMBIENTE no próprio projeto
-  // (`.codex/config.toml` / `opencode.json`), escrito ANTES do spawn por
-  // graphifyCodexConfigWrite/graphifyOpenCodeConfigWrite (XTermView) — não por
-  // uma flag aqui. Isso é arquitetura correta dos 3 CLIs, não uma lacuna.
-  mcpConfigPath?: string,
+  // Quando um servidor MCP gerenciado pelo Alethe está habilitado (Graphify e/ou
+  // ai-memory), geramos um arquivo `.mcp` por servidor (ver *McpConfigPath) e o
+  // injetamos aqui. Só o Claude Code usa flag de spawn (`--mcp-config`, aceita
+  // repetida — por isso é uma LISTA, para os servers coexistirem sem um
+  // sobrescrever o outro) — Codex e OpenCode leem MCP de um arquivo de config
+  // AMBIENTE no próprio projeto (`.codex/config.toml` / `opencode.json`), escrito
+  // ANTES do spawn (XTermView), não por flag aqui. Arquitetura correta dos 3 CLIs.
+  mcpConfigPaths?: readonly string[],
 ): AgentLaunch {
   if (agent === 'shell') {
     return { args: [...baseArgs], sessionId: undefined, createdSession: false }
@@ -68,7 +68,7 @@ export function buildAgentLaunch(
 
   if (agent === 'claude') {
     const clean = stripClaudeSessionArgs([...baseArgs])
-    const mcp = mcpConfigPath ? ['--mcp-config', mcpConfigPath] : []
+    const mcp = (mcpConfigPaths ?? []).flatMap((path) => ['--mcp-config', path])
     if (sessionId) {
       return {
         args: ['--resume', sessionId, ...mcp, ...clean],

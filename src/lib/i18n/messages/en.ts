@@ -231,6 +231,11 @@ export const en = {
   'prefs.windowOpacityDesc': 'Let the desktop show through the entire Alethe window.',
   'prefs.windowOpacityHint': 'Experimental · Lower opacity can reduce text readability.',
   'prefs.opacityReset': 'Reset opacity',
+  'prefs.topbarStyle': 'Topbar style',
+  'prefs.topbarStyleDesc':
+    'Choose how the topbar divides sidebars, tabs, status, and window controls.',
+  'prefs.topbarStyleClassic': 'Classic',
+  'prefs.topbarStyleThreeAreas': 'Three areas',
   'prefs.gitControl': 'Git Control sidebar',
   'prefs.gitControlDesc': 'Show or hide the Source Control tab in the project sidebar.',
   'prefs.gitControlShow': 'Show',
@@ -245,6 +250,12 @@ export const en = {
   'features.todos.description': 'Keep a personal task list available from every screen.',
   'features.git.title': 'Git Control',
   'features.git.description': 'Browse changes and use Source Control from the project sidebar.',
+  'features.aiMemory.title': 'AI Memory',
+  'features.aiMemory.description':
+    'Long-term memory shared across Claude Code, Codex and OpenCode. Requires the ai-memory server installed.',
+  'aiMemory.notInstalledTitle': 'AI Memory is on, but ai-memory was not found',
+  'aiMemory.notInstalledBody':
+    'Install the ai-memory server so agents can share long-term memory. Agents will start normally without it.',
 
   /* ---- global todo sidebar ---- */
   'todo.title': 'Todo',
@@ -606,6 +617,7 @@ export const en = {
   'term.unrestrictedDescription': 'Skip permission confirmations when this agent starts.',
   'term.unrestrictedOn': 'On',
   'term.unrestrictedOff': 'Off',
+  'term.alwaysUnrestricted': 'Always start with unrestricted mode',
   'term.runtimeProfile': 'Runtime profile',
   'term.runtimeProfile.full': 'Full',
   'term.runtimeProfile.full.desc':
@@ -965,6 +977,8 @@ export const en = {
   'ws.emptyContainerAction': 'Open all',
   'ws.containerExpandHint': '{name} (click to expand)',
   'ws.dragToReorderContainer': 'Drag to reorder container',
+  'ws.paneGroup.title': 'Grouped panes',
+  'ws.paneGroup.ungroup': 'Ungroup panes',
   'ws.dragContainer': 'Drag container',
   'ws.collapseContainer': 'Collapse container',
   'ws.collapse': 'Collapse',
@@ -1072,6 +1086,7 @@ export const en = {
   'xterm.copy': 'Copy',
   'xterm.openInBrowser': 'Open in browser',
   'xterm.openInApp': 'Open in app',
+  'xterm.playInApp': 'Play in app',
   'linkViewer.embedHint':
     'Some sites block embedding — use "open in browser" if the page stays blank.',
   'xterm.openInDefaultApp': 'Open in default app',

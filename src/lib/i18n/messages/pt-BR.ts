@@ -230,6 +230,11 @@ export const ptBR: Record<MessageKey, string> = {
   'prefs.windowOpacityHint':
     'Experimental · Opacidade baixa pode reduzir a legibilidade dos textos.',
   'prefs.opacityReset': 'Restaurar opacidade',
+  'prefs.topbarStyle': 'Estilo da topbar',
+  'prefs.topbarStyleDesc':
+    'Escolha como a topbar divide sidebars, abas, status e controles da janela.',
+  'prefs.topbarStyleClassic': 'Clássico',
+  'prefs.topbarStyleThreeAreas': 'Três áreas',
   'prefs.gitControl': 'Controle Git na sidebar',
   'prefs.gitControlDesc': 'Mostre ou oculte a aba Source Control na sidebar de projetos.',
   'prefs.gitControlShow': 'Mostrar',
@@ -244,6 +249,12 @@ export const ptBR: Record<MessageKey, string> = {
   'features.todos.description': 'Mantenha uma lista pessoal disponível em todas as telas.',
   'features.git.title': 'Controle Git',
   'features.git.description': 'Veja mudanças e use o controle de versão pela sidebar de projetos.',
+  'features.aiMemory.title': 'AI Memory',
+  'features.aiMemory.description':
+    'Memória de longo prazo compartilhada entre Claude Code, Codex e OpenCode. Requer o servidor ai-memory instalado.',
+  'aiMemory.notInstalledTitle': 'AI Memory está ligado, mas o ai-memory não foi encontrado',
+  'aiMemory.notInstalledBody':
+    'Instale o servidor ai-memory para os agentes compartilharem memória de longo prazo. Os agentes iniciam normalmente sem ele.',
 
   /* ---- global todo sidebar ---- */
   'todo.title': 'Tarefas',
@@ -610,6 +621,7 @@ export const ptBR: Record<MessageKey, string> = {
   'term.unrestrictedDescription': 'Ignora confirmações de permissão ao iniciar este agente.',
   'term.unrestrictedOn': 'Ativado',
   'term.unrestrictedOff': 'Desativado',
+  'term.alwaysUnrestricted': 'Sempre iniciar com o modo irrestrito',
   'term.runtimeProfile': 'Perfil do runtime',
   'term.runtimeProfile.full': 'Completo',
   'term.runtimeProfile.full.desc':
@@ -974,6 +986,8 @@ export const ptBR: Record<MessageKey, string> = {
   'ws.emptyContainerAction': 'Abrir todos',
   'ws.containerExpandHint': '{name} (clique pra expandir)',
   'ws.dragToReorderContainer': 'Arrastar pra reordenar container',
+  'ws.paneGroup.title': 'Panes agrupados',
+  'ws.paneGroup.ungroup': 'Desagrupar panes',
   'ws.dragContainer': 'Arrastar container',
   'ws.collapseContainer': 'Recolher container',
   'ws.collapse': 'Recolher',
@@ -1080,6 +1094,7 @@ export const ptBR: Record<MessageKey, string> = {
   'xterm.copy': 'Copiar',
   'xterm.openInBrowser': 'Abrir no browser',
   'xterm.openInApp': 'Abrir no app',
+  'xterm.playInApp': 'Reproduzir no app',
   'linkViewer.embedHint':
     'Alguns sites bloqueiam embed — use "abrir no browser" se a página ficar em branco.',
   'xterm.openInDefaultApp': 'Abrir no app padrão',

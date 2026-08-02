@@ -1,7 +1,7 @@
 import type { ILink } from '@xterm/xterm'
 
 /** Categoria de arquivo apontado por um link de path — decide o viewer no grid. */
-export type FileLinkKind = 'markdown' | 'image' | 'text'
+export type FileLinkKind = 'markdown' | 'image' | 'video' | 'text'
 
 export type DetectedTerminalLink = {
   text: string
@@ -32,10 +32,15 @@ const LINK_START_PATTERN = /https?:\/\/|(?:[A-Za-z]:\\|\\\\)|(?<![\w])(?:~\/|\/)
 const LINE_COL_SUFFIX = /:\d+(?::\d+)?$/
 const MARKDOWN_EXT_PATTERN = /\.(md|markdown|mdx)$/i
 const IMAGE_EXT_PATTERN = /\.(png|jpe?g|gif|webp|bmp|avif|ico|svg)$/i
+const VIDEO_EXT_PATTERN = /\.(mp4|m4v|mov|avi|mkv|webm|ogv)$/i
 const FILE_EXT_PATTERN = /\.[A-Za-z0-9]{1,12}$/
 const FILE_EXT_BOUNDARY_PATTERN =
-  /\.(?:md|markdown|mdx|png|jpe?g|gif|webp|bmp|avif|ico|svg|txt|tsx?|jsx?|json|ya?ml|toml|csv|pdf)(?=$|[\s),.;:])/i
+  /\.(?:md|markdown|mdx|png|jpe?g|gif|webp|bmp|avif|ico|svg|txt|tsx?|jsx?|json|ya?ml|toml|csv|pdf|mp4|m4v|mov|avi|mkv|webm|mp3|wav|flac|m4a|zip|7z|rar|tar|gz|exe|msi|dll)(?=$|[\s),.;:])/i
 const LINK_TRAILING_PUNCTUATION = /[\s),.;:]+$/
+
+export function isVideoFilePath(path: string): boolean {
+  return VIDEO_EXT_PATTERN.test(stripLineColumn(path.trim()))
+}
 
 /** Remove o sufixo `:linha:coluna` de um path pra obter o arquivo real. */
 export function stripLineColumn(text: string): string {
@@ -47,6 +52,7 @@ export function classifyFileLink(text: string): FileLinkKind | undefined {
   const clean = stripLineColumn(text)
   if (MARKDOWN_EXT_PATTERN.test(clean)) return 'markdown'
   if (IMAGE_EXT_PATTERN.test(clean)) return 'image'
+  if (VIDEO_EXT_PATTERN.test(clean)) return 'video'
   if (FILE_EXT_PATTERN.test(clean)) return 'text'
   return undefined
 }

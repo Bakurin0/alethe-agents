@@ -1,12 +1,15 @@
 import { Group, Panel, Separator } from 'react-resizable-panels'
+import { Ungroup } from 'lucide-react'
 
 import { useProjectsStore } from '../../stores/projectsStore'
+import { useT } from '../../lib/i18n'
 import { cellStyle, gridContainerStyle, reconcileGridLayout } from '../../lib/gridLayout'
 import type { GridLayout, LayoutMode, Terminal } from '../../lib/types'
 import { MarkdownPane } from '../MarkdownPane'
 import { TerminalPane } from '../TerminalPane'
 import { WebPane } from '../WebPane'
 import { GraphifyView } from '../GraphifyView'
+import { VideoPane } from '../VideoPane'
 import styles from './WorkspaceView.module.css'
 
 /** Renderiza o pane certo conforme o tipo (terminal ou viewer de arquivo). */
@@ -14,11 +17,18 @@ function Pane({
   projectId,
   terminal,
   paneDragEnabled = true,
+  grouped = false,
 }: {
   projectId: string
   terminal: Terminal
   paneDragEnabled?: boolean
+  grouped?: boolean
 }) {
+  const project = useProjectsStore((s) => s.projects.find((p) => p.id === projectId))
+  const group = !grouped
+    ? project?.paneGroups?.find((candidate) => candidate.paneIds[0] === terminal.id)
+    : undefined
+  if (group) return <PaneGroupView projectId={projectId} group={group} />
   if (terminal.kind === 'graphify') {
     return <GraphifyView repo={terminal.cwd} projectId={projectId} terminalId={terminal.id} />
   }
@@ -28,8 +38,50 @@ function Pane({
   if (terminal.kind === 'web') {
     return <WebPane projectId={projectId} terminal={terminal} />
   }
+  if (terminal.kind === 'video') {
+    return <VideoPane projectId={projectId} terminal={terminal} />
+  }
   return (
     <TerminalPane projectId={projectId} terminal={terminal} paneDragEnabled={paneDragEnabled} />
+  )
+}
+
+function PaneGroupView({
+  projectId,
+  group,
+}: {
+  projectId: string
+  group: { id: string; paneIds: string[] }
+}) {
+  const t = useT()
+  const ungroupPanes = useProjectsStore((s) => s.ungroupPanes)
+  const project = useProjectsStore((s) => s.projects.find((p) => p.id === projectId))
+  const terminals = group.paneIds
+    .map((id) => project?.terminals.find((terminal) => terminal.id === id))
+    .filter((terminal): terminal is Terminal => Boolean(terminal))
+  return (
+    <section className={styles.paneGroup}>
+      <header className={styles.paneGroupHeader}>
+        <span>{t('ws.paneGroup.title')}</span>
+        <button
+          type="button"
+          className={styles.paneGroupAction}
+          title={t('ws.paneGroup.ungroup')}
+          aria-label={t('ws.paneGroup.ungroup')}
+          onPointerDown={(event) => event.stopPropagation()}
+          onClick={() => ungroupPanes(projectId, group.id)}
+        >
+          <Ungroup size={14} />
+        </button>
+      </header>
+      <div className={styles.paneGroupBody}>
+        {terminals.map((terminal) => (
+          <div key={terminal.id} className={styles.paneGroupItem}>
+            <Pane projectId={projectId} terminal={terminal} grouped />
+          </div>
+        ))}
+      </div>
+    </section>
   )
 }
 
@@ -42,21 +94,24 @@ export type PaneAreaProps = {
 }
 
 export function PaneArea({ projectId, idPrefix, terminals, layoutMode }: PaneAreaProps) {
+  const groups = useProjectsStore((s) => s.projects.find((p) => p.id === projectId)?.paneGroups ?? [])
   if (terminals.length === 0) return null
-  if (terminals.length === 1) {
+  const groupedIds = new Set(groups.flatMap((group) => group.paneIds.slice(1)))
+  const visibleTerminals = terminals.filter((terminal) => !groupedIds.has(terminal.id))
+  if (visibleTerminals.length === 1) {
     return (
       <div className={styles.singlePane}>
-        <Pane projectId={projectId} terminal={terminals[0]} paneDragEnabled={false} />
+        <Pane projectId={projectId} terminal={visibleTerminals[0]} paneDragEnabled={false} />
       </div>
     )
   }
   if (layoutMode === 'grid')
-    return <GridLayoutComponent projectId={projectId} terminals={terminals} />
+    return <GridLayoutComponent projectId={projectId} terminals={visibleTerminals} />
   if (layoutMode === 'spotlight')
-    return <SpotlightLayout projectId={projectId} idPrefix={idPrefix} terminals={terminals} />
+    return <SpotlightLayout projectId={projectId} idPrefix={idPrefix} terminals={visibleTerminals} />
   if (layoutMode === 'sidebar')
-    return <SidebarLayout projectId={projectId} idPrefix={idPrefix} terminals={terminals} />
-  return <AutoLayout projectId={projectId} idPrefix={idPrefix} terminals={terminals} />
+    return <SidebarLayout projectId={projectId} idPrefix={idPrefix} terminals={visibleTerminals} />
+  return <AutoLayout projectId={projectId} idPrefix={idPrefix} terminals={visibleTerminals} />
 }
 
 function GridLayoutComponent({

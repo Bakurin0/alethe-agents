@@ -67,6 +67,9 @@ export const MarkdownPane = memo(function MarkdownPane({
   const setProjectGridLayout = useProjectsStore((s) => s.setProjectGridLayout)
   const setFocusedTerminal = useUiStore((s) => s.setFocusedTerminal)
   const setActiveTerminal = useUiStore((s) => s.setActiveTerminal)
+  const selectPane = useUiStore((s) => s.selectPane)
+  const clearPaneSelection = useUiStore((s) => s.clearPaneSelection)
+  const groupPanes = useProjectsStore((s) => s.groupPanes)
   const pushToast = useUiStore((s) => s.pushToast)
 
   const draggable = useDraggable({ id: `pane:${terminal.id}`, disabled: isFocusMode || preview })
@@ -182,7 +185,19 @@ export const MarkdownPane = memo(function MarkdownPane({
     <div
       ref={setRefs}
       data-pane-box="1"
-      onPointerDown={() => setActiveTerminal(projectId, terminal.id)}
+      onPointerDown={(event) => {
+        setActiveTerminal(projectId, terminal.id)
+        const existing = useUiStore.getState().selectedPanes
+        const extend = event.shiftKey && existing.every((pane) => pane.projectId === projectId)
+        selectPane(projectId, terminal.id, extend)
+        if (extend) {
+          const selected = useUiStore.getState().selectedPanes
+          if (selected.length >= 2) {
+            groupPanes(projectId, selected.map((pane) => pane.terminalId))
+            clearPaneSelection()
+          }
+        }
+      }}
       className={`${styles.pane} ${isFocusMode ? styles.paneFocus : ''} ${dragging ? styles.dragging : ''} ${dropTarget ? styles.dropTarget : ''}`}
     >
       <header className={styles.header}>

@@ -111,6 +111,9 @@ export const TerminalPane = memo(function TerminalPane({
   const openModal = useUiStore((s) => s.openModal_)
   const setFocusedTerminal = useUiStore((s) => s.setFocusedTerminal)
   const setActiveTerminal = useUiStore((s) => s.setActiveTerminal)
+  const selectPane = useUiStore((s) => s.selectPane)
+  const clearPaneSelection = useUiStore((s) => s.clearPaneSelection)
+  const groupPanes = useProjectsStore((s) => s.groupPanes)
   const requestPaneFocus = useUiStore((s) => s.requestPaneFocus)
   const terminalTheme = useProjectsStore(
     (s) => s.preferences.terminalTheme ?? s.preferences.uiTheme,
@@ -259,9 +262,19 @@ export const TerminalPane = memo(function TerminalPane({
     <div
       ref={setRefs}
       data-pane-box="1"
-      onPointerDown={() => {
+      onPointerDown={(event) => {
         markTerminalUsed(projectId, terminal.id)
         setActiveTerminal(projectId, terminal.id)
+        const existing = useUiStore.getState().selectedPanes
+        const extend = event.shiftKey && existing.every((pane) => pane.projectId === projectId)
+        selectPane(projectId, terminal.id, extend)
+        if (extend) {
+          const selected = useUiStore.getState().selectedPanes
+          if (selected.length >= 2) {
+            groupPanes(projectId, selected.map((pane) => pane.terminalId))
+            clearPaneSelection()
+          }
+        }
       }}
       className={`${styles.pane} ${isFocusMode ? styles.paneFocus : ''} ${terminal.disabled ? styles.disabled : ''} ${dragging ? styles.dragging : ''} ${dropTarget ? styles.dropTarget : ''}`}
     >

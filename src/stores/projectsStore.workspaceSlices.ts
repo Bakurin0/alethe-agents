@@ -20,6 +20,7 @@ import type {
   WorkspaceViewSnapshot,
 } from '../lib/types'
 import {
+  MAX_WORKSPACE_TABS,
   captureWorkspaceSnapshot,
   cloneWorkspaceSnapshot,
   compositionLabel,
@@ -70,6 +71,7 @@ type WorkspaceSlice = Pick<
   | 'activateWorkspaceTab'
   | 'toggleWorkspaceTabPinned'
   | 'closeSavedWorkspaceTab'
+  | 'reopenClosedWorkspaceTab'
   | 'navigateWorkspaceHistory'
   | 'toggleProjectCollapsed'
   | 'setLayoutMode'
@@ -573,6 +575,10 @@ export function createWorkspaceSlice({
       navigationUpdate((state) => {
         const index = state.workspace.tabs.findIndex((tab) => tab.id === tabId)
         if (index === -1) return
+        const closedTabs = [
+          state.workspace.tabs[index],
+          ...(state.workspace.closedTabs ?? []).filter((tab) => tab.id !== tabId),
+        ].slice(0, MAX_WORKSPACE_TABS)
         const tabs = state.workspace.tabs.filter((tab) => tab.id !== tabId)
         const history = state.workspace.history.filter((entry) => entry.tabId !== tabId)
         if (state.workspace.activeTabId !== tabId) {
@@ -580,6 +586,7 @@ export function createWorkspaceSlice({
             workspace: {
               ...state.workspace,
               tabs,
+              closedTabs,
               history,
               historyIndex: Math.min(state.workspace.historyIndex, history.length - 1),
             },
@@ -593,6 +600,7 @@ export function createWorkspaceSlice({
               ...state.workspace,
               containers: [],
               tabs: [],
+              closedTabs,
               activeTabId: null,
               activeGroupId: null,
               focusedTerminalId: null,
@@ -603,9 +611,26 @@ export function createWorkspaceSlice({
         }
         const base = {
           ...state,
-          workspace: { ...state.workspace, tabs, history, historyIndex: history.length - 1 },
+          workspace: { ...state.workspace, tabs, closedTabs, history, historyIndex: history.length - 1 },
         }
         return applyTabNavigation(base, nextTab)
+      }),
+
+    reopenClosedWorkspaceTab: () =>
+      navigationUpdate((state) => {
+        const closedTabs = state.workspace.closedTabs ?? []
+        const tab = closedTabs[0]
+        if (!tab) return
+        const restored = sanitizeWorkspaceSnapshot(tab.snapshot, state.projects)
+        const nextTab = { ...tab, snapshot: restored, updatedAt: Date.now() }
+        const base = {
+          ...state,
+          workspace: {
+            ...state.workspace,
+            closedTabs: closedTabs.slice(1),
+          },
+        }
+        return applyTabNavigation(base, nextTab, { addTab: true })
       }),
 
     navigateWorkspaceHistory: (direction) =>

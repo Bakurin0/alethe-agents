@@ -1,5 +1,5 @@
 import * as Dialog from '@radix-ui/react-dialog'
-import { Check, GitBranch, Globe, ListTodo } from 'lucide-react'
+import { BrainCircuit, Check, GitBranch, Globe, ListTodo } from 'lucide-react'
 import { useEffect, useRef, useState } from 'react'
 
 import aletheLogo from '../../assets/alethe-logo.png'
@@ -31,6 +31,7 @@ const AGENTS: { id: CodingAgent; label: string }[] = [
 const FEATURE_ICONS = {
   todos: ListTodo,
   git: GitBranch,
+  aiMemory: BrainCircuit,
 } as const
 
 export function OnboardingModal() {
