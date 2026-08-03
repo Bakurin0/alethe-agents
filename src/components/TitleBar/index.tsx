@@ -267,8 +267,12 @@ export function TitleBar() {
       data-tauri-drag-region
       style={
         {
-          '--topbar-left-width': `${preferences.leftSidebarVisible ? preferences.leftSidebarWidth : 0}px`,
-          '--topbar-right-width': `${preferences.rightSidebarVisible ? preferences.rightSidebarWidth : 0}px`,
+          '--topbar-left-width': preferences.leftSidebarVisible
+            ? `${preferences.leftSidebarWidth}px`
+            : 'max-content',
+          '--topbar-right-width': preferences.rightSidebarVisible
+            ? `${preferences.rightSidebarWidth}px`
+            : 'max-content',
         } as React.CSSProperties
       }
     >

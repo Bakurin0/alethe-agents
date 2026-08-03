@@ -20,6 +20,12 @@ Mudanças relevantes do **Alethe** para quem usa o app. Formato inspirado em
 
 ### Corrigido
 
+- **Controles da topbar ao fechar sidebars**: o espaço reservado agora permanece apenas na barra superior para os botões de controle; as sidebars fechadas não ocupam nenhuma largura no conteúdo principal.
+
+- **Loop infinito ao montar a área de panes**: o selector Zustand do `PaneArea` agora usa um fallback estável quando o projeto ainda está sendo hidratado, evitando o aviso `getSnapshot should be cached` e o React #185.
+
+- **Erro React #185 em terminais xterm.js**: o renderer WebGL instável no WebView Windows foi desativado; os terminais agora usam o renderer DOM, evitando a corrida de teardown que deixava `Viewport.syncScrollArea` sem dimensões.
+
 - **Loop de atualização ao redimensionar sidebars**: alterar a largura salva não força mais o painel redimensionável a reconstruir seu `defaultSize` durante o próprio evento de resize, evitando o erro React #185 (Maximum update depth exceeded).
 
 - **Colar imagem no terminal** (Ctrl+V ou atalho do agente) voltou a funcionar com OpenCode, Claude Code e Codex: screenshots (`Win+Shift+S`), imagens copiadas da web e arquivos de imagem copiados no Explorer agora são detectados no clipboard e colados como caminho de arquivo no PTY — antes, qualquer clipboard sem texto puro era descartado silenciosamente.

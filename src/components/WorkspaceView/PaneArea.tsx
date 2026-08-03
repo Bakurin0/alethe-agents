@@ -13,6 +13,8 @@ import { GraphifyView } from '../GraphifyView'
 import { VideoPane } from '../VideoPane'
 import styles from './WorkspaceView.module.css'
 
+const EMPTY_PANE_GROUPS: { id: string; paneIds: string[] }[] = []
+
 /** Renderiza o pane certo conforme o tipo (terminal ou viewer de arquivo). */
 function Pane({
   projectId,
@@ -98,7 +100,9 @@ export type PaneAreaProps = {
 }
 
 export function PaneArea({ projectId, idPrefix, terminals, layoutMode }: PaneAreaProps) {
-  const groups = useProjectsStore((s) => s.projects.find((p) => p.id === projectId)?.paneGroups ?? [])
+  const groups = useProjectsStore(
+    (s) => s.projects.find((p) => p.id === projectId)?.paneGroups ?? EMPTY_PANE_GROUPS,
+  )
   if (terminals.length === 0) return null
   const groupedIds = new Set(groups.flatMap((group) => group.paneIds.slice(1)))
   const visibleTerminals = terminals.filter((terminal) => !groupedIds.has(terminal.id))

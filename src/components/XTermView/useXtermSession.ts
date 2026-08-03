@@ -56,7 +56,6 @@ import {
   type AgentType,
   type Theme,
 } from '../../lib/types'
-import { acquireWebglContext } from '../../lib/webglPool'
 import { useProjectsStore } from '../../stores/projectsStore'
 import { useTerminalsStore } from '../../stores/terminalsStore'
 import { useUiStore } from '../../stores/uiStore'
@@ -172,6 +171,14 @@ export function useXtermSession(params: {
     const container = containerRef.current
     if (!container) return
 
+    if (import.meta.env.DEV) {
+      console.debug('[Alethe][xterm] mount', {
+        sessionPersistenceKey,
+        retryKey,
+        ptyId: ptyIdRef.current,
+      })
+    }
+
     let disposed = false
     const spawnQueueAbort = new AbortController()
     let unlistenData: (() => void) | null = null
@@ -253,7 +260,10 @@ export function useXtermSession(params: {
     // Renderer WebGL (GPU) — o renderer DOM padrão trava a digitação,
     // principalmente com zoom da WebView ≠ 100%. Fallback: DOM renderer.
     let webglAddon: WebglAddon | null = null
-    let releaseWebglContext: (() => void) | null = acquireWebglContext()
+    // O renderer WebGL pode perder o contexto durante o teardown do WebView e
+    // deixar o xterm com `renderer.dimensions` indefinido em um callback
+    // assÃ­ncrono. No Windows/WebView, manter o renderer DOM evita esse crash.
+    let releaseWebglContext: (() => void) | null = null
     if (releaseWebglContext) {
       try {
         webglAddon = new WebglAddon()
@@ -286,8 +296,6 @@ export function useXtermSession(params: {
       } catch {
         webglAddon?.dispose()
         webglAddon = null
-        releaseWebglContext()
-        releaseWebglContext = null
       }
     }
 
@@ -534,13 +542,15 @@ export function useXtermSession(params: {
       if (rect.width < 50 || rect.height < 30) return
       try {
         fitAddon.fit()
-      } catch {
+      } catch (error) {
+        if (import.meta.env.DEV) console.error('[Alethe][xterm] fit failed', error)
         // fit() pode falhar se o container não estiver visível
         return
       }
       try {
         terminal.refresh(0, Math.max(0, terminal.rows - 1))
-      } catch {
+      } catch (error) {
+        if (import.meta.env.DEV) console.error('[Alethe][xterm] refresh failed', error)
         /* refresh pode falhar durante teardown/layout invisível */
       }
       clampHorizontalScroll()
@@ -1083,6 +1093,13 @@ export function useXtermSession(params: {
     void start()
 
     return () => {
+      if (import.meta.env.DEV) {
+        console.debug('[Alethe][xterm] unmount', {
+          sessionPersistenceKey,
+          retryKey,
+          ptyId: ptyIdRef.current,
+        })
+      }
       disposed = true
       spawnQueueAbort.abort()
       container.removeEventListener('wheel', onWheel, true)
