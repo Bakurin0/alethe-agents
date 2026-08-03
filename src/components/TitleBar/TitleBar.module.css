@@ -302,11 +302,15 @@
 }
 
 .rightSidebarBtn {
-  margin-left: 6px;
-  border-left: 1px solid var(--border);
-  border-radius: 0;
-  padding-left: 8px;
-  width: 30px;
+  width: 28px;
+  height: 28px;
+  margin-left: 0;
+  padding-left: 0;
+  border: 1px solid transparent;
+  border-radius: var(--radius-sm);
+}
+.barEnd > .widgets + .rightSidebarBtn {
+  margin-left: 2px;
 }
 
 .usageWidget {
@@ -633,9 +637,6 @@
 
 .bar[data-style='three-areas'] .rightSidebarBtn {
   width: 28px;
-  margin-left: 0;
-  padding-left: 0;
-  border-left: 0;
 }
 
 .bar[data-style='three-areas'] .windowBtn {

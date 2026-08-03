@@ -13,10 +13,14 @@ Mudanças relevantes do **Alethe** para quem usa o app. Formato inspirado em
 ### Adicionado
 
 - Padrões de código documentados (`docs/CODE_STANDARDS.md`) e tooling de lint/format: referência única de estilo, estrutura de componentes, TypeScript, IPC, reuso de helpers, uso de `useEffect`/Zustand, i18n e checklist de PR, mais os comandos `npm run lint`/`npm run format` (ESLint flat + Prettier).
+- **Abrir arquivos no File Explorer:** clique duas vezes em qualquer arquivo na aba "File Explorer" da sidebar para abri-lo como pane no workspace.
+- **Visualizar diffs no Git Control:** clique duas vezes em um arquivo na seção "Changes" ou "Staged" do Git Control para abrir um diff pane monoespaçado no workspace com as alterações.
 - Tela **"Sobre & Atualizações"** em Configurações: mostra a versão instalada do app, verifica atualizações sob demanda e instala a nova versão com barra de progresso e erros visíveis (em vez de a falha sumir sem aviso).
 - A **versão instalada** agora aparece sempre no rodapé da sidebar; clicar abre a tela "Sobre & Atualizações".
 
 ### Corrigido
+
+- **Loop de atualização ao redimensionar sidebars**: alterar a largura salva não força mais o painel redimensionável a reconstruir seu `defaultSize` durante o próprio evento de resize, evitando o erro React #185 (Maximum update depth exceeded).
 
 - **Colar imagem no terminal** (Ctrl+V ou atalho do agente) voltou a funcionar com OpenCode, Claude Code e Codex: screenshots (`Win+Shift+S`), imagens copiadas da web e arquivos de imagem copiados no Explorer agora são detectados no clipboard e colados como caminho de arquivo no PTY — antes, qualquer clipboard sem texto puro era descartado silenciosamente.
 - **Detecção do CLI do Antigravity no Linux/macOS**: o pré-check que decide se mostra "comando não encontrado" comparava o nome cru do agente (`antigravity`) em vez do binário real (`agy`). No Windows um remap interno mascarava o problema; no Linux/macOS o agente aparecia como não instalado mesmo com o `agy` presente no PATH.

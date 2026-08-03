@@ -847,6 +847,7 @@ export const en = {
   'ui.sidebar.projects': 'Projects',
   'ui.sidebar.explorer': 'Explorer',
   'ui.sidebar.navigation': 'Sidebar navigation',
+  'ui.sidebar.system': 'System',
   'ui.sidebar.files': 'Files',
   'ui.sidebar.git': 'Git Control',
   'ui.sidebar.sourceControl': 'Source Control',
@@ -1077,6 +1078,16 @@ export const en = {
   'ws.codexWorker': 'codex worker',
   'ws.killCodexWorker': 'Kill this codex worker',
   'ws.closeKeepCodexRunning': 'Close (keeps codex running in background)',
+
+  /* ---- diff pane ---- */
+  'diff.loading': 'Loading diff...',
+  'diff.error.binary': 'Binary file cannot be displayed as text',
+  'diff.error.tooLarge': 'Diff is too large to display (> 2MB)',
+  'diff.error.generic': 'Could not load the diff',
+  'diff.empty': 'No changes to display.',
+  'diff.staged': '(Staged)',
+  'diff.unstaged': '(Changes)',
+  'diff.close': 'Close diff',
 
   /* ---- xterm link actions ---- */
   'xterm.linkMenu': 'Link actions',

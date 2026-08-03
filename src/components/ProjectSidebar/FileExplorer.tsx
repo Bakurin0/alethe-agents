@@ -3,15 +3,18 @@ import { useEffect, useState } from 'react'
 
 import { basename } from '../../lib/paths'
 import { getPtyCwd, listDirectory, type DirectoryEntry } from '../../lib/tauri'
+import { useProjectsStore } from '../../stores/projectsStore'
+import { useUiStore } from '../../stores/uiStore'
 import styles from './FileExplorer.module.css'
 
 type FileExplorerProps = {
+  projectId: string
   cwd: string
   ptyId: string | null
   terminalName: string
 }
 
-export function FileExplorer({ cwd, ptyId, terminalName }: FileExplorerProps) {
+export function FileExplorer({ projectId, cwd, ptyId, terminalName }: FileExplorerProps) {
   const [reloadKey, setReloadKey] = useState(0)
   const [liveCwd, setLiveCwd] = useState(cwd)
 
@@ -49,6 +52,7 @@ export function FileExplorer({ cwd, ptyId, terminalName }: FileExplorerProps) {
         </button>
       </div>
       <DirectoryNode
+        projectId={projectId}
         path={liveCwd}
         name={rootName(liveCwd)}
         depth={0}
@@ -60,12 +64,14 @@ export function FileExplorer({ cwd, ptyId, terminalName }: FileExplorerProps) {
 }
 
 function DirectoryNode({
+  projectId,
   path,
   name,
   depth,
   initialOpen = false,
   reloadKey,
 }: {
+  projectId: string
   path: string
   name: string
   depth: number
@@ -76,6 +82,16 @@ function DirectoryNode({
   const [entries, setEntries] = useState<DirectoryEntry[]>([])
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState(false)
+
+  const createFilePane = useProjectsStore((s) => s.createFilePane)
+  const openPane = useProjectsStore((s) => s.openPane)
+  const requestPaneFocus = useUiStore((s) => s.requestPaneFocus)
+
+  const handleFileDoubleClick = (filePath: string) => {
+    const pane = createFilePane(projectId, { filePath })
+    openPane(projectId, pane.id)
+    requestPaneFocus(pane.id)
+  }
 
   useEffect(() => {
     if (!open) return
@@ -119,6 +135,7 @@ function DirectoryNode({
                 entry.is_dir ? (
                   <DirectoryNode
                     key={entry.path}
+                    projectId={projectId}
                     path={entry.path}
                     name={entry.name}
                     depth={depth + 1}
@@ -130,6 +147,7 @@ function DirectoryNode({
                     className={styles.row}
                     style={{ paddingLeft: 22 + depth * 14 }}
                     title={entry.path}
+                    onDoubleClick={() => handleFileDoubleClick(entry.path)}
                   >
                     <File size={13} />
                     <span>{entry.name}</span>

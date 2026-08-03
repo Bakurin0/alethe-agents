@@ -362,7 +362,6 @@ export default function App() {
                 Math.abs(size.inPixels - previous.inPixels) >= 1
               ) {
                 const nextWidth = Math.max(220, Math.min(380, Math.round(size.inPixels)))
-                leftSidebarDefaultRef.current = nextWidth
                 if (leftSidebarSaveTimerRef.current !== null)
                   window.clearTimeout(leftSidebarSaveTimerRef.current)
                 leftSidebarSaveTimerRef.current = window.setTimeout(() => {
@@ -418,7 +417,6 @@ export default function App() {
                     Math.abs(size.inPixels - previous.inPixels) >= 1
                   ) {
                     const nextWidth = Math.max(260, Math.min(420, Math.round(size.inPixels)))
-                    rightSidebarDefaultRef.current = nextWidth
                     if (rightSidebarSaveTimerRef.current !== null)
                       window.clearTimeout(rightSidebarSaveTimerRef.current)
                     rightSidebarSaveTimerRef.current = window.setTimeout(() => {

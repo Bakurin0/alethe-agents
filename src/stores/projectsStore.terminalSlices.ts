@@ -11,6 +11,7 @@ import {
   collectTerminalPtyIds,
   getProjectDefaultCwd,
   makeDefaultTerminal,
+  makeDiffPane,
   makeFilePane,
   makeWebPane,
   newContainer,
@@ -30,6 +31,7 @@ type TerminalsSlice = Pick<
   | 'createTerminal'
   | 'createAgentTerminal'
   | 'createFilePane'
+  | 'createDiffPane'
   | 'createWebPane'
   | 'createGraphifyPane'
   | 'renameTerminal'
@@ -127,6 +129,38 @@ export function createTerminalsSlice({ get, update, updateTerminal }: SliceCtx):
 
     createFilePane: (projectId, args) => {
       const pane = makeFilePane(args)
+      update((state) => {
+        const projects = state.projects.map((p) =>
+          p.id === projectId ? { ...p, terminals: [...p.terminals, pane] } : p,
+        )
+        const project = projects.find((p) => p.id === projectId)
+        const layout = project?.layoutMode ?? 'auto'
+        const existing = state.workspace.containers.find((c) => c.projectId === projectId)
+        const containers = existing
+          ? state.workspace.containers.map((c) =>
+              c.projectId === projectId
+                ? { ...c, paneIds: [...c.paneIds, pane.id], lastUsedAt: Date.now() }
+                : c,
+            )
+          : [...state.workspace.containers, newContainer(projectId, [pane.id], layout)]
+        return {
+          projects,
+          workspace: {
+            ...state.workspace,
+            containers,
+            recentProjectIds: rememberProjectTab(state.workspace.recentProjectIds, projectId),
+            recentTabs: rememberWorkspaceTab(state.workspace.recentTabs, {
+              kind: 'project',
+              id: projectId,
+            }),
+          },
+        }
+      })
+      return pane
+    },
+
+    createDiffPane: (projectId, args) => {
+      const pane = makeDiffPane(args)
       update((state) => {
         const projects = state.projects.map((p) =>
           p.id === projectId ? { ...p, terminals: [...p.terminals, pane] } : p,

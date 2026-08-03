@@ -855,6 +855,7 @@ export const ptBR: Record<MessageKey, string> = {
   'ui.sidebar.projects': 'Projetos',
   'ui.sidebar.explorer': 'Explorer',
   'ui.sidebar.navigation': 'Navegacao da barra lateral',
+  'ui.sidebar.system': 'Sistema',
   'ui.sidebar.files': 'Files',
   'ui.sidebar.git': 'Controle Git',
   'ui.sidebar.sourceControl': 'Controle de versão',
@@ -1085,6 +1086,16 @@ export const ptBR: Record<MessageKey, string> = {
   'ws.codexWorker': 'codex worker',
   'ws.killCodexWorker': 'Matar este codex worker',
   'ws.closeKeepCodexRunning': 'Fechar (mantém o codex rodando em background)',
+
+  /* ---- diff pane ---- */
+  'diff.loading': 'Carregando diff...',
+  'diff.error.binary': 'Arquivo binário não pode ser exibido como texto',
+  'diff.error.tooLarge': 'Diff muito grande para exibir (> 2MB)',
+  'diff.error.generic': 'Não foi possível carregar o diff',
+  'diff.empty': 'Sem alterações para exibir.',
+  'diff.staged': '(Staged)',
+  'diff.unstaged': '(Alterações)',
+  'diff.close': 'Fechar diff',
 
   /* ---- xterm link actions ---- */
   'xterm.linkMenu': 'Ações do link',

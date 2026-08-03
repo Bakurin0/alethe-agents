@@ -121,6 +121,28 @@ export function makeFilePane(args: { filePath: string; name?: string }): Termina
   }
 }
 
+export function makeDiffPane(args: {
+  filePath: string
+  repoRoot: string
+  staged: boolean
+  name?: string
+}): Terminal {
+  const filePath = args.filePath.trim().replace(/:\d+(?::\d+)?$/, '')
+  return {
+    id: nanoid(),
+    name: args.name?.trim() || `Diff: ${basename(filePath) || filePath}`,
+    cwd: args.repoRoot,
+    activeTabId: '',
+    disabled: false,
+    laneVisible: null,
+    lastUsedAt: Date.now(),
+    tabs: [],
+    kind: 'diff',
+    filePath,
+    staged: args.staged,
+  }
+}
+
 export function makeWebPane(args: { url: string; name?: string }): Terminal {
   const url = args.url.trim()
   let host = url

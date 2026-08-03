@@ -14,7 +14,9 @@ import {
   Home,
   MoreHorizontal,
   Plus,
+  RefreshCw,
   Search,
+  Users,
 } from 'lucide-react'
 import { useEffect, useMemo, useState } from 'react'
 import { useShallow } from 'zustand/react/shallow'
@@ -48,6 +50,7 @@ export function ProjectSidebar() {
   const containers = useProjectsStore((s) => s.workspace.containers)
   const activeProjectId = useProjectsStore((s) => s.activeProjectId)
   const showGitControl = useProjectsStore((s) => s.preferences.enabledFeatures.git)
+  const preferences = useProjectsStore((s) => s.preferences)
 
   // --- action selectors (stable refs, grouped for readability) ---
   const actions = useProjectsStore(
@@ -131,9 +134,16 @@ export function ProjectSidebar() {
         .sort((a, b) => (b.lastUsedAt ?? 0) - (a.lastUsedAt ?? 0))[0] ?? null
     )
   }, [activeProject, activeTerminalRef, containers])
-  const selectedSubTab =
-    selectedTerminal?.tabs.find((tab) => tab.id === selectedTerminal.activeTabId) ??
-    selectedTerminal?.tabs[0]
+  // Terminal real (com cwd/tabs) para o explorer e git — ignora viewers (file/diff/web)
+  const sidebarTerminal = useMemo(() => {
+    if (selectedTerminal && !selectedTerminal.kind) return selectedTerminal
+    if (!activeProject) return null
+    return [...activeProject.terminals]
+      .filter((t) => !t.kind)
+      .sort((a, b) => (b.lastUsedAt ?? 0) - (a.lastUsedAt ?? 0))[0] ?? null
+  }, [selectedTerminal, activeProject])
+  const sidebarSubTab = sidebarTerminal?.tabs.find((tab) => tab.id === sidebarTerminal.activeTabId)
+    ?? sidebarTerminal?.tabs[0]
 
   const sensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 8 } }))
 
@@ -435,11 +445,12 @@ export function ProjectSidebar() {
             <span className={styles.explorerLabel}>{t('ui.sidebar.explorer')}</span>
             <MoreHorizontal size={14} />
           </div>
-          {selectedTerminal && selectedSubTab ? (
+          {sidebarTerminal && sidebarSubTab && activeProject ? (
             <FileExplorer
-              cwd={selectedSubTab.cwd || selectedTerminal.cwd}
-              ptyId={selectedSubTab.ptyId}
-              terminalName={selectedTerminal.name}
+              projectId={activeProject.id}
+              cwd={sidebarSubTab.cwd || sidebarTerminal.cwd}
+              ptyId={sidebarSubTab.ptyId}
+              terminalName={sidebarTerminal.name}
             />
           ) : (
             <div className={styles.explorerEmpty}>
@@ -463,12 +474,13 @@ export function ProjectSidebar() {
           <div className={styles.explorerHeader}>
             <span className={styles.explorerLabel}>{t('ui.sidebar.sourceControl')}</span>
           </div>
-          {selectedTerminal && selectedSubTab ? (
-            <GitControl
-              cwd={selectedSubTab.cwd || selectedTerminal.cwd}
-              ptyId={selectedSubTab.ptyId}
-              terminalName={selectedTerminal.name}
-            />
+          {sidebarTerminal && sidebarSubTab && activeProject ? (
+              <GitControl
+                projectId={activeProject.id}
+                cwd={sidebarSubTab.cwd || sidebarTerminal.cwd}
+                ptyId={sidebarSubTab.ptyId}
+                terminalName={sidebarTerminal.name}
+              />
           ) : (
             <div className={styles.explorerEmpty}>
               <EmptyState
@@ -520,6 +532,35 @@ export function ProjectSidebar() {
       ) : null}
       <WorkspaceLayoutFooter />
       <LayoutFooter />
+      {preferences.topbarStyle === 'three-areas' ? (
+        <div className={styles.systemFooter}>
+          <span className={styles.systemFooterLabel}>{t('ui.sidebar.system')}</span>
+          <div className={styles.systemFooterActions}>
+            {preferences.topbarShowSync ? (
+              <button
+                type="button"
+                className={styles.systemFooterBtn}
+                onClick={() => openModal('sync')}
+                title={t('sync.title')}
+                aria-label={t('sync.title')}
+              >
+                <RefreshCw size={13} />
+              </button>
+            ) : null}
+            {preferences.topbarShowProfile ? (
+              <button
+                type="button"
+                className={styles.systemFooterBtn}
+                onClick={() => openModal('profiles')}
+                title={t('profile.manageAccounts')}
+                aria-label={t('profile.manageAccounts')}
+              >
+                <Users size={13} />
+              </button>
+            ) : null}
+          </div>
+        </div>
+      ) : null}
       <SidebarNowPlaying />
       <SidebarUpdate />
       <UserProfile />

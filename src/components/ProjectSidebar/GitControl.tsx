@@ -27,10 +27,12 @@ import {
   type GitFileChange,
   type GitRepositoryStatus,
 } from '../../lib/tauri'
+import { useProjectsStore } from '../../stores/projectsStore'
 import { useUiStore } from '../../stores/uiStore'
 import styles from './GitControl.module.css'
 
 type GitControlProps = {
+  projectId: string
   cwd: string
   ptyId: string | null
   terminalName: string
@@ -44,7 +46,7 @@ const ERROR_KEYS: Record<string, MessageKey> = {
   directory_not_found: 'git.error.directory',
 }
 
-export function GitControl({ cwd, ptyId, terminalName }: GitControlProps) {
+export function GitControl({ projectId, cwd, ptyId, terminalName }: GitControlProps) {
   const t = useT()
   const pushToast = useUiStore((state) => state.pushToast)
   const [liveCwd, setLiveCwd] = useState(cwd)
@@ -276,6 +278,8 @@ export function GitControl({ cwd, ptyId, terminalName }: GitControlProps) {
 
       <div className={styles.groups}>
         <ChangeGroup
+          projectId={projectId}
+          repoRoot={status.repoRoot}
           kind="staged"
           label={t('git.group.staged')}
           items={status.staged}
@@ -283,6 +287,8 @@ export function GitControl({ cwd, ptyId, terminalName }: GitControlProps) {
           onPrimary={(paths) => run(() => gitUnstage(status.repoRoot, paths))}
         />
         <ChangeGroup
+          projectId={projectId}
+          repoRoot={status.repoRoot}
           kind="conflicts"
           label={t('git.group.conflicts')}
           items={status.conflicts}
@@ -290,6 +296,8 @@ export function GitControl({ cwd, ptyId, terminalName }: GitControlProps) {
           onPrimary={(paths) => run(() => gitStage(status.repoRoot, paths))}
         />
         <ChangeGroup
+          projectId={projectId}
+          repoRoot={status.repoRoot}
           kind="changes"
           label={t('git.group.changes')}
           items={status.changes}
@@ -298,6 +306,8 @@ export function GitControl({ cwd, ptyId, terminalName }: GitControlProps) {
           onDiscard={(paths) => run(() => gitDiscard(status.repoRoot, paths, false))}
         />
         <ChangeGroup
+          projectId={projectId}
+          repoRoot={status.repoRoot}
           kind="untracked"
           label={t('git.group.untracked')}
           items={status.untracked}
@@ -318,6 +328,8 @@ export function GitControl({ cwd, ptyId, terminalName }: GitControlProps) {
 }
 
 function ChangeGroup({
+  projectId,
+  repoRoot,
   kind,
   label,
   items,
@@ -325,6 +337,8 @@ function ChangeGroup({
   onPrimary,
   onDiscard,
 }: {
+  projectId: string
+  repoRoot: string
   kind: GroupKind
   label: string
   items: GitFileChange[]
@@ -382,6 +396,8 @@ function ChangeGroup({
           {tree.map((node) => (
             <TreeNodeView
               key={node.type === 'dir' ? `d:${node.path}` : `f:${node.change.path}`}
+              projectId={projectId}
+              repoRoot={repoRoot}
               node={node}
               kind={kind}
               depth={0}
@@ -397,6 +413,8 @@ function ChangeGroup({
 }
 
 function TreeNodeView({
+  projectId,
+  repoRoot,
   node,
   kind,
   depth,
@@ -404,6 +422,8 @@ function TreeNodeView({
   onPrimary,
   onDiscard,
 }: {
+  projectId: string
+  repoRoot: string
   node: TreeNode
   kind: GroupKind
   depth: number
@@ -415,6 +435,18 @@ function TreeNodeView({
   const [open, setOpen] = useState(true)
   const indent = { paddingLeft: 8 + depth * 12 }
 
+  const createDiffPane = useProjectsStore((s) => s.createDiffPane)
+  const openPane = useProjectsStore((s) => s.openPane)
+  const requestPaneFocus = useUiStore((s) => s.requestPaneFocus)
+
+  const handleDoubleClick = (filePath: string) => {
+    if (kind === 'untracked') return
+    const isStaged = kind === 'staged'
+    const pane = createDiffPane(projectId, { filePath, repoRoot, staged: isStaged })
+    openPane(projectId, pane.id)
+    requestPaneFocus(pane.id)
+  }
+
   if (node.type === 'file') {
     const change = node.change
     const isStaged = kind === 'staged'
@@ -423,6 +455,7 @@ function TreeNodeView({
         className={styles.file}
         style={indent}
         title={change.originalPath ? `${change.originalPath} → ${change.path}` : change.path}
+        onDoubleClick={() => handleDoubleClick(change.path)}
       >
         <span className={styles.fileName}>{node.name}</span>
         <span className={`${styles.status} ${statusClass(kind, change.status)}`}>
@@ -495,6 +528,8 @@ function TreeNodeView({
         ? node.children.map((child) => (
             <TreeNodeView
               key={child.type === 'dir' ? `d:${child.path}` : `f:${child.change.path}`}
+              projectId={projectId}
+              repoRoot={repoRoot}
               node={child}
               kind={kind}
               depth={depth + 1}

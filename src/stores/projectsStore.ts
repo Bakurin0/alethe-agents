@@ -192,6 +192,11 @@ export type ProjectsState = ProjectsFile & {
   ) => Promise<Terminal>
   /** Cria um pane viewer (markdown/arquivo) e adiciona ao grid do projeto. */
   createFilePane: (projectId: string, args: { filePath: string; name?: string }) => Terminal
+  /** Cria um pane de diff (Git) e adiciona ao grid do projeto. */
+  createDiffPane: (
+    projectId: string,
+    args: { filePath: string; repoRoot: string; staged: boolean; name?: string },
+  ) => Terminal
   /** Cria um pane web persistente e adiciona ao grid do projeto. */
   createWebPane: (projectId: string, args: { url: string; name?: string }) => Terminal
   createGraphifyPane: (projectId: string, cwd: string) => Terminal

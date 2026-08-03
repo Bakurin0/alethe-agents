@@ -103,6 +103,7 @@
 .projectInputWrap select,
 .projectLink select {
   min-width: 0;
+  min-height: 0;
   width: 100%;
   overflow: hidden;
   color: var(--fg-muted);
@@ -114,6 +115,7 @@
   appearance: none;
   -webkit-appearance: none;
   padding-right: 14px;
+  background-image: none;
 }
 
 .projectInputWrap select {

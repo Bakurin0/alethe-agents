@@ -118,6 +118,7 @@ export function TitleBar() {
   const navigateWorkspaceHistory = useProjectsStore((s) => s.navigateWorkspaceHistory)
   const [tabMenu, setTabMenu] = useState<{ x: number; y: number; items: MenuItem[] } | null>(null)
   const activeProfile = profiles.find((profile) => profile.id === activeProfileId) ?? null
+  const threeAreas = preferences.topbarStyle === 'three-areas'
   const antigravityReady =
     antigravityUsage?.status === 'ready' && antigravityUsage.buckets.length > 0
 
@@ -303,10 +304,18 @@ export function TitleBar() {
             <PanelLeftOpen size={14} />
           )}
         </button>
-        <span className={styles.title} data-tauri-drag-region>
-          <span className={styles.titleMark}>A</span>
-          {APP_TITLE}
-        </span>
+        {threeAreas ? (
+          <button
+            type="button"
+            className={`${styles.iconBtn} ${updateInfo ? styles.whatsNewPending : ''}`}
+            onClick={() => openModal('whatsNew')}
+            title={t('whatsNew.button')}
+            aria-label={t('whatsNew.button')}
+          >
+            <Sparkles size={13} />
+            {updateInfo ? <span className={styles.whatsNewDot} /> : null}
+          </button>
+        ) : null}
       </div>
       {workspaceTabs.length > 0 || agentCanvasSession ? (
         <div
@@ -468,7 +477,7 @@ export function TitleBar() {
       <div className={styles.barEnd}>
         <div className={styles.widgets}>
         <div className={styles.utilityGroup}>
-          <button
+          {!threeAreas ? <button
             type="button"
             className={`${styles.iconBtn} ${updateInfo ? styles.whatsNewPending : ''}`}
             onClick={() => openModal('whatsNew')}
@@ -477,8 +486,8 @@ export function TitleBar() {
           >
             <Sparkles size={13} />
             {updateInfo ? <span className={styles.whatsNewDot} /> : null}
-          </button>
-          {preferences.topbarShowSync ? (
+          </button> : null}
+          {!threeAreas && preferences.topbarShowSync ? (
             <button
               type="button"
               className={styles.syncPill}
@@ -489,7 +498,7 @@ export function TitleBar() {
               <RefreshCw size={12} />
             </button>
           ) : null}
-          {preferences.topbarShowProfile ? (
+          {!threeAreas && preferences.topbarShowProfile ? (
             <button
               type="button"
               className={styles.profilePill}
