@@ -21,6 +21,8 @@ Mudanças relevantes do **Alethe** para quem usa o app. Formato inspirado em
 
 ### Corrigido
 
+- **Segurança — listener HTTP interno:** o endpoint local do AgentCanvas (`localhost:9123`) agora exige um token secreto gerado a cada inicialização do app (`X-Alethe-Token`). Requisições sem o token correto recebem 401 e são descartadas, impedindo que qualquer processo local injete tarefas ou spawne agentes sem autorização. O token é incluído automaticamente nos hooks do Claude Code via `agent_hooks_settings_path`.
+- **Segurança — DoS por body ilimitado:** a leitura do corpo HTTP agora é limitada a 1 MB (`take(BODY_LIMIT)`), impedindo que um payload gigante cause OOM no processo do Alethe.
 - **Controles da topbar ao fechar sidebars**: o espaço reservado agora permanece apenas na barra superior para os botões de controle; as sidebars fechadas não ocupam nenhuma largura no conteúdo principal.
 
 - **Loop infinito ao montar a área de panes**: o selector Zustand do `PaneArea` agora usa um fallback estável quando o projeto ainda está sendo hidratado, evitando o aviso `getSnapshot should be cached` e o React #185.

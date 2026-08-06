@@ -185,6 +185,7 @@ pub fn run() {
         .invoke_handler(tauri::generate_handler![
             agent_events::agent_hooks_settings_path,
             agent_events::agent_hooks_endpoint,
+            agent_events::agent_hooks_token,
             activity_stats::record_activity_samples,
             activity_stats::get_activity_summary,
             activity_stats::clear_activity_stats,
