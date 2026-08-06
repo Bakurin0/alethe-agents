@@ -158,8 +158,8 @@
 }
 
 .dangerItem {
-  color: #ef4444;
+  color: var(--status-offline);
 }
 .dangerItem:hover {
-  background: rgba(239, 68, 68, 0.12);
+  background: var(--status-offline-soft);
 }
