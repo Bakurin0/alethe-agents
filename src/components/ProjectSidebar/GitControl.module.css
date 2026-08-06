@@ -358,7 +358,7 @@
   padding: 24px 16px;
 }
 .clean svg {
-  color: var(--status-success);
+  color: var(--status-working);
 }
 .clean strong,
 .message strong {
