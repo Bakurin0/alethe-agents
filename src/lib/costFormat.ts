@@ -1,16 +1,12 @@
-/**
- * Formatação de custo/tokens compartilhada — TokenHud e o agent canvas usam os
- * mesmos formatos pra não divergir. Puro: sem dependência de tema/CSS (cada
- * componente mapeia o nível pra sua própria classe).
- */
+/** Shared cost and token formatting for TokenHud and Agent Canvas. */
 
-/** USD legível: 4 casas abaixo de $1, 2 acima. */
+/** Readable USD format: four decimals below $1, two otherwise. */
 export function fmtUsd(v: number): string {
   if (v < 1) return `$${v.toFixed(4)}`
   return `$${v.toFixed(2)}`
 }
 
-/** Tokens com k/M. */
+/** Format tokens with k/M suffixes. */
 export function fmtTokens(n: number): string {
   if (n >= 1_000_000) return `${(n / 1_000_000).toFixed(1)}M`
   if (n >= 1_000) return `${(n / 1_000).toFixed(1)}k`
@@ -19,14 +15,14 @@ export function fmtTokens(n: number): string {
 
 export type CostLevel = 'low' | 'mid' | 'high'
 
-/** Faixa de gasto (USD) → nível, pro componente escolher a cor do token. */
+/** Map spending to a token color level. */
 export function costLevel(v: number): CostLevel {
   if (v >= 5) return 'high'
   if (v >= 1) return 'mid'
   return 'low'
 }
 
-/** Família curta do model id (opus/sonnet/haiku/…), pros badges. */
+/** Short model family name for badges. */
 export function shortModel(model: string | null): string | null {
   if (!model) return null
   const m = model.toLowerCase()

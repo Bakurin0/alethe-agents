@@ -42,6 +42,10 @@ export function isVideoFilePath(path: string): boolean {
   return VIDEO_EXT_PATTERN.test(stripLineColumn(path.trim()))
 }
 
+export function isMarkdownFilePath(path: string): boolean {
+  return MARKDOWN_EXT_PATTERN.test(stripLineColumn(path.trim()))
+}
+
 /** Remove o sufixo `:linha:coluna` de um path pra obter o arquivo real. */
 export function stripLineColumn(text: string): string {
   return text.replace(LINE_COL_SUFFIX, '')

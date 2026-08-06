@@ -8,6 +8,292 @@
   background: var(--bg);
 }
 
+.sidebarTabs {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  min-height: 34px;
+  padding: 4px 10px;
+  border-bottom: 1px solid var(--border);
+  flex: 0 0 auto;
+}
+
+.sidebarTab {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 5px;
+  min-width: 30px;
+  height: 26px;
+  padding: 0 7px;
+  border: 1px solid transparent;
+  border-radius: var(--radius-sm);
+  color: var(--fg-muted);
+  font-size: 10px;
+  font-weight: 650;
+  cursor: pointer;
+}
+
+.sidebarTab:hover {
+  color: var(--fg);
+  background: var(--panel-hover);
+}
+
+.sidebarTabActive {
+  color: var(--fg);
+  background: var(--panel);
+  border-color: var(--border-strong);
+  box-shadow: var(--shadow-sm);
+}
+
+.tabContent {
+  flex: 1;
+  min-height: 0;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+}
+
+.tabContent > :global(aside),
+.tabContent > .markdownPanel,
+.tabContent > .gitPanel {
+  min-height: 0;
+  flex: 1;
+}
+
+.markdownPanel,
+.gitPanel {
+  min-width: 0;
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+.markdownPanel {
+  position: relative;
+}
+
+.panelHeader {
+  min-height: 38px;
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  padding: 0 12px;
+  color: var(--fg);
+  border-bottom: 1px solid var(--border);
+  font-size: 12px;
+  font-weight: 650;
+  flex: 0 0 auto;
+}
+
+.gitPanel :global(.sidebar) {
+  height: auto;
+  flex: 1;
+}
+
+.gitEmpty,
+.emptyMarkdown {
+  flex: 1;
+  min-height: 180px;
+  display: grid;
+  place-items: center;
+  padding: 24px;
+  color: var(--fg-muted);
+  text-align: center;
+}
+
+.emptyMarkdown {
+  align-content: center;
+  gap: 8px;
+  font-size: 11px;
+}
+
+.emptyMarkdown strong {
+  color: var(--fg);
+  font-size: 12px;
+}
+
+.emptyMarkdown span {
+  max-width: 240px;
+  line-height: 1.45;
+}
+
+.contentLayout {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  overflow: hidden;
+}
+
+.contentLayout .content {
+  min-width: 0;
+}
+
+.commentableMarkdown {
+  min-height: 100%;
+}
+
+.commentCount {
+  min-width: 14px;
+  height: 14px;
+  display: grid;
+  place-items: center;
+  margin-left: -4px;
+  padding: 0 3px;
+  border-radius: 8px;
+  color: var(--accent-on);
+  background: var(--accent);
+  font-size: 9px;
+  font-weight: 700;
+}
+
+.commentsPanel {
+  width: 220px;
+  flex: 0 0 220px;
+  min-height: 0;
+  overflow: auto;
+  padding: 8px;
+  border-left: 1px solid var(--border);
+  background: var(--bg-elevated);
+}
+
+.commentsHeader,
+.commentMeta {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  color: var(--fg-muted);
+  font-size: 10px;
+}
+
+.commentsHeader {
+  padding: 2px 2px 8px;
+  color: var(--fg);
+  font-weight: 700;
+}
+
+.commentsEmpty {
+  margin: 12px 2px;
+  color: var(--fg-faint);
+  font-size: 10px;
+  line-height: 1.45;
+}
+
+.commentsList {
+  display: grid;
+  gap: 7px;
+}
+
+.commentCard {
+  padding: 8px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  background: var(--bg-sunken);
+}
+
+.commentQuote {
+  width: 100%;
+  padding: 0;
+  color: var(--accent);
+  text-align: left;
+  font-size: 10px;
+  line-height: 1.35;
+  cursor: pointer;
+}
+
+.commentCard p {
+  margin: 6px 0;
+  color: var(--fg);
+  font-size: 11px;
+  line-height: 1.4;
+  overflow-wrap: anywhere;
+}
+
+.commentMeta time {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.commentMeta button {
+  display: grid;
+  place-items: center;
+  padding: 3px;
+  color: var(--fg-faint);
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+}
+
+.commentMeta button:hover {
+  color: var(--status-offline);
+  background: var(--panel-hover);
+}
+
+.commentPopover {
+  position: fixed;
+  z-index: 20;
+  width: 250px;
+  padding: 9px;
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius-md);
+  background: var(--bg-elevated);
+  box-shadow: var(--shadow-lg);
+}
+
+.commentPopoverQuote {
+  max-height: 42px;
+  overflow: hidden;
+  color: var(--accent);
+  font-size: 10px;
+  line-height: 1.35;
+}
+
+.commentPopover textarea {
+  width: 100%;
+  margin-top: 7px;
+  padding: 7px;
+  resize: vertical;
+  color: var(--fg);
+  background: var(--bg-sunken);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  font: 11px/1.4 var(--font-sans);
+}
+
+.commentPopover textarea:focus {
+  outline: none;
+  border-color: var(--accent);
+}
+
+.commentPopoverActions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 5px;
+  margin-top: 7px;
+}
+
+.commentPopoverActions button {
+  padding: 4px 8px;
+  color: var(--fg-muted);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  font-size: 10px;
+  cursor: pointer;
+}
+
+.commentPopoverActions button:last-child {
+  color: var(--accent-on);
+  background: var(--accent);
+  border-color: var(--accent);
+}
+
+.commentPopoverActions button:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
 .header {
   height: 38px;
   flex: 0 0 auto;

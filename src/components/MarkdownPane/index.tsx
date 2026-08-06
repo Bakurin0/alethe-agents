@@ -6,6 +6,7 @@ import {
   FolderOpen,
   GripVertical,
   Maximize2,
+  MessageSquare,
   Minimize2,
   Pencil,
   RefreshCw,
@@ -35,6 +36,7 @@ import styles from './MarkdownPane.module.css'
 
 /** Temas claros conhecidos — o resto é tratado como escuro (mermaid). */
 const LIGHT_THEMES = new Set(['light', 'min-light'])
+const markdownPaneScrollPositions = new Map<string, number>()
 
 export type MarkdownPaneProps = {
   projectId: string
@@ -71,10 +73,13 @@ export const MarkdownPane = memo(function MarkdownPane({
   const clearPaneSelection = useUiStore((s) => s.clearPaneSelection)
   const groupPanes = useProjectsStore((s) => s.groupPanes)
   const pushToast = useUiStore((s) => s.pushToast)
+  const openMarkdownSidebar = useUiStore((s) => s.openMarkdownSidebar)
+  const setPreferences = useProjectsStore((s) => s.setPreferences)
 
   const draggable = useDraggable({ id: `pane:${terminal.id}`, disabled: isFocusMode || preview })
   const droppable = useDroppable({ id: `pane:${terminal.id}`, disabled: isFocusMode || preview })
   const paneRef = useRef<HTMLDivElement | null>(null)
+  const scrollRef = useRef<HTMLDivElement | null>(null)
   const setRefs = (node: HTMLDivElement | null) => {
     paneRef.current = node
     draggable.setNodeRef(node)
@@ -140,6 +145,14 @@ export const MarkdownPane = memo(function MarkdownPane({
       void unlisten.then((fn) => fn()).catch(() => {})
     }
   }, [filePath, reload])
+
+  useEffect(() => {
+    if (!filePath || content === null) return
+    const frame = window.requestAnimationFrame(() => {
+      if (scrollRef.current) scrollRef.current.scrollTop = markdownPaneScrollPositions.get(filePath) ?? 0
+    })
+    return () => window.cancelAnimationFrame(frame)
+  }, [content, filePath])
 
   // Foco vindo da sidebar — scroll into view.
   const focusReq = useUiStore((s) => s.focusRequest)
@@ -251,6 +264,20 @@ export const MarkdownPane = memo(function MarkdownPane({
               >
                 <ClipboardCopy size={12} />
               </button>
+              <button
+                type="button"
+                className={styles.action}
+                onClick={() => {
+                  if (!filePath) return
+                  openMarkdownSidebar(filePath, terminal.name)
+                  setPreferences({ rightSidebarVisible: true })
+                }}
+                disabled={!filePath}
+                title={t('ui.markdown.comments')}
+                aria-label={t('ui.markdown.comments')}
+              >
+                <MessageSquare size={12} />
+              </button>
               {editing ? (
                 <>
                   <button
@@ -354,11 +381,19 @@ export const MarkdownPane = memo(function MarkdownPane({
             aria-label={t('ui.markdown.edit')}
           />
         ) : terminal.kind === 'file' ? (
-          <div className={styles.scroll}>
+          <div
+            ref={scrollRef}
+            className={styles.scroll}
+            onScroll={(event) => markdownPaneScrollPositions.set(filePath, event.currentTarget.scrollTop)}
+          >
             <pre className={styles.textView}>{content}</pre>
           </div>
         ) : (
-          <div className={styles.scroll}>
+          <div
+            ref={scrollRef}
+            className={styles.scroll}
+            onScroll={(event) => markdownPaneScrollPositions.set(filePath, event.currentTarget.scrollTop)}
+          >
             <MarkdownRenderer content={content} dark={dark} />
           </div>
         )}

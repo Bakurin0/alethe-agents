@@ -75,6 +75,8 @@ export type ProjectsState = ProjectsFile & {
   setGroupColor: (id: string, color: string) => void
   setGroupIconUrl: (id: string, iconUrl: string | undefined) => void
   toggleGroupCollapsed: (id: string) => void
+  archiveGroup: (id: string) => void
+  unarchiveGroup: (id: string) => void
   /** Suspende grupo: desabilita todos os terminais e fecha containers pra liberar RAM. */
   suspendGroup: (groupId: string) => void
   /** Reativa grupo suspenso: reabilita terminais (PTYs são respawnados pelo XTermView). */
@@ -97,6 +99,8 @@ export type ProjectsState = ProjectsFile & {
   renameProject: (id: string, name: string) => void
   setProjectColor: (id: string, color: string | undefined) => void
   setProjectIconUrl: (id: string, iconUrl: string | undefined) => void
+  addMarkdownComment: (projectId: string, comment: Omit<import('../lib/types').MarkdownComment, 'id' | 'createdAt'>) => void
+  removeMarkdownComment: (projectId: string, commentId: string) => void
   setWorktreeMode: (id: string, mode: 'gitWorktree' | 'localCopy') => void
   setValidationCommands: (id: string, commands: string[]) => void
   setGsdWatcherEnabled: (id: string, enabled: boolean) => void

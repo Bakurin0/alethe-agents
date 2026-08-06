@@ -93,6 +93,23 @@ export function AppearancePage() {
       </SettingsSection>
 
       <SettingsSection
+        id="git-control-placement"
+        title={t('prefs.gitControlPlacement')}
+        description={t('prefs.gitControlPlacementDesc')}
+      >
+        <select
+          value={preferences.gitControlPlacement}
+          onChange={(event) =>
+            setPreferences({ gitControlPlacement: event.target.value as 'left' | 'right' })
+          }
+          aria-label={t('prefs.gitControlPlacement')}
+        >
+          <option value="left">{t('prefs.gitControlPlacementLeft')}</option>
+          <option value="right">{t('prefs.gitControlPlacementRight')}</option>
+        </select>
+      </SettingsSection>
+
+      <SettingsSection
         id="window-opacity"
         title={t('prefs.windowOpacity')}
         description={t('prefs.windowOpacityDesc')}

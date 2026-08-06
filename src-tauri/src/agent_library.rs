@@ -1,10 +1,4 @@
-// Fase 4 do agent canvas — instalação de agents da biblioteca.
-//
-// Os templates vivem no frontend (src/lib/agentLibrary.ts); aqui só entra a
-// parte que toca disco: listar/instalar/desinstalar `.claude/agents/*.md` na
-// pasta do projeto. Mesma regra de autoria da Fase 3: só removemos arquivo
-// que contém o MARKER — agent criado pelo usuário nunca é apagado/sobrescrito
-// sem `force`.
+// Install and remove library agents under `.claude/agents`.
 
 use serde::Serialize;
 use std::fs;
@@ -15,7 +9,7 @@ const MARKER: &str = "gerado pelo Alethe";
 #[derive(Serialize)]
 pub struct InstalledAgent {
     pub name: String,
-    /// true se o arquivo tem o marker do Alethe (pode remover sem medo).
+    /// Whether the file contains the Alethe marker and can be removed safely.
     pub from_alethe: bool,
 }
 
@@ -47,8 +41,7 @@ pub fn list_installed_agents(folder: String) -> Vec<InstalledAgent> {
     agents
 }
 
-/// Instala um agent da biblioteca. Erro "conflict" se já existe um arquivo
-/// que NÃO é nosso e `force` é false — a UI pergunta antes de sobrescrever.
+/// Install a library agent, returning `conflict` for an unowned file unless forced.
 #[tauri::command]
 pub fn install_agent(
     folder: String,
@@ -77,8 +70,7 @@ pub fn install_agent(
     Ok(path.to_string_lossy().to_string())
 }
 
-/// Remove um agent instalado. Se o arquivo não tem o marker (é do usuário),
-/// exige `force` — a UI confirma com aviso mais forte nesse caso.
+/// Remove an installed agent. Unowned files require `force`.
 #[tauri::command]
 pub fn uninstall_agent(folder: String, name: String, force: bool) -> Result<(), String> {
     if name.is_empty() || name.contains(['/', '\\', '.']) {

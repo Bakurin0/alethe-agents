@@ -359,6 +359,35 @@
   outline-offset: -2px;
 }
 
+.groupDropHint,
+.dropAreaLabel {
+  min-height: 25px;
+  display: flex;
+  align-items: center;
+  padding: 0 8px;
+  color: var(--accent);
+  background: color-mix(in srgb, var(--accent) 9%, transparent);
+  border: 1px dashed color-mix(in srgb, var(--accent) 55%, var(--border));
+  border-radius: var(--radius-sm);
+  font-size: 10px;
+  font-weight: 650;
+  letter-spacing: 0.02em;
+}
+
+.dropAreaActive {
+  margin-top: 6px;
+  padding: 4px;
+  border: 1px dashed color-mix(in srgb, var(--accent) 48%, var(--border));
+  border-radius: var(--radius-md);
+  background: color-mix(in srgb, var(--accent) 5%, transparent);
+}
+
+.dropAreaActive .dropAreaLabel {
+  justify-content: center;
+  border: 0;
+  background: transparent;
+}
+
 /* Projetos sem grupo, exibidos diretamente na lista. */
 .ungroupedSection {
   margin-top: 2px;

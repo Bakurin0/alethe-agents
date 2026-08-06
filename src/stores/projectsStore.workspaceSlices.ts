@@ -1,9 +1,4 @@
-/**
- * Slice de workspace/navegação do projectsStore. As AÇÕES foram extraídas do
- * create() (corpos verbatim), mas os helpers de navegação (navigationUpdate/
- * makeSnapshot/applyTabNavigation/appendSnapshotToActive) e o flag
- * `suppressNavigationSync` continuam no create() — são injetados via ctx.
- */
+/** Workspace and navigation actions extracted from the main store. */
 
 import { nanoid } from 'nanoid'
 

@@ -7,14 +7,9 @@ import { useProjectsStore } from '../../stores/projectsStore'
 import { useUiStore } from '../../stores/uiStore'
 import styles from './DictationButton.module.css'
 
-/**
- * Ditado por voz (speech-to-text) via Web Speech API — escreve a transcrição no
- * terminal ATIVO. Off por padrão; aparece só quando `dictationEnabled`. Sem
- * backend: usa `SpeechRecognition` do webview. Nem todo WebView2 expõe a API —
- * quando ausente, o botão fica desabilitado ("não suportado").
- */
+/** Transcribe speech into the active terminal when dictation is enabled. */
 
-// A Web Speech API não está nos types padrão do DOM lib — mínimo necessário.
+// Web Speech API types are not included in the default DOM library.
 type SpeechRecognitionLike = {
   lang: string
   continuous: boolean
@@ -38,7 +33,7 @@ function getRecognitionCtor(): (new () => SpeechRecognitionLike) | null {
   return w.SpeechRecognition ?? w.webkitSpeechRecognition ?? null
 }
 
-/** PTY do terminal atualmente ativo (foco de digitação), se houver. */
+/** Active terminal PTY, if any. */
 function activePtyId(): string | null {
   const target = useUiStore.getState().activeTerminal
   if (!target) return null
@@ -60,7 +55,7 @@ export function DictationButton() {
     try {
       recRef.current?.stop()
     } catch {
-      /* já parado */
+      /* Already stopped. */
     }
     recRef.current = null
     setListening(false)
@@ -100,7 +95,7 @@ export function DictationButton() {
     }
   }, [language])
 
-  // Cleanup ao desmontar / desabilitar.
+  // Clean up on unmount or disable.
   useEffect(
     () => () => {
       try {

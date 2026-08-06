@@ -31,6 +31,7 @@ const AGENTS: { id: CodingAgent; label: string }[] = [
 const FEATURE_ICONS = {
   todos: ListTodo,
   git: GitBranch,
+  browser: Globe,
   aiMemory: BrainCircuit,
 } as const
 

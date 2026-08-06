@@ -1,8 +1,4 @@
-/**
- * Slices de terminals e containers (workspace) do projectsStore. Extraídos do
- * create() — corpos verbatim, recebem os mutators via SliceCtx. Sem acoplamento
- * com o mutator de navegação; usam `newContainer` (factory) via import.
- */
+/** Terminal and workspace-container actions extracted from the main store. */
 
 import { nanoid } from 'nanoid'
 

@@ -1,9 +1,11 @@
+import { Folder } from 'lucide-react'
 import { useEffect, useState } from 'react'
 
 import { useUiStore } from '../../stores/uiStore'
 import { useProjectsStore } from '../../stores/projectsStore'
 import { GROUP_COLORS, type AgentType } from '../../lib/types'
 import { useT } from '../../lib/i18n'
+import { pickDirectory } from '../../lib/dialog'
 import { ImageInput } from './ImageInput'
 import { Modal } from './Modal'
 import controls from './controls.module.css'
@@ -26,6 +28,7 @@ export function NewProjectModal() {
   const [name, setName] = useState('')
   const [color, setColor] = useState<string>(GROUP_COLORS[0])
   const [iconUrl, setIconUrl] = useState('')
+  const [defaultCwd, setDefaultCwd] = useState('')
   const [groupId, setGroupId] = useState<string | null>(context?.groupId ?? null)
   const [initialTerminalType, setInitialTerminalType] = useState<AgentType>('claude')
   const withInitialTerminal = context?.createTerminalAfterCreate === true
@@ -52,6 +55,7 @@ export function NewProjectModal() {
     setName('')
     setColor(GROUP_COLORS[0])
     setIconUrl('')
+    setDefaultCwd('')
     setGroupId(context?.groupId ?? null)
     setInitialTerminalType('claude')
   }
@@ -64,14 +68,15 @@ export function NewProjectModal() {
       color,
       iconUrl: iconUrl.trim() || undefined,
       groupId,
+      defaultCwd: defaultCwd.trim() || undefined,
     })
     if (addTerminal) {
       const agent =
         agentOptions.find((option) => option.type === initialTerminalType) ?? agentOptions[0]
       const terminal = createTerminal(project.id, {
         name: agent.label,
-        cwd: '',
-        firstTab: { type: agent.type, cwd: '', runtimeProfile: 'lean' },
+        cwd: defaultCwd.trim(),
+        firstTab: { type: agent.type, cwd: defaultCwd.trim(), runtimeProfile: 'lean' },
       })
       openTerminalWorkspace(project.id, terminal.id)
     } else {
@@ -79,6 +84,11 @@ export function NewProjectModal() {
     }
     reset()
     closeModal()
+  }
+
+  const browse = async () => {
+    const directory = await pickDirectory({ defaultPath: defaultCwd || undefined })
+    if (directory) setDefaultCwd(directory)
   }
 
   return (
@@ -161,6 +171,24 @@ export function NewProjectModal() {
           </select>
         </div>
       ) : null}
+
+      <div className={controls.field}>
+        <label className={controls.label}>{t('crud.projectPathLabel')}</label>
+        <div className={controls.cwdRow}>
+          <Folder size={16} aria-hidden="true" />
+          <input
+            className={controls.input}
+            value={defaultCwd}
+            onChange={(event) => setDefaultCwd(event.target.value)}
+            placeholder={t('crud.projectPathPlaceholder')}
+            title={defaultCwd}
+          />
+          <button type="button" className={controls.btn} onClick={() => void browse()}>
+            {t('term.browse')}
+          </button>
+        </div>
+        <span className={controls.hint}>{t('crud.projectPathHint')}</span>
+      </div>
 
       <div className={controls.field}>
         <label className={controls.label}>{t('crud.colorLabel')}</label>

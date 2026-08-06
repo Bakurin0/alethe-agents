@@ -4,6 +4,8 @@ import ReactMarkdown from 'react-markdown'
 import type { Components } from 'react-markdown'
 import remarkGfm from 'remark-gfm'
 
+import { useT } from '../../lib/i18n'
+import { openInBrowser } from '../../lib/tauri'
 import styles from './MarkdownPane.module.css'
 
 let mermaidTheme: 'dark' | 'default' | null = null
@@ -67,7 +69,27 @@ export const MarkdownRenderer = memo(function MarkdownRenderer({
   content,
   dark,
 }: MarkdownRendererProps) {
+  const t = useT()
   const components: Components = {
+    a({ href, children, ...props }) {
+      const external = Boolean(href && /^https?:\/\//i.test(href))
+      return (
+        <a
+          {...props}
+          href={href}
+          target={external ? '_blank' : undefined}
+          rel={external ? 'noopener noreferrer' : undefined}
+          title={external ? t('xterm.openInBrowser') : undefined}
+          onClick={(event) => {
+            if (!href || href.startsWith('#')) return
+            event.preventDefault()
+            if (external) void openInBrowser(href)
+          }}
+        >
+          {children}
+        </a>
+      )
+    },
     code({ className, children, ...props }) {
       const match = /language-(\w+)/.exec(className ?? '')
       const lang = match?.[1]

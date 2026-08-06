@@ -373,6 +373,52 @@
   border-color: var(--border-strong);
 }
 
+.emptyState {
+  padding: 18px;
+  color: var(--fg-muted);
+  background: var(--bg-sunken);
+  border: 1px dashed var(--border);
+  border-radius: var(--radius-md);
+  font-size: 12px;
+}
+
+.optionList {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.optionRow {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 14px;
+  padding: 10px 12px;
+  background: var(--bg-sunken);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+}
+
+.optionCopy {
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+.optionCopy strong { font-size: 12px; }
+.optionCopy span { color: var(--fg-muted); font-size: 10px; }
+.rowActions { display: inline-flex; align-items: center; gap: 6px; flex-shrink: 0; }
+.iconActionDanger {
+  width: 30px;
+  height: 30px;
+  display: grid;
+  place-items: center;
+  color: var(--status-offline);
+  border: 1px solid transparent;
+  border-radius: var(--radius-sm);
+}
+.iconActionDanger:hover { background: var(--status-offline-soft); border-color: var(--status-offline); }
+
 .themeGrid {
   display: grid;
   grid-template-columns: repeat(3, minmax(0, 1fr));

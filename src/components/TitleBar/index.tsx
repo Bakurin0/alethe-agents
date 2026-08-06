@@ -12,7 +12,7 @@ import {
   Pencil,
   Pin,
   RefreshCw,
-  Sparkles,
+  Newspaper,
   Users,
   Workflow,
   X,
@@ -269,10 +269,10 @@ export function TitleBar() {
         {
           '--topbar-left-width': preferences.leftSidebarVisible
             ? `${preferences.leftSidebarWidth}px`
-            : 'max-content',
+            : '38px',
           '--topbar-right-width': preferences.rightSidebarVisible
             ? `${preferences.rightSidebarWidth}px`
-            : 'max-content',
+            : '38px',
         } as React.CSSProperties
       }
     >
@@ -316,7 +316,7 @@ export function TitleBar() {
             title={t('whatsNew.button')}
             aria-label={t('whatsNew.button')}
           >
-            <Sparkles size={13} />
+            <Newspaper size={13} />
             {updateInfo ? <span className={styles.whatsNewDot} /> : null}
           </button>
         ) : null}
@@ -488,7 +488,7 @@ export function TitleBar() {
             title={t('whatsNew.button')}
             aria-label={t('whatsNew.button')}
           >
-            <Sparkles size={13} />
+            <Newspaper size={13} />
             {updateInfo ? <span className={styles.whatsNewDot} /> : null}
           </button> : null}
           {!threeAreas && preferences.topbarShowSync ? (

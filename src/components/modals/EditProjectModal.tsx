@@ -17,6 +17,7 @@ import { EditProjectAgentSettings } from './EditProjectAgentSettings'
 import { ImageInput } from './ImageInput'
 import { Modal } from './Modal'
 import controls from './controls.module.css'
+import styles from './EditProjectModal.module.css'
 
 export function EditProjectModal() {
   const t = useT()
@@ -58,6 +59,7 @@ export function EditProjectModal() {
   const [creatingAgent, setCreatingAgent] = useState(false)
   const [mergeSource, setMergeSource] = useState('')
   const [mergeTarget, setMergeTarget] = useState('')
+  const [activeTab, setActiveTab] = useState<'focus' | 'agents' | 'worktrees' | 'merge'>('focus')
 
   const loadWorktrees = async (repoPath: string) => {
     setLoadingWorktrees(true)
@@ -83,6 +85,7 @@ export function EditProjectModal() {
       setConflictProviderState(project.conflictAgentProvider ?? 'claude')
       setGraphifyEnabledState(project.graphifyEnabled ?? false)
       setAutoWorktreeState(project.autoWorktree ?? false)
+      setActiveTab('focus')
 
       const repoPath = project.terminals[0]?.cwd
       if (repoPath) {
@@ -214,6 +217,7 @@ export function EditProjectModal() {
       open={open}
       onClose={closeModal}
       title={t('crud.editProjectTitle')}
+      width={620}
       footer={
         <>
           <button type="button" className={controls.btn} onClick={closeModal}>
@@ -230,6 +234,25 @@ export function EditProjectModal() {
         </>
       }
     >
+      <nav className={styles.tabs} aria-label={t('crud.editProjectSections')}>
+        {([
+          ['focus', t('crud.editProjectFocus')],
+          ['agents', t('crud.editProjectAgents')],
+          ['worktrees', t('crud.editProjectWorktrees')],
+          ['merge', t('crud.editProjectMerge')],
+        ] as const).map(([id, label]) => (
+          <button
+            key={id}
+            type="button"
+            className={`${styles.tab} ${activeTab === id ? styles.tabActive : ''}`}
+            onClick={() => setActiveTab(id)}
+            aria-selected={activeTab === id}
+          >
+            {label}
+          </button>
+        ))}
+      </nav>
+      {activeTab === 'focus' ? <div className={styles.panel}>
       <div className={controls.field}>
         <label className={controls.label}>{t('crud.nameLabel')}</label>
         <input
@@ -309,8 +332,9 @@ export function EditProjectModal() {
         )}
         {t('crud.projectColorPreview')}
       </div>
+      </div> : null}
 
-      <EditProjectAgentSettings
+      {activeTab === 'agents' ? <div className={styles.panel}><EditProjectAgentSettings
         worktreeMode={worktreeMode}
         onWorktreeModeChange={setWorktreeModeState}
         validationCommandsStr={validationCommandsStr}
@@ -323,8 +347,9 @@ export function EditProjectModal() {
         onGraphifyEnabledChange={setGraphifyEnabledState}
         gsdWatcherEnabled={gsdWatcherEnabled}
         onGsdWatcherEnabledChange={setGsdWatcherEnabledState}
-      />
+      /></div> : null}
 
+      {activeTab === 'worktrees' ? <div className={styles.panel}>
       {/* --- RFC-003 Worktrees Ativos --- */}
       <hr style={{ margin: '20px 0 16px', border: 'none', borderTop: '1px solid var(--border)' }} />
       <h3 style={{ fontSize: 13, fontWeight: 600, marginBottom: 12 }}>
@@ -480,6 +505,9 @@ export function EditProjectModal() {
       </div>
 
       {/* --- RFC-006/007/008 — Ciclo de merge seguro --- */}
+      </div> : null}
+
+      {activeTab === 'merge' ? <div className={styles.panel}>
       <hr style={{ margin: '20px 0 16px', border: 'none', borderTop: '1px solid var(--border)' }} />
       <h3 style={{ fontSize: 13, fontWeight: 600, marginBottom: 12 }}>{t('merge.sectionTitle')}</h3>
 
@@ -682,6 +710,7 @@ export function EditProjectModal() {
           )}
         </>
       )}
+      </div> : null}
     </Modal>
   )
 }

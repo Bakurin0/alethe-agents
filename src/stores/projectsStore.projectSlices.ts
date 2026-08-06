@@ -1,7 +1,4 @@
-/**
- * Slices de groups e projects do projectsStore. Extraídos do create() — corpos
- * verbatim, recebem os mutators via SliceCtx.
- */
+/** Group and project actions extracted from the main store. */
 
 import { nanoid } from 'nanoid'
 
@@ -22,6 +19,8 @@ type GroupsSlice = Pick<
   | 'setGroupColor'
   | 'setGroupIconUrl'
   | 'toggleGroupCollapsed'
+  | 'archiveGroup'
+  | 'unarchiveGroup'
   | 'suspendGroup'
   | 'resumeGroup'
   | 'deleteGroup'
@@ -50,7 +49,7 @@ export function createGroupsSlice({ update }: SliceCtx): GroupsSlice {
     moveGroupToParent: (groupId, parentGroupId) =>
       update((state) => {
         if (groupId === parentGroupId) return
-        // Bloqueia ciclos: não pode virar filho de um descendente.
+        // Prevent cycles: a group cannot become its descendant's child.
         if (parentGroupId !== null) {
           let cur: string | null = parentGroupId
           while (cur !== null) {
@@ -84,6 +83,16 @@ export function createGroupsSlice({ update }: SliceCtx): GroupsSlice {
         groups: state.groups.map((g) => (g.id === id ? { ...g, collapsed: !g.collapsed } : g)),
       })),
 
+    archiveGroup: (id) =>
+      update((state) => ({
+        groups: state.groups.map((g) => (g.id === id ? { ...g, archived: true } : g)),
+      })),
+
+    unarchiveGroup: (id) =>
+      update((state) => ({
+        groups: state.groups.map((g) => (g.id === id ? { ...g, archived: false } : g)),
+      })),
+
     suspendGroup: (groupId) =>
       update((state) => {
         const group = state.groups.find((g) => g.id === groupId)
@@ -96,7 +105,7 @@ export function createGroupsSlice({ update }: SliceCtx): GroupsSlice {
           ),
         )
 
-        // Desabilita todos os terminais dos projetos do grupo
+        // Disable all terminals in the group's projects.
         const projects = state.projects.map((p) => {
           if (!allProjectIds.has(p.id)) return p
           return {
@@ -105,10 +114,10 @@ export function createGroupsSlice({ update }: SliceCtx): GroupsSlice {
           }
         })
 
-        // Fecha os containers desses projetos
+        // Close those project containers.
         const containers = state.workspace.containers.filter((c) => !allProjectIds.has(c.projectId))
 
-        // Marca o grupo (e subgrupos) como suspenso
+        // Mark the group and descendants as suspended.
         const groups = state.groups.map((g) => {
           if (g.id === groupId) return { ...g, suspended: true }
           return g
@@ -124,7 +133,7 @@ export function createGroupsSlice({ update }: SliceCtx): GroupsSlice {
 
         const allProjectIds = collectGroupProjectIds(groupId, state.groups)
 
-        // Reabilita todos os terminais
+        // Re-enable all terminals.
         const projects = state.projects.map((p) => {
           if (!allProjectIds.has(p.id)) return p
           return {
@@ -146,7 +155,7 @@ export function createGroupsSlice({ update }: SliceCtx): GroupsSlice {
         const group = state.groups.find((g) => g.id === id)
         if (!group) return
         if (mode === 'cascade') {
-          // Coleta TODOS os descendantes (BFS) — subgrupos + seus projetos.
+        // Collect all descendants with a breadth-first traversal.
           const groupQueue = [id]
           const groupsToRemove = new Set<string>()
           while (groupQueue.length > 0) {
@@ -217,9 +226,7 @@ export function createGroupsSlice({ update }: SliceCtx): GroupsSlice {
               : state.activeProjectId,
           }
         }
-        // unassign:
-        // - Projetos do grupo viram Solto
-        // - Subgrupos diretos viram root (parentGroupId: null)
+        // Unassign projects and move direct subgroups to the root.
         return {
           groups: state.groups
             .filter((g) => g.id !== id)
@@ -251,7 +258,7 @@ export function createGroupsSlice({ update }: SliceCtx): GroupsSlice {
         const project = state.projects.find((p) => p.id === projectId)
         if (!project || project.groupId === groupId) return
         const oldGroupId = project.groupId
-        // remove do grupo antigo (ou do ungrouped)
+        // Remove from the old group or ungrouped list.
         let groups = state.groups.map((g) => {
           if (g.id === oldGroupId) {
             return { ...g, projectIds: g.projectIds.filter((id) => id !== projectId) }
@@ -262,7 +269,7 @@ export function createGroupsSlice({ update }: SliceCtx): GroupsSlice {
         if (oldGroupId === null) {
           ungroupedOrder = ungroupedOrder.filter((id) => id !== projectId)
         }
-        // adiciona no destino
+        // Add to the destination.
         if (groupId === null) {
           const next = [...ungroupedOrder]
           if (atIndex === undefined || atIndex < 0 || atIndex > next.length) {
@@ -321,6 +328,8 @@ type ProjectsSlice = Pick<
   | 'renameProject'
   | 'setProjectColor'
   | 'setProjectIconUrl'
+  | 'addMarkdownComment'
+  | 'removeMarkdownComment'
   | 'setWorktreeMode'
   | 'setValidationCommands'
   | 'setGsdWatcherEnabled'
@@ -373,6 +382,21 @@ export function createProjectsSlice({ set, get, update, updateProject }: SliceCt
     setProjectColor: (id, color) => updateProject(id, (p) => ({ ...p, color })),
 
     setProjectIconUrl: (id, iconUrl) => updateProject(id, (p) => ({ ...p, iconUrl })),
+
+    addMarkdownComment: (projectId, comment) =>
+      updateProject(projectId, (p) => ({
+        ...p,
+        markdownComments: [
+          ...(p.markdownComments ?? []),
+          { ...comment, id: nanoid(), createdAt: Date.now() },
+        ],
+      })),
+
+    removeMarkdownComment: (projectId, commentId) =>
+      updateProject(projectId, (p) => ({
+        ...p,
+        markdownComments: (p.markdownComments ?? []).filter((comment) => comment.id !== commentId),
+      })),
 
     setWorktreeMode: (id, worktreeMode) => updateProject(id, (p) => ({ ...p, worktreeMode })),
 

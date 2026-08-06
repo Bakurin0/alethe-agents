@@ -65,17 +65,7 @@ import { SessionTerminalDock } from './SessionTerminalDock'
 import { TasksLayer } from './TasksLayer'
 import { type UsageTab } from './UsageDropdown'
 
-/**
- * Fases 2–4 do agent canvas.
- *
- * Fluxo: o botão na Home pede uma pasta; esta view abre um terminal embutido
- * rodando `claude --dangerously-skip-permissions --settings <hooks.json>`
- * nessa pasta, com CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS=1 injetada SÓ neste
- * PTY. Subagents viram cards com feed ao vivo; teammates de Agent Teams
- * viram cards grandes (in-process: cada turno encarna como subagent com
- * agent_type = nome — o store agrega); a task list do time vira painel.
- * A biblioteca lateral instala agents (.claude/agents/*.md) por drag & drop.
- */
+/** Agent canvas view for embedded agent sessions and team activity. */
 
 export function AgentCanvasPOC() {
   const sensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 8 } }))

@@ -22,7 +22,7 @@ type SessionTerminalDockProps = {
   onClaudeExit: (code: number | null) => void
 }
 
-/** Dock inferior com o terminal do lead (claude) da sessão. */
+/** Bottom dock containing the session lead terminal. */
 export function SessionTerminalDock({
   session,
   restartHint,

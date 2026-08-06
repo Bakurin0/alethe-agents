@@ -1,6 +1,7 @@
 import { useT } from '../../lib/i18n'
 import type { AgentType } from '../../lib/types'
 import controls from './controls.module.css'
+import styles from './EditProjectModal.module.css'
 
 /**
  * Seção "Multi-agent settings" do EditProjectModal (RFC-009): modo de worktree,
@@ -38,21 +39,15 @@ export function EditProjectAgentSettings({
 
   return (
     <>
-      <hr style={{ margin: '20px 0 16px', border: 'none', borderTop: '1px solid var(--border)' }} />
-      <h3 style={{ fontSize: 13, fontWeight: 600, marginBottom: 12 }}>Multi-agent settings</h3>
+      <div className={styles.sectionIntro}>
+        <h3>{t('crud.editProjectAgentSettings')}</h3>
+        <p>{t('crud.editProjectAgentSettingsDesc')}</p>
+      </div>
 
       <div className={controls.field}>
-        <label className={controls.label}>Default worktree mode</label>
-        <div style={{ display: 'flex', gap: 16, marginTop: 4 }}>
-          <label
-            style={{
-              display: 'flex',
-              alignItems: 'center',
-              gap: 6,
-              fontSize: 12,
-              cursor: 'pointer',
-            }}
-          >
+        <label className={controls.label}>{t('crud.editProjectWorktreeMode')}</label>
+        <div className={styles.choiceRow}>
+          <label className={styles.choice}>
             <input
               type="radio"
               name="worktreeMode"
@@ -60,17 +55,9 @@ export function EditProjectAgentSettings({
               checked={worktreeMode === 'gitWorktree'}
               onChange={() => onWorktreeModeChange('gitWorktree')}
             />
-            Git worktree (fast)
+            {t('crud.editProjectGitWorktree')}
           </label>
-          <label
-            style={{
-              display: 'flex',
-              alignItems: 'center',
-              gap: 6,
-              fontSize: 12,
-              cursor: 'pointer',
-            }}
-          >
+          <label className={styles.choice}>
             <input
               type="radio"
               name="worktreeMode"
@@ -78,23 +65,16 @@ export function EditProjectAgentSettings({
               checked={worktreeMode === 'localCopy'}
               onChange={() => onWorktreeModeChange('localCopy')}
             />
-            Local copy (slow)
+            {t('crud.editProjectLocalCopy')}
           </label>
         </div>
       </div>
 
       <div className={controls.field}>
-        <label className={controls.label}>Validation commands (one per line)</label>
+        <label className={controls.label}>{t('crud.editProjectValidationCommands')}</label>
         <textarea
-          className={controls.input}
-          style={{
-            height: 60,
-            fontFamily: 'monospace',
-            fontSize: 11,
-            padding: '6px 8px',
-            resize: 'vertical',
-          }}
-          placeholder="Ex: npm run build&#10;npm test"
+          className={`${controls.input} ${styles.commandInput}`}
+          placeholder={t('crud.editProjectValidationPlaceholder')}
           value={validationCommandsStr}
           onChange={(e) => onValidationCommandsChange(e.target.value)}
         />
@@ -106,7 +86,6 @@ export function EditProjectAgentSettings({
           className={controls.input}
           value={conflictProvider}
           onChange={(e) => onConflictProviderChange(e.target.value as AgentType)}
-          style={{ cursor: 'pointer' }}
         >
           <option value="claude">Claude Code</option>
           <option value="codex">Codex</option>
@@ -115,62 +94,53 @@ export function EditProjectAgentSettings({
       </div>
 
       <div
-        className={controls.field}
-        style={{ display: 'flex', alignItems: 'center', gap: 8, marginTop: 8 }}
+        className={`${controls.field} ${styles.toggleRow}`}
       >
         <input
           type="checkbox"
           id="autoWorktree"
           checked={autoWorktree}
           onChange={(e) => onAutoWorktreeChange(e.target.checked)}
-          style={{ cursor: 'pointer' }}
         />
         <label
           htmlFor="autoWorktree"
-          className={controls.label}
-          style={{ margin: 0, cursor: 'pointer', fontWeight: 'normal' }}
+          className={styles.toggleLabel}
         >
           {t('multiAgent.autoWorktree')}
         </label>
       </div>
 
       <div
-        className={controls.field}
-        style={{ display: 'flex', alignItems: 'center', gap: 8, marginTop: 8 }}
+        className={`${controls.field} ${styles.toggleRow}`}
       >
         <input
           type="checkbox"
           id="graphifyEnabled"
           checked={graphifyEnabled}
           onChange={(e) => onGraphifyEnabledChange(e.target.checked)}
-          style={{ cursor: 'pointer' }}
         />
         <label
           htmlFor="graphifyEnabled"
-          className={controls.label}
-          style={{ margin: 0, cursor: 'pointer', fontWeight: 'normal' }}
+          className={styles.toggleLabel}
         >
           {t('project.graphifyEnabled')}
         </label>
       </div>
 
       <div
-        className={controls.field}
-        style={{ display: 'flex', alignItems: 'center', gap: 8, marginTop: 8 }}
+        className={`${controls.field} ${styles.toggleRow}`}
       >
         <input
           type="checkbox"
           id="gsdWatcher"
           checked={gsdWatcherEnabled}
           onChange={(e) => onGsdWatcherEnabledChange(e.target.checked)}
-          style={{ cursor: 'pointer' }}
         />
         <label
           htmlFor="gsdWatcher"
-          className={controls.label}
-          style={{ margin: 0, cursor: 'pointer', fontWeight: 'normal' }}
+          className={styles.toggleLabel}
         >
-          Ativar Monitoramento do Planejamento GSD (Watch `.planning/`)
+          {t('crud.editProjectGsdWatcher')}
         </label>
       </div>
     </>

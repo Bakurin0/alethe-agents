@@ -10,11 +10,7 @@ import type { AgentType } from '../lib/types'
 import type { UpdateInfo } from '../lib/updater'
 import { basename } from '../lib/paths'
 
-/**
- * Estado de UI ephemeral — modais abertos, query do find/jump, drag em
- * progresso etc. Nada aqui é persistido. Tudo persistente vai pro
- * `projectsStore` (que mapeia 1:1 pro `projects.json`).
- */
+/** Ephemeral UI state. Persisted state belongs in `projectsStore`. */
 
 type ModalKind =
   | 'newProject'
@@ -42,7 +38,7 @@ type ModalKind =
   | null
 
 export type ActiveView = 'home' | 'workspace' | 'agentCanvas'
-export type RightSidebarMode = 'todo' | 'markdown'
+export type RightSidebarMode = 'todo' | 'markdown' | 'git'
 
 export type MemorySample = MemoryStats & {
   ts: number
@@ -53,7 +49,7 @@ export type InAppToast = {
   title: string
   body: string
   createdAt: number
-  /** Agente que originou a notificação — define ícone/cor do toast. */
+  /** Agent that originated the notification and determines its icon and color. */
   agent?: AgentType
 }
 
@@ -74,7 +70,7 @@ type UiState = {
   antigravityUsage: AntigravityUsage | null
   /** ID do terminal em focus mode (overlay fullscreen blur). null = sem focus. */
   focusedTerminalId: string | null
-  /** Pulso pra requisitar foco num pane específico (sidebar click). */
+  /** Pulse that requests focus for a specific pane. */
   focusRequest: { terminalId: string; ts: number } | null
   activeTerminal: { projectId: string; terminalId: string } | null
   selectedPanes: { projectId: string; terminalId: string }[]
@@ -87,9 +83,9 @@ type UiState = {
   agentCanvasSession: { folder: string; ptyId: string } | null
   /** Teto de gasto (USD) da sessão do canvas. null = sem teto. */
   agentCanvasBudgetUsd: number | null
-  /** Notificações in-app efêmeras (banner). */
+  /** Ephemeral in-app notifications. */
   toasts: InAppToast[]
-  /** Histórico recente de notificações (não some com o banner) — usado na Home. */
+  /** Recent notification history used by Home. */
   notifications: InAppToast[]
   /** Update disponível (checado em silêncio no boot). null = atualizado/sem info. */
   updateInfo: UpdateInfo | null
@@ -114,14 +110,16 @@ type UiState = {
   setActiveView: (v: ActiveView) => void
   toggleHome: () => void
   openMarkdownSidebar: (path: string, title?: string) => void
+  showMarkdownSidebar: () => void
   showTodoSidebar: () => void
+  showGitSidebar: () => void
   setAgentCanvasSession: (session: { folder: string; ptyId: string } | null) => void
   setAgentCanvasBudget: (usd: number | null) => void
   pushToast: (toast: {
     title: string
     body: string
     agent?: AgentType
-    /** Só registra no histórico (Home), sem mostrar o banner efêmero. */
+    /** Record in history without showing an ephemeral banner. */
     silent?: boolean
   }) => void
   dismissToast: (id: string) => void
@@ -196,7 +194,9 @@ export const useUiStore = create<UiState>((set) => ({
       rightSidebarMode: 'markdown',
       rightSidebarMarkdown: { path, title: title || basename(path) || path },
     }),
+  showMarkdownSidebar: () => set({ rightSidebarMode: 'markdown' }),
   showTodoSidebar: () => set({ rightSidebarMode: 'todo', rightSidebarMarkdown: null }),
+  showGitSidebar: () => set({ rightSidebarMode: 'git' }),
   setAgentCanvasSession: (session) => set({ agentCanvasSession: session }),
   setAgentCanvasBudget: (usd) => set({ agentCanvasBudgetUsd: usd }),
   pushToast: ({ title, body, agent, silent }) =>

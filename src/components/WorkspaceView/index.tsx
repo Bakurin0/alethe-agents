@@ -8,7 +8,8 @@ import { useUiStore } from '../../stores/uiStore'
 import { pickDirectory } from '../../lib/dialog'
 import { useT } from '../../lib/i18n'
 import { cellStyle, gridContainerStyle, reconcileGridLayout } from '../../lib/gridLayout'
-import type { GridLayout, Group, Project, Terminal, WorkspaceContainer } from '../../lib/types'
+import type { AgentType, GridLayout, Group, Project, Terminal, WorkspaceContainer } from '../../lib/types'
+import { AgentIcon } from '../icons/AgentIcons'
 import { EmptyState } from '../EmptyState/EmptyState'
 import { PaneArea } from './PaneArea'
 import { ProjectContainer } from './ProjectContainer'
@@ -562,6 +563,22 @@ function NoWorkspace({
   const setGraphifyEnabled = useProjectsStore((s) => s.setGraphifyEnabled)
   const [folder, setFolder] = useState('')
   const [graphifyEnabled, setGraphifyEnabledState] = useState(false)
+  const enabledAgents = useProjectsStore((s) => s.preferences.enabledAgents)
+  const terminalTheme = useProjectsStore(
+    (s) => s.preferences.terminalTheme ?? s.preferences.uiTheme,
+  )
+  const quickAgents = useMemo(
+    () =>
+      (['claude', 'codex', 'antigravity', 'opencode', 'shell'] as AgentType[]).filter(
+        (agent) => enabledAgents[agent],
+      ),
+    [enabledAgents],
+  )
+  const [quickAgent, setQuickAgent] = useState<AgentType>('claude')
+
+  useEffect(() => {
+    if (!quickAgents.includes(quickAgent)) setQuickAgent(quickAgents[0] ?? 'shell')
+  }, [quickAgent, quickAgents])
 
   const browseFolder = async () => {
     const selected = await pickDirectory({ defaultPath: folder || undefined })
@@ -576,9 +593,9 @@ function NoWorkspace({
     const project = createProject({ name, defaultCwd: cwd })
     if (graphifyEnabled) setGraphifyEnabled(project.id, true)
     const terminal = createTerminal(project.id, {
-      name: 'Claude',
+      name: quickAgent[0].toUpperCase() + quickAgent.slice(1),
       cwd,
-      firstTab: { type: 'claude', cwd, runtimeProfile: 'lean' },
+      firstTab: { type: quickAgent, cwd, runtimeProfile: 'lean' },
     })
     openTerminalWorkspace(project.id, terminal.id)
   }
@@ -586,11 +603,25 @@ function NoWorkspace({
     return (
       <div className={styles.emptyShell}>
         <div className={styles.emptyProjectCard}>
-          <EmptyState
-            icon={<FolderPlus size={22} />}
-            title={t('ws.emptyProjectTitle')}
-            description={t('ws.emptyProjectDesc')}
-          />
+          <div className={styles.emptyProjectIntro}>
+            <div className={styles.emptyProjectIcon}><FolderPlus size={22} /></div>
+            <strong>{t('ws.emptyProjectTitle')}</strong>
+            <span>{t('ws.emptyProjectDesc')}</span>
+          </div>
+          <div className={styles.emptyFolderLabel}>{t('ws.emptyAgentLabel')}</div>
+          <div className={styles.emptyAgentGrid}>
+            {quickAgents.map((agent) => (
+              <button
+                key={agent}
+                type="button"
+                className={`${styles.emptyAgentButton} ${quickAgent === agent ? styles.emptyAgentButtonActive : ''}`}
+                onClick={() => setQuickAgent(agent)}
+              >
+                <AgentIcon type={agent} size={15} theme={terminalTheme} />
+                <span>{agent[0].toUpperCase() + agent.slice(1)}</span>
+              </button>
+            ))}
+          </div>
           <div className={styles.emptyFolderLabel}>{t('ws.emptyFolderLabel')}</div>
           <div className={styles.emptyFolderRow}>
             <button

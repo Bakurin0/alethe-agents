@@ -1,5 +1,6 @@
 import {
   FileText,
+  Archive,
   FolderOpen,
   Layout,
   MoveRight,
@@ -38,6 +39,7 @@ type MenuActions = Pick<
   | 'renameGroup'
   | 'moveGroupToParent'
   | 'toggleGroupCollapsed'
+  | 'archiveGroup'
   | 'resumeGroup'
   | 'deleteGroup'
   | 'focusWorkspaceTerminal'
@@ -268,6 +270,12 @@ export function createSidebarMenus(deps: SidebarMenuDeps) {
       kind: 'item',
       label: group.collapsed ? t('ui.sidebar.expand') : t('ui.sidebar.collapse'),
       onClick: () => actions.toggleGroupCollapsed(group.id),
+    },
+    {
+      kind: 'item',
+      label: t('ui.sidebar.archiveGroup'),
+      icon: <Archive size={14} />,
+      onClick: () => actions.archiveGroup(group.id),
     },
     {
       kind: 'item',

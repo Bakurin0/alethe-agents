@@ -76,6 +76,7 @@ export function normalizePreferences(raw: LegacyPreferences | undefined): Prefer
     language: preferences.language === 'pt-BR' ? 'pt-BR' : 'en',
     accountCreated: legacyAccountCreated,
     topbarStyle: preferences.topbarStyle === 'three-areas' ? 'three-areas' : 'classic',
+    gitControlPlacement: preferences.gitControlPlacement === 'right' ? 'right' : 'left',
     displayName: preferences.displayName.trim(),
     profileImageUrl: preferences.profileImageUrl.trim(),
     todoStoragePath: preferences.todoStoragePath.trim(),

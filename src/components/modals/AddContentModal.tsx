@@ -24,6 +24,7 @@ export function AddContentModal() {
   })
   const createFilePane = useProjectsStore((state) => state.createFilePane)
   const createWebPane = useProjectsStore((state) => state.createWebPane)
+  const browserEnabled = useProjectsStore((state) => state.preferences.enabledFeatures.browser)
   const [kind, setKind] = useState<AddKind>(null)
   const [urlInput, setUrlInput] = useState('')
   const normalizedUrl = normalizeBrowserUrl(urlInput)
@@ -84,7 +85,7 @@ export function AddContentModal() {
     >
       <p className={styles.description}>{t('addContent.description')}</p>
       <div className={styles.options}>
-        <button
+        {browserEnabled ? <button
           type="button"
           className={`${styles.option} ${kind === 'readme' ? styles.optionActive : ''}`}
           onClick={() => void chooseReadme()}
@@ -97,7 +98,7 @@ export function AddContentModal() {
             <strong>{t('addContent.readme')}</strong>
             <small>{t('addContent.readmeDescription')}</small>
           </span>
-        </button>
+        </button> : null}
         <button
           type="button"
           className={`${styles.option} ${kind === 'web' ? styles.optionActive : ''}`}
