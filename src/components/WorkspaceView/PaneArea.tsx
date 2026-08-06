@@ -116,7 +116,9 @@ export function PaneArea({ projectId, idPrefix, terminals, layoutMode }: PaneAre
   if (layoutMode === 'grid')
     return <GridLayoutComponent projectId={projectId} terminals={visibleTerminals} />
   if (layoutMode === 'spotlight')
-    return <SpotlightLayout projectId={projectId} idPrefix={idPrefix} terminals={visibleTerminals} />
+    return (
+      <SpotlightLayout projectId={projectId} idPrefix={idPrefix} terminals={visibleTerminals} />
+    )
   if (layoutMode === 'sidebar')
     return <SidebarLayout projectId={projectId} idPrefix={idPrefix} terminals={visibleTerminals} />
   return <AutoLayout projectId={projectId} idPrefix={idPrefix} terminals={visibleTerminals} />

@@ -204,7 +204,9 @@ export function NewTerminalModal() {
             <input
               type="checkbox"
               checked={alwaysStartUnrestricted}
-              onChange={(event) => setPreferences({ alwaysStartUnrestricted: event.target.checked })}
+              onChange={(event) =>
+                setPreferences({ alwaysStartUnrestricted: event.target.checked })
+              }
             />
             <span>{t('term.alwaysUnrestricted')}</span>
           </label>

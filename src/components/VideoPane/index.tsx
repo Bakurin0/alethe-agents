@@ -67,7 +67,10 @@ export const VideoPane = memo(function VideoPane({
         if (extend) {
           const selected = useUiStore.getState().selectedPanes
           if (selected.length >= 2) {
-            groupPanes(projectId, selected.map((pane) => pane.terminalId))
+            groupPanes(
+              projectId,
+              selected.map((pane) => pane.terminalId),
+            )
             clearPaneSelection()
           }
         }
@@ -106,7 +109,11 @@ export const VideoPane = memo(function VideoPane({
               type="button"
               className={styles.action}
               onClick={() => setFocusedTerminal(isFocusMode ? null : terminal.id)}
-              title={isFocusMode ? t('ui.terminal.exitFocusModeEsc') : t('ui.terminal.focusModeFullscreen')}
+              title={
+                isFocusMode
+                  ? t('ui.terminal.exitFocusModeEsc')
+                  : t('ui.terminal.focusModeFullscreen')
+              }
               aria-label={isFocusMode ? t('ui.terminal.exitFocusMode') : t('ui.terminal.focusMode')}
             >
               {isFocusMode ? <Minimize2 size={12} /> : <Maximize2 size={12} />}
