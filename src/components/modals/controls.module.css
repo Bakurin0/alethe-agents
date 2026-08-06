@@ -94,13 +94,13 @@ select.input {
 }
 
 .btnDanger {
-  background: #dc2626;
-  border-color: #dc2626;
-  color: #fff;
+  background: var(--status-offline);
+  border-color: var(--status-offline);
+  color: var(--accent-on);
 }
 .btnDanger:hover:not(:disabled) {
-  background: #b91c1c;
-  border-color: #b91c1c;
+  background: color-mix(in srgb, var(--status-offline) 85%, #000);
+  border-color: color-mix(in srgb, var(--status-offline) 85%, #000);
 }
 
 .pillRow {

@@ -1,8 +1,8 @@
 # Alethe — guia de trabalho (IA)
 
 > Conteúdo idêntico ao [`CLAUDE.md`](CLAUDE.md) deste diretório. Mantenha os dois em sincronia.
-> Este é o diretório de trabalho do app. Para contexto amplo do projeto, leia
-> [`../docs/CONTEXTO_IA.md`](../docs/CONTEXTO_IA.md).
+> Contribuindo de fora? Comece por [`CONTRIBUTING.md`](CONTRIBUTING.md) — setup, layout do
+> projeto, regras da casa e convenção de PR.
 
 ## 1. O que é
 
@@ -11,17 +11,16 @@ código (Claude Code, Codex, OpenCode) e shells em paralelo, dentro de uma works
 terminais reais (PTYs), layouts, temas, histórico e controle de RAM.
 
 > Tagline: **Reveal the state of every agent, shell, and project.**
-> Status: **v1.2.0**, MVP funcional em polish. Identifier: `com.kc1t.alethe`.
+> Status: **v1.3.0**, MVP funcional em polish. Identifier: `com.kc1t.alethe`.
 
 ## 2. Onde você está
 
-Você está em `public launch/` — o diretório real do app. Aqui ficam:
+Na raiz do repositório — o diretório do app. Aqui ficam:
 
 - `src/` — frontend React.
 - `src-tauri/` — backend Rust/Tauri.
 - `package.json`, `vite.config.ts`, `tsconfig.json`, `tests/`.
-
-A raiz `poc/` (um nível acima) guarda `README.md`, `docs/`, `.claude/agents/`, `web/` e `landing/`.
+- `docs/` — docs versionados (`FEATURES.md`, `CHANGELOG.md`, `OVERVIEW.md`, `BRAND.md`).
 
 ## 3. Stack
 
@@ -49,7 +48,7 @@ Ao retornar o caminho de um instalador gerado, informe sempre o **caminho absolu
 (por exemplo, `D:\projeto\src-tauri\target\release\bundle\nsis\Alethe_setup.exe`), nunca apenas o
 caminho relativo ao repositório.
 
-Detalhes em [`../docs/BUILD_WINDOWS.md`](../docs/BUILD_WINDOWS.md).
+Detalhes em `docs/BUILD_WINDOWS.md` (não versionado neste repo — só na máquina do dono).
 
 ## 5. Regras inegociáveis
 
@@ -113,10 +112,16 @@ eventos Tauri `pty://data/{id}` e `pty://exit/{id}`.
 
 ## 9. Aprofundar
 
-- [`../docs/CODE_STANDARDS.md`](../docs/CODE_STANDARDS.md) — padrões de código (estilo, estrutura, TS, IPC, reuso, useEffect, Zustand, lint/format). **Leitura obrigatória** antes de escrever ou revisar código.
-- [`../docs/CONTEXTO_IA.md`](../docs/CONTEXTO_IA.md) — índice de onboarding e mapa de todos os docs.
-- [`../docs/GLOSSARY.md`](../docs/GLOSSARY.md) — vocabulário do domínio (Grupo, Projeto, Container, Pane, Terminal, Sub-tab, PTY). **Leitura obrigatória** antes de mexer em workspace/layout.
-- [`../docs/FEATURES.md`](../docs/FEATURES.md) — features em detalhe. [`../docs/HANDOFF_STATUS.md`](../docs/HANDOFF_STATUS.md) / [`../docs/CURRENT_STEP.md`](../docs/CURRENT_STEP.md) — estado atual e pendências.
+Versionado neste repo:
+
+- [`CONTRIBUTING.md`](CONTRIBUTING.md) — setup por SO, layout, regras da casa, convenção de commit/PR.
+- [`docs/FEATURES.md`](docs/FEATURES.md) — features em detalhe.
+- [`docs/CHANGELOG.md`](docs/CHANGELOG.md) — histórico voltado ao usuário.
+- [`docs/OVERVIEW.md`](docs/OVERVIEW.md) · [`docs/BRAND.md`](docs/BRAND.md).
+
+Só na máquina do dono (não versionado): `CODE_STANDARDS.md`, `GLOSSARY.md`, `CONTEXTO_IA.md`,
+`HANDOFF_STATUS.md`, `CURRENT_STEP.md`. O glossário do domínio (Grupo, Projeto, Container, Pane,
+Sub-tab, PTY) está resumido no `CONTRIBUTING.md`.
 
 ## graphify
 
