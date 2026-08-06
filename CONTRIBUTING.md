@@ -139,7 +139,7 @@ src/                  React 18 + TypeScript frontend
     tauri.ts          Every backend `invoke` call goes through here
     types.ts          Domain types (Project, Group, Terminal, GridLayout…)
     i18n/             messages/en.ts (source of truth) + messages/pt-BR.ts
-  styles/theme.css    Design tokens for all 10 themes
+  styles/theme.css    Design tokens for all 12 themes
 
 src-tauri/src/        Rust + Tauri backend
   lib.rs              Command registry (#[tauri::command] handlers)
