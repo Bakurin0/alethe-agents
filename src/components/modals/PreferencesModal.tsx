@@ -19,6 +19,7 @@ import { useT } from '../../lib/i18n'
 import { getProfileImageUrl, getProfileInitial } from '../../lib/profile'
 import { useProjectsStore } from '../../stores/projectsStore'
 import { useUiStore } from '../../stores/uiStore'
+import { ErrorBoundary } from '../ErrorBoundary'
 import { AboutPage } from './preferences/AboutPage'
 import { AccountPage } from './preferences/AccountPage'
 import { AppearancePage } from './preferences/AppearancePage'
@@ -456,6 +457,7 @@ export function PreferencesModal() {
 
             <div ref={contentRef} className={styles.content}>
               <div className={styles.contentInner}>
+                <ErrorBoundary label="preferences-page">
                 {category === 'account' ? (
                   <AccountPage
                     avatarUrl={avatarUrl}
@@ -470,6 +472,7 @@ export function PreferencesModal() {
                 {category === 'multiagent' ? <MultiagentPage /> : null}
                 {category === 'organization' ? <OrganizationPage /> : null}
                 {category === 'about' ? <AboutPage /> : null}
+                </ErrorBoundary>
               </div>
             </div>
           </main>
