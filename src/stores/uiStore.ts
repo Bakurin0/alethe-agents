@@ -94,6 +94,7 @@ type UiState = {
 
   openModal_: (kind: Exclude<ModalKind, null>, context?: Record<string, unknown>) => void
   closeModal: () => void
+  closeMainMenu: () => void
   toggleMainMenu: () => void
   setRamMb: (value: number | null) => void
   addMemorySample: (value: MemoryStats) => void
@@ -156,6 +157,7 @@ export const useUiStore = create<UiState>((set) => ({
 
   openModal_: (kind, context) => set({ openModal: kind, modalContext: context ?? null }),
   closeModal: () => set({ openModal: null, modalContext: null }),
+  closeMainMenu: () => set({ showMainMenu: false }),
   toggleMainMenu: () => set((s) => ({ showMainMenu: !s.showMainMenu })),
   setRamMb: (value) => set({ ramMb: value }),
   addMemorySample: (value) =>
