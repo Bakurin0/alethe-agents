@@ -1,13 +1,35 @@
-// Receive Claude Code agent hooks and re-emit them as Tauri events.
+// Listener da POC do canvas de subagents (Fase 1).
+//
+// O Claude Code dispara hooks `SubagentStart`/`SubagentStop` como POST HTTP
+// (hook type "http" no settings do projeto de teste). Este módulo sobe um
+// servidor mínimo em 127.0.0.1:9123, lê o JSON de cada POST e re-emite pro
+// frontend como evento Tauri `agent-hook`. Fluxo novo e isolado — não toca
+// em PTY, projects nem em nenhum fluxo existente.
 
+use std::io::Read;
 use std::sync::atomic::{AtomicU16, Ordering};
+use std::sync::OnceLock;
 use std::time::{Duration, Instant};
 use tauri::{AppHandle, Emitter};
 
 const HOST: &str = "127.0.0.1";
 const DEFAULT_PORT: u16 = 9123;
 const MAX_PORT: u16 = 9143;
+const BODY_LIMIT: u64 = 1024 * 1024; // 1 MB
 static LISTENER_PORT: AtomicU16 = AtomicU16::new(0);
+static LISTENER_TOKEN: OnceLock<String> = OnceLock::new();
+
+fn init_token() -> &'static str {
+    LISTENER_TOKEN.get_or_init(|| nanoid::nanoid!(32))
+}
+
+fn check_token(request: &tiny_http::Request) -> bool {
+    let expected = init_token();
+    request
+        .headers()
+        .iter()
+        .any(|h| h.field.as_str() == "X-Alethe-Token" && h.value.as_str() == expected)
+}
 
 fn listener_addr(port: u16) -> String {
     format!("{HOST}:{port}")
@@ -42,15 +64,29 @@ pub fn agent_hooks_endpoint() -> Result<String, String> {
     Ok(listener_endpoint(port))
 }
 
-/// Write the session-scoped hook settings file and return its path.
+#[tauri::command]
+pub fn agent_hooks_token() -> String {
+    init_token().to_string()
+}
+
+/// Escreve (idempotente) um settings JSON só com os hooks HTTP de subagent e
+/// retorna o path. O frontend injeta via `claude --settings <path>` no
+/// terminal do canvas — assim os hooks valem só pra ESSA sessão, sem tocar
+/// no `.claude/` da pasta que o usuário escolheu.
 #[tauri::command]
 pub fn agent_hooks_settings_path() -> Result<String, String> {
     let port = wait_for_listener_port()
         .ok_or_else(|| "listener de agents ainda nao esta disponivel".to_string())?;
     let endpoint = listener_endpoint(port);
     let path = std::env::temp_dir().join("alethe-agent-hooks.json");
+    let token = init_token();
     let hook = serde_json::json!([
-        { "hooks": [ { "type": "http", "url": format!("{endpoint}/hook"), "timeout": 5 } ] }
+        { "hooks": [ {
+            "type": "http",
+            "url": format!("{endpoint}/hook"),
+            "timeout": 5,
+            "headers": { "X-Alethe-Token": token }
+        } ] }
     ]);
     let settings = serde_json::json!({
         // Fase 4: split-pane de teams não existe no Windows — in-process faz o
@@ -110,8 +146,14 @@ pub fn start_listener(app: AppHandle) {
 
         for mut request in server.incoming_requests() {
             let url = request.url().to_string();
+
+            if !check_token(&request) {
+                let _ = request.respond(tiny_http::Response::empty(401));
+                continue;
+            }
+
             let mut body = String::new();
-            if let Err(e) = request.as_reader().read_to_string(&mut body) {
+            if let Err(e) = request.as_reader().take(BODY_LIMIT).read_to_string(&mut body) {
                 eprintln!("[agent_events] erro lendo corpo: {e}");
                 let _ = request.respond(tiny_http::Response::empty(400));
                 continue;
