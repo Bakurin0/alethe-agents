@@ -104,7 +104,7 @@
 }
 .actionBtn:hover {
   background: var(--accent);
-  color: var(--fg-on-accent, #fff);
+  color: var(--accent-on);
   border-color: var(--accent);
 }
 .actionBtn:disabled {

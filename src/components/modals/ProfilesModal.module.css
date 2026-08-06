@@ -174,19 +174,19 @@
   line-height: 1.4;
 }
 .feedbackError {
-  color: var(--status-error, #f87171);
-  background: color-mix(in srgb, var(--status-error, #f87171) 12%, transparent);
+  color: var(--status-offline);
+  background: color-mix(in srgb, var(--status-offline) 12%, transparent);
 }
 .feedbackNotice {
-  color: var(--status-success, #4ade80);
-  background: color-mix(in srgb, var(--status-success, #4ade80) 12%, transparent);
+  color: var(--status-working);
+  background: color-mix(in srgb, var(--status-working) 12%, transparent);
 }
 .deletePanel {
   display: flex;
   flex-direction: column;
   gap: 12px;
   padding: 14px;
-  border-color: color-mix(in srgb, var(--status-error, #f87171) 50%, var(--border));
+  border-color: color-mix(in srgb, var(--status-offline) 50%, var(--border));
 }
 .deleteHeader {
   display: flex;
@@ -194,7 +194,7 @@
   gap: 12px;
 }
 .deleteHeader h3 {
-  color: var(--status-error, #f87171);
+  color: var(--status-offline);
 }
 .closeDelete {
   display: grid;
