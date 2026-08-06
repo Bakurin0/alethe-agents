@@ -155,7 +155,8 @@ export const useUiStore = create<UiState>((set) => ({
   updateInfo: null,
   linkViewerUrl: null,
 
-  openModal_: (kind, context) => set({ openModal: kind, modalContext: context ?? null }),
+  openModal_: (kind, context) =>
+    set({ openModal: kind, modalContext: context ?? null, showMainMenu: false }),
   closeModal: () => set({ openModal: null, modalContext: null }),
   closeMainMenu: () => set({ showMainMenu: false }),
   toggleMainMenu: () => set((s) => ({ showMainMenu: !s.showMainMenu })),

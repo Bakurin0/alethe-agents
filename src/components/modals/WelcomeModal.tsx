@@ -31,7 +31,7 @@ export function WelcomeModal() {
   const [imgFailed, setImgFailed] = useState(false)
 
   return (
-    <Dialog.Root open={open} onOpenChange={(v) => !v && closeModal()}>
+    <Dialog.Root open={open} onOpenChange={(v) => !v && open && closeModal()}>
       <Dialog.Portal>
         <Dialog.Overlay className={styles.overlay} />
         <Dialog.Content className={styles.content} aria-describedby={undefined}>

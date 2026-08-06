@@ -343,7 +343,7 @@ export function PreferencesModal() {
   }
 
   return (
-    <Dialog.Root open={open} onOpenChange={(nextOpen) => !nextOpen && closeModal()}>
+    <Dialog.Root open={open} onOpenChange={(nextOpen) => !nextOpen && open && closeModal()}>
       <Dialog.Portal>
         <Dialog.Overlay className={styles.overlay} />
         <Dialog.Content

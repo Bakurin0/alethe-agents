@@ -35,7 +35,6 @@ import styles from './MainMenu.module.css'
 export function MainMenu() {
   const t = useT()
   const open = useUiStore((s) => s.showMainMenu)
-  const toggle = useUiStore((s) => s.toggleMainMenu)
   const closeMainMenu = useUiStore((s) => s.closeMainMenu)
   const openModal = useUiStore((s) => s.openModal_)
   const flat = useProjectsStore((s) => s.preferences.workspaceFlat)
