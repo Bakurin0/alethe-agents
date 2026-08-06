@@ -544,7 +544,7 @@
   place-items: center;
   flex: none;
   border-radius: 6px;
-  color: #fff;
+  color: var(--accent-on);
   font-family: var(--font-mono);
   font-weight: 700;
   letter-spacing: -0.02em;
@@ -748,8 +748,8 @@
 
 /* Card Style Active Project (Matches Reference Image) */
 .activeCard {
-  background: color-mix(in srgb, var(--panel) 92%, #ffffff 5%);
-  border: 1px solid color-mix(in srgb, var(--border-strong) 80%, #ffffff 10%);
+  background: color-mix(in srgb, var(--panel) 92%, var(--fg) 5%);
+  border: 1px solid color-mix(in srgb, var(--border-strong) 80%, var(--fg) 10%);
   border-radius: 12px;
   padding: 10px 12px;
   margin: 6px 2px;
@@ -767,7 +767,7 @@
 }
 
 .statusHookIcon {
-  color: #f59e0b;
+  color: var(--status-waiting);
   font-size: 13px;
   line-height: 1;
   font-weight: 700;
@@ -788,7 +788,7 @@
   font-size: 10px;
   font-weight: 500;
   color: var(--text-tertiary);
-  background: color-mix(in srgb, var(--bg-elevated) 90%, #ffffff 8%);
+  background: color-mix(in srgb, var(--bg-elevated) 90%, var(--fg) 8%);
   border: 1px solid var(--border);
   padding: 1px 6px;
   border-radius: 4px;
@@ -832,12 +832,12 @@
   width: 6px;
   height: 6px;
   border-radius: 50%;
-  background: #10b981;
+  background: var(--status-working);
   flex-shrink: 0;
 }
 
 .cardAgentStatusDotRunning {
-  background: #f59e0b;
+  background: var(--status-waiting);
   box-shadow: 0 0 6px rgba(245, 158, 11, 0.6);
 }
 
@@ -918,7 +918,7 @@
 }
 
 .inactiveDotActive {
-  background: #10b981;
+  background: var(--status-working);
 }
 
 .inactiveSubtitle {
