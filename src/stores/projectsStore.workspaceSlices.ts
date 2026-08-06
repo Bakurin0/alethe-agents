@@ -606,7 +606,13 @@ export function createWorkspaceSlice({
         }
         const base = {
           ...state,
-          workspace: { ...state.workspace, tabs, closedTabs, history, historyIndex: history.length - 1 },
+          workspace: {
+            ...state.workspace,
+            tabs,
+            closedTabs,
+            history,
+            historyIndex: history.length - 1,
+          },
         }
         return applyTabNavigation(base, nextTab)
       }),

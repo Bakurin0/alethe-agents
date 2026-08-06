@@ -68,7 +68,12 @@ export const DiffPane = memo(function DiffPane({ projectId, terminal }: DiffPane
       className = styles.removed
     } else if (line.startsWith('@@ ')) {
       className = styles.hunk
-    } else if (line.startsWith('diff ') || line.startsWith('index ') || line.startsWith('--- ') || line.startsWith('+++ ')) {
+    } else if (
+      line.startsWith('diff ') ||
+      line.startsWith('index ') ||
+      line.startsWith('--- ') ||
+      line.startsWith('+++ ')
+    ) {
       className = styles.headerLine
     }
 

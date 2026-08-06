@@ -102,14 +102,7 @@ export const UNRESTRICTED_FLAG: Record<AgentType, string | null> = {
  * Viewers usam `tabs: []`; arquivos usam `filePath` e páginas web usam `url`.
  */
 export type PaneKind =
-  | 'terminal'
-  | 'markdown'
-  | 'file'
-  | 'image'
-  | 'video'
-  | 'web'
-  | 'graphify'
-  | 'diff'
+  'terminal' | 'markdown' | 'file' | 'image' | 'video' | 'web' | 'graphify' | 'diff'
 
 export type Terminal = {
   id: string

@@ -142,12 +142,15 @@ export function ProjectSidebar() {
   const sidebarTerminal = useMemo(() => {
     if (selectedTerminal && !selectedTerminal.kind) return selectedTerminal
     if (!activeProject) return null
-    return [...activeProject.terminals]
-      .filter((t) => !t.kind)
-      .sort((a, b) => (b.lastUsedAt ?? 0) - (a.lastUsedAt ?? 0))[0] ?? null
+    return (
+      [...activeProject.terminals]
+        .filter((t) => !t.kind)
+        .sort((a, b) => (b.lastUsedAt ?? 0) - (a.lastUsedAt ?? 0))[0] ?? null
+    )
   }, [selectedTerminal, activeProject])
-  const sidebarSubTab = sidebarTerminal?.tabs.find((tab) => tab.id === sidebarTerminal.activeTabId)
-    ?? sidebarTerminal?.tabs[0]
+  const sidebarSubTab =
+    sidebarTerminal?.tabs.find((tab) => tab.id === sidebarTerminal.activeTabId) ??
+    sidebarTerminal?.tabs[0]
 
   const sensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 8 } }))
 
@@ -483,12 +486,12 @@ export function ProjectSidebar() {
             <span className={styles.explorerLabel}>{t('ui.sidebar.sourceControl')}</span>
           </div>
           {sidebarTerminal && sidebarSubTab && activeProject ? (
-              <GitControl
-                projectId={activeProject.id}
-                cwd={sidebarSubTab.cwd || sidebarTerminal.cwd}
-                ptyId={sidebarSubTab.ptyId}
-                terminalName={sidebarTerminal.name}
-              />
+            <GitControl
+              projectId={activeProject.id}
+              cwd={sidebarSubTab.cwd || sidebarTerminal.cwd}
+              ptyId={sidebarSubTab.ptyId}
+              terminalName={sidebarTerminal.name}
+            />
           ) : (
             <div className={styles.explorerEmpty}>
               <EmptyState

@@ -206,7 +206,10 @@ export const MarkdownPane = memo(function MarkdownPane({
         if (extend) {
           const selected = useUiStore.getState().selectedPanes
           if (selected.length >= 2) {
-            groupPanes(projectId, selected.map((pane) => pane.terminalId))
+            groupPanes(
+              projectId,
+              selected.map((pane) => pane.terminalId),
+            )
             clearPaneSelection()
           }
         }
