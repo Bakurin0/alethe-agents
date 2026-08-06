@@ -246,12 +246,14 @@ git push origin v1.0.0
 
 ## Contributing
 
-Contributions are welcome. The easiest ways to help right now are:
+Contributions are welcome. Read [`CONTRIBUTING.md`](CONTRIBUTING.md) for setup, project layout, and house rules.
 
+The easiest ways to help right now are:
+
+- Pick an issue labeled [`good first issue`](https://github.com/Kc1t/alethe-agents/issues?q=is%3Aissue+is%3Aopen+label%3A%22good+first+issue%22) or [`help wanted`](https://github.com/Kc1t/alethe-agents/issues?q=is%3Aissue+is%3Aopen+label%3A%22help+wanted%22) — comment on it to claim it.
 - Open a bug report with clear reproduction steps.
 - Request a feature with the workflow it would improve.
-- Pick an issue labeled `good first issue` or `help wanted`.
-- Improve docs, screenshots, setup notes, or platform validation.
+- Improve docs, screenshots, setup notes, or platform validation — Linux and macOS are the least tested.
 - Open a focused pull request with a short explanation and screenshots/GIFs when the UI changes.
 
 For larger changes, open an issue first so the direction can be discussed before implementation.
