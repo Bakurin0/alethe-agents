@@ -204,6 +204,13 @@ export function PreferencesModal() {
       },
       {
         category: 'integrations',
+        target: 'terminal-command',
+        label: t('prefs.cliCommand'),
+        description: t('prefs.cliCommandDesc'),
+        keywords: 'cli command terminal path shell comando linha de comando abrir pasta',
+      },
+      {
+        category: 'integrations',
         target: 'spotify',
         label: t('prefs.spotify'),
         description: t('prefs.spotifyDesc'),

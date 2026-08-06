@@ -570,6 +570,32 @@
   font-size: 10px;
   line-height: 1.5;
 }
+/* Comando de terminal (`alethe`) — bloco de uso + ações de instalar/remover. */
+.cliUsage {
+  margin: 0;
+  padding: 10px 12px;
+  overflow-x: auto;
+  color: var(--fg-muted);
+  background: var(--bg-sunken);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  font-family: var(--font-mono);
+  font-size: 11px;
+  line-height: 1.7;
+}
+.cliActions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+.integrationFields p.cliPath {
+  font-family: var(--font-mono);
+  word-break: break-all;
+}
+.integrationFields p.cliWarning {
+  color: var(--status-waiting);
+}
+
 .segmented {
   display: inline-flex;
   padding: 3px;
