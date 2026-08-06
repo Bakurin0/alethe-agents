@@ -278,6 +278,18 @@ The easiest ways to help right now are:
 
 For larger changes, open an issue first so the direction can be discussed before implementation.
 
+## Built with Alethe
+
+Projects and products built with Alethe as the workspace — agents running in parallel, shells alongside them, sessions resumed across days.
+
+<!-- showcase:start -->
+
+_Nothing here yet._ Built something with Alethe? Add it to [`SHOWCASE.md`](SHOWCASE.md) — it's one line and a pull request, and you end up in the contributors list too.
+
+<!-- showcase:end -->
+
+See [`SHOWCASE.md`](SHOWCASE.md) for the full list and how to submit.
+
 ## Contributors
 
 Thanks to everyone helping shape Alethe.
