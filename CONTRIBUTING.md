@@ -175,8 +175,8 @@ fails `npm run build`. Never hardcode user-facing text in a component.
 
 **2. Colors and spacing come from tokens — never literals.**
 Use the CSS custom properties in `src/styles/theme.css` (`--bg`, `--fg`, `--accent`, `--border`,
-`--status-working`, …). Alethe ships 10 themes; a hardcoded `#10b981` looks right in dark mode and
-wrong in the other nine. No gradients.
+`--status-working`, …). Alethe ships 12 themes; a hardcoded `#10b981` looks right in dark mode and
+wrong in the other eleven. No gradients.
 
 **3. One `.module.css` per component.**
 CSS Modules + custom properties. No Tailwind, no styled-components, no global styles.
