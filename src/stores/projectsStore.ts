@@ -97,6 +97,8 @@ export type ProjectsState = ProjectsFile & {
     defaultCwd?: string
   }) => Project
   renameProject: (id: string, name: string) => void
+  archiveProject: (id: string) => void
+  unarchiveProject: (id: string) => void
   setProjectColor: (id: string, color: string | undefined) => void
   setProjectIconUrl: (id: string, iconUrl: string | undefined) => void
   addMarkdownComment: (projectId: string, comment: Omit<import('../lib/types').MarkdownComment, 'id' | 'createdAt'>) => void

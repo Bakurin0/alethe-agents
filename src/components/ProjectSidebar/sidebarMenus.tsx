@@ -31,6 +31,7 @@ type MenuActions = Pick<
   | 'openProjectWorkspace'
   | 'addProjectToWorkspace'
   | 'renameProject'
+  | 'archiveProject'
   | 'moveProjectToGroup'
   | 'setProjectDisabled'
   | 'deleteProject'
@@ -163,6 +164,12 @@ export function createSidebarMenus(deps: SidebarMenuDeps) {
           }
         }
       },
+    },
+    {
+      kind: 'item',
+      label: t('ui.sidebar.archiveProject'),
+      icon: <Archive size={14} />,
+      onClick: () => actions.archiveProject(project.id),
     },
     {
       kind: 'item',

@@ -68,6 +68,7 @@ export function ProjectSidebar() {
       toggleGroupCollapsed: s.toggleGroupCollapsed,
       archiveGroup: s.archiveGroup,
       renameProject: s.renameProject,
+      archiveProject: s.archiveProject,
       deleteProject: s.deleteProject,
       renameGroup: s.renameGroup,
       deleteGroup: s.deleteGroup,
@@ -294,7 +295,7 @@ export function ProjectSidebar() {
 
   const ungroupedProjects = ungroupedOrder
     .map((id) => projectsById.get(id))
-    .filter((p): p is Project => Boolean(p))
+    .filter((p): p is Project => p !== undefined && !p.archived)
 
   const groupsByParent = useMemo(() => {
     const map = new Map<string | null, Group[]>()
@@ -315,7 +316,7 @@ export function ProjectSidebar() {
   const renderGroup = (g: Group): React.ReactNode => {
     const projectsInGroup = g.projectIds
       .map((id) => projectsById.get(id))
-      .filter((p): p is Project => Boolean(p))
+      .filter((p): p is Project => p !== undefined && !p.archived)
     const childGroups = groupsByParent.get(g.id) ?? []
     return (
       <GroupNode

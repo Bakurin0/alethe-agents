@@ -326,6 +326,8 @@ type ProjectsSlice = Pick<
   ProjectsState,
   | 'createProject'
   | 'renameProject'
+  | 'archiveProject'
+  | 'unarchiveProject'
   | 'setProjectColor'
   | 'setProjectIconUrl'
   | 'addMarkdownComment'
@@ -378,6 +380,10 @@ export function createProjectsSlice({ set, get, update, updateProject }: SliceCt
     },
 
     renameProject: (id, name) => updateProject(id, (p) => ({ ...p, name })),
+
+    archiveProject: (id) => updateProject(id, (p) => ({ ...p, archived: true })),
+
+    unarchiveProject: (id) => updateProject(id, (p) => ({ ...p, archived: false })),
 
     setProjectColor: (id, color) => updateProject(id, (p) => ({ ...p, color })),
 

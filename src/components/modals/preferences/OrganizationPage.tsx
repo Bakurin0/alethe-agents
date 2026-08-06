@@ -1,4 +1,4 @@
-import { ArchiveRestore, Trash2 } from 'lucide-react'
+import { ArchiveRestore, FolderArchive, Trash2 } from 'lucide-react'
 
 import { useT } from '../../../lib/i18n'
 import { useProjectsStore } from '../../../stores/projectsStore'
@@ -9,6 +9,9 @@ export function OrganizationPage() {
   const groups = useProjectsStore((state) => state.groups.filter((group) => group.archived))
   const unarchiveGroup = useProjectsStore((state) => state.unarchiveGroup)
   const deleteGroup = useProjectsStore((state) => state.deleteGroup)
+  const projects = useProjectsStore((state) => state.projects)
+  const archivedProjects = projects.filter((project) => project.archived)
+  const unarchiveProject = useProjectsStore((state) => state.unarchiveProject)
 
   return (
     <section className={styles.section}>
@@ -49,6 +52,32 @@ export function OrganizationPage() {
                   <Trash2 size={14} />
                 </button>
               </div>
+            </div>
+          ))}
+        </div>
+      )}
+      <div className={styles.sectionHeading}>
+        <h2>{t('prefs.archivedProjectsTitle')}</h2>
+        <p>{t('prefs.archivedProjectsDesc')}</p>
+      </div>
+      {archivedProjects.length === 0 ? (
+        <div className={styles.emptyState}>{t('prefs.archivedProjectsEmpty')}</div>
+      ) : (
+        <div className={styles.optionList}>
+          {archivedProjects.map((project) => (
+            <div key={project.id} className={styles.optionRow}>
+              <div className={styles.optionCopy}>
+                <strong>{project.name}</strong>
+                <span>{t('prefs.archivedProjectTerminals', { count: project.terminals.length })}</span>
+              </div>
+              <button
+                type="button"
+                className={styles.secondaryButton}
+                onClick={() => unarchiveProject(project.id)}
+              >
+                <FolderArchive size={14} />
+                {t('prefs.restoreProject')}
+              </button>
             </div>
           ))}
         </div>

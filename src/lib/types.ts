@@ -177,6 +177,8 @@ export type Project = {
   /** Definição do grid quando layoutMode === 'grid'. Persistida pra restaurar. */
   gridLayout?: GridLayout
   collapsed: boolean
+  /** Hidden from the sidebar until restored from Preferences. */
+  archived?: boolean
   createdAt: number
   // --- RFC-009 / RFC-003 — Multi-Agent settings ---
   worktreeMode?: 'gitWorktree' | 'localCopy'
