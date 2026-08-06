@@ -12,7 +12,7 @@ type TasksLayerProps = {
   taskRefs: MutableRefObject<Map<string, HTMLDivElement>>
 }
 
-/** Camada de tasks do time como DAG — cada task liga ao teammate dono. */
+/** Team task DAG; each task connects to its owning teammate. */
 export function TasksLayer({ tasks, teamName, taskRefs }: TasksLayerProps) {
   const t = useT()
   return (

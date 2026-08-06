@@ -13,7 +13,7 @@ type CodexWorkerCardProps = {
   cardRefs: MutableRefObject<Map<string, HTMLDivElement>>
 }
 
-/** Card de um worker codex real — clicar expande o terminal completo. */
+/** Real Codex worker card; clicking expands the full terminal. */
 export function CodexWorkerCard({ worker: w, onOpen, cardRefs }: CodexWorkerCardProps) {
   const t = useT()
   return (

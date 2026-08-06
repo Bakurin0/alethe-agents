@@ -1,9 +1,4 @@
-/**
- * Funções puras e tipos do Agent Canvas (POC). Sem estado de React nem DOM —
- * fáceis de testar isoladamente. As funções que mapeiam classe de CSS
- * (`statusBadgeClass`/`costClassFor`) recebem o mapa de classes do CSS module
- * como argumento pra manter este arquivo desacoplado do stylesheet.
- */
+/** Pure Agent Canvas helpers and types. */
 import {
   Bot,
   LayoutTemplate,
@@ -21,36 +16,29 @@ import { costLevel, shortModel } from './costFormat'
 import type { ModelRate, SessionCost } from './tauri'
 import type { AgentType } from './types'
 
-/** Mapa de classes de um CSS module (chave → nome de classe gerado). */
+/** CSS module class map. */
 export type CanvasStyleMap = Readonly<Record<string, string>>
 
-/** Aresta SVG do canvas (control plane → card / task). */
+/** SVG edge connecting the control plane to a card or task. */
 export type Edge = { id: string; x1: number; y1: number; x2: number; y2: number; done: boolean }
 
-/**
- * Agent worker = um PTY REAL (claude/codex/opencode) rodando na pasta da sessão,
- * gerenciado pelo Alethe (≠ do subagent in-process do Claude). Tem card próprio
- * no canvas e abre o terminal completo quando expandido. O PTY é spawnado pelo
- * XTermView na 1ª montagem e sobrevive ao colapso (desmontar não mata; só
- * killPty mata) — reabrir re-attacha o scrollback. Despachado pelo control plane
- * via POST /spawn (ou /codex legado).
- */
+/** Real PTY worker managed by the canvas and expandable into a full terminal. */
 export type CodexWorker = {
   ptyId: string
-  /** Agente do processo (claude | codex | opencode). */
+  /** Process agent (claude, codex, or opencode). */
   agent: AgentType
-  /** Tarefa/origem do worker (ex.: "fallback de usage"). */
+  /** Worker task or origin. */
   title: string
   cwd: string
   startedAt: number
   exitedCode: number | null
-  /** extraArgs one-shot do agente; undefined no modo interativo. */
+  /** One-shot agent arguments; undefined for interactive mode. */
   args?: string[]
-  /** Resumo (cauda do scrollback) do que o worker terminou — fecha o loop fire-and-forget. */
+  /** Tail summary of the worker output. */
   result?: string
 }
 
-/** Tempo até o reset de usage (ISO) em formato curto; `nowLabel` quando já passou. */
+/** Format the time until a usage window resets. */
 export function formatReset(resetsAt: string, nowLabel = 'agora'): string {
   if (!resetsAt) return '—'
   const diff = new Date(resetsAt).getTime() - Date.now()
@@ -61,14 +49,8 @@ export function formatReset(resetsAt: string, nowLabel = 'agora'): string {
   return h > 0 ? `${h}h${m}m` : `${m}m`
 }
 
-/**
- * Regras de orquestração injetadas no lead via --append-system-prompt — só
- * nesta sessão, sem tocar em CLAUDE.md do projeto. Em inglês porque adesão
- * de system prompt é mais consistente.
- */
-// IMPORTANTE: string de UMA linha, sem aspas duplas, backticks ou apóstrofos.
-// Ela é passada como arg via PowerShell -> claude.cmd (batch) no Windows;
-// aspas/backticks/newlines quebram o parsing do batch e o launcher falha.
+/** Build the single-line orchestration prompt for the lead session. */
+// Keep this argument free of quotes, backticks, and newlines for Windows batch parsing.
 export function orchestrationRules(agentEndpoint: string, budgetUsd?: number | null) {
   const budget =
     budgetUsd && budgetUsd > 0
@@ -86,27 +68,24 @@ export function orchestrationRules(agentEndpoint: string, budgetUsd?: number | n
   )
 }
 
-/** Cor estável de um agente: conhecida por tabela, ou derivada por hash do nome. */
+/** Return a stable color for an agent type. */
 export function colorFor(agentType: string): string {
   const known = AGENT_COLORS[agentType.toLowerCase()]
   if (known) return known
-  // Agent custom / teammate → cor estável por hash do nome.
+  // Custom agents and teammates use a stable name hash.
   let h = 0
   for (const ch of agentType) h = (h * 31 + ch.charCodeAt(0)) >>> 0
   return `hsl(${h % 360} 55% 62%)`
 }
 
-/** Duração humana de um nó concluído; null se ainda rodando. */
+/** Format a completed node duration; return null while it is running. */
 export function durationLabel(node: { startedAt: number; endedAt: number | null }): string | null {
   if (node.endedAt === null) return null
   const s = Math.round((node.endedAt - node.startedAt) / 1000)
   return s >= 60 ? `${Math.floor(s / 60)}m${s % 60}s` : `${s}s`
 }
 
-/**
- * Cauda limpa do scrollback de um worker, pra resumir o resultado no card.
- * Tira sequências ANSI/OSC e bytes de controle, colapsa espaços e pega o fim.
- */
+/** Strip terminal control sequences and return the tail of a worker's output. */
 export function tailSummary(raw: string, max = 320): string {
   const clean = raw
     // CSI: ESC [ ... letra final

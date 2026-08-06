@@ -1,6 +1,6 @@
 const LOCAL_ADDRESS = /^(localhost|127(?:\.\d{1,3}){3}|\[::1\])(?::\d+)?(?:\/|$)/i
 
-/** Normaliza endereços digitados e restringe o viewer a HTTP(S). */
+/** Normalize typed addresses and restrict the viewer to HTTP(S). */
 export function normalizeBrowserUrl(value: string): string | null {
   const input = value.trim()
   if (!input) return null

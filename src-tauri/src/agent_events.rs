@@ -1,10 +1,4 @@
-// Listener da POC do canvas de subagents (Fase 1).
-//
-// O Claude Code dispara hooks `SubagentStart`/`SubagentStop` como POST HTTP
-// (hook type "http" no settings do projeto de teste). Este módulo sobe um
-// servidor mínimo em 127.0.0.1:9123, lê o JSON de cada POST e re-emite pro
-// frontend como evento Tauri `agent-hook`. Fluxo novo e isolado — não toca
-// em PTY, projects nem em nenhum fluxo existente.
+// Receive Claude Code agent hooks and re-emit them as Tauri events.
 
 use std::sync::atomic::{AtomicU16, Ordering};
 use std::time::{Duration, Instant};
@@ -48,10 +42,7 @@ pub fn agent_hooks_endpoint() -> Result<String, String> {
     Ok(listener_endpoint(port))
 }
 
-/// Escreve (idempotente) um settings JSON só com os hooks HTTP de subagent e
-/// retorna o path. O frontend injeta via `claude --settings <path>` no
-/// terminal do canvas — assim os hooks valem só pra ESSA sessão, sem tocar
-/// no `.claude/` da pasta que o usuário escolheu.
+/// Write the session-scoped hook settings file and return its path.
 #[tauri::command]
 pub fn agent_hooks_settings_path() -> Result<String, String> {
     let port = wait_for_listener_port()

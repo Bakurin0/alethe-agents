@@ -8,9 +8,8 @@ use zip::{CompressionMethod, ZipArchive, ZipWriter};
 use crate::paths::{activity_stats_file_path, app_data_dir};
 use crate::profiles::profile_data_dir_for_id;
 
-/// Empacota os dados locais do perfil (`projects.json`, métricas, tokens e
-/// `scrollback/`) num zip salvo em `target_path`.
-/// Não inclui `spawn.log` (debug-only) nem `tmp` (artefatos do save atômico).
+/// Package local profile data into a zip at `target_path`.
+/// Debug logs and temporary atomic-save artifacts are excluded.
 #[tauri::command]
 pub fn export_backup(app: AppHandle, target_path: String) -> Result<(), String> {
     export_backup_from_dir(app_data_dir(&app)?, target_path)
@@ -53,7 +52,7 @@ fn export_backup_from_dir(dir: PathBuf, target_path: String) -> Result<(), Strin
         zip.write_all(&bytes).map_err(|e| e.to_string())?;
     }
 
-    // Métricas de tempo pertencem ao perfil e acompanham seu backup.
+    // Activity metrics belong to the profile and are included in the backup.
     let activity_stats = dir.join("activity-stats.json");
     if activity_stats.is_file() {
         zip.start_file("activity-stats.json", opts)
@@ -96,8 +95,8 @@ fn export_backup_from_dir(dir: PathBuf, target_path: String) -> Result<(), Strin
     Ok(())
 }
 
-/// Substitui o estado local pelo conteúdo de `source_path`. Apaga
-/// scrollback/ existente antes (pra não ficar lixo de PTYs deletados),
+/// Replace local state with the contents of `source_path`. Remove existing
+/// scrollback first so deleted PTY data is not retained.
 /// preserva apenas o projects.json novo.
 #[tauri::command]
 pub fn import_backup(app: AppHandle, source_path: String) -> Result<(), String> {

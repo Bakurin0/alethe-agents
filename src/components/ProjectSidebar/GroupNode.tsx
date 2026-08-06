@@ -33,6 +33,7 @@ export type GroupNodeProps = {
   onToggle: () => void
   onOpenAll: () => void
   onOpenOnly: () => void
+  showDropHint?: boolean
 }
 
 export function GroupNode({
@@ -46,6 +47,7 @@ export function GroupNode({
   onToggle,
   onOpenAll,
   onOpenOnly,
+  showDropHint = false,
 }: GroupNodeProps) {
   const t = useT()
   const dropZone = useDroppable({ id: `group:${group.id}` })
@@ -150,6 +152,11 @@ export function GroupNode({
         </button>
       </div>
       <div className={styles.groupBody}>
+        {showDropHint ? (
+          <div className={styles.groupDropHint}>
+            {isOver ? t('ui.sidebar.dropIntoGroup') : t('ui.sidebar.moveIntoGroup')}
+          </div>
+        ) : null}
         {childGroups.map((cg) => renderChildGroup(cg))}
         {projects.length === 0 && childGroups.length === 0 ? (
           <div className={styles.groupEmpty}>{t('ui.sidebar.groupEmpty')}</div>

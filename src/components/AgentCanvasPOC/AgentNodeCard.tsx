@@ -17,7 +17,7 @@ type AgentNodeCardProps = {
   cardRefs: MutableRefObject<Map<string, HTMLDivElement>>
 }
 
-/** Card de um nó (subagent ou teammate): header, feed ao vivo, resultado e custo. */
+/** Node card for a subagent or teammate. */
 export function AgentNodeCard({ node, cost, onSelect, cardRefs }: AgentNodeCardProps) {
   const t = useT()
   const model = cost ? shortModel(cost.model) : null

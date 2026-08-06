@@ -48,7 +48,7 @@ export type Theme =
   | 'orca'
 
 /** Módulos opcionais que podem ser ativados no onboarding ou nas Preferências. */
-export type FeatureId = 'todos' | 'git' | 'aiMemory'
+export type FeatureId = 'todos' | 'git' | 'browser' | 'aiMemory'
 
 /** Item da lista pessoal global. A ordem do array é a ordem escolhida pelo usuário. */
 export type TodoItem = {
@@ -164,10 +164,14 @@ export type Project = {
   terminals: Terminal[]
   /** Blocos visuais criados selecionando panes com Shift. */
   paneGroups?: PaneGroup[]
+  /** Comentários locais ancorados em trechos de arquivos Markdown do projeto. */
+  markdownComments?: MarkdownComment[]
   layoutMode: LayoutMode
   /** Definição do grid quando layoutMode === 'grid'. Persistida pra restaurar. */
   gridLayout?: GridLayout
   collapsed: boolean
+  /** Hidden from the sidebar until restored from Preferences. */
+  archived?: boolean
   createdAt: number
   // --- RFC-009 / RFC-003 — Multi-Agent settings ---
   worktreeMode?: 'gitWorktree' | 'localCopy'
@@ -181,6 +185,16 @@ export type Project = {
   autoWorktree?: boolean
   /** Worktrees com limpeza inacabada (deleção física ou `prune` falhados). */
   orphanWorktrees?: OrphanWorktree[]
+}
+
+export type MarkdownComment = {
+  id: string
+  path: string
+  quote: string
+  note: string
+  start: number
+  end: number
+  createdAt: number
 }
 
 export type Group = {
@@ -200,6 +214,8 @@ export type Group = {
   gridLayout?: GridLayout
   /** v2.3 — grupo suspenso: todos os terminais ficam disabled e containers fechados pra liberar RAM. */
   suspended?: boolean
+  /** Grupo preservado, mas oculto da sidebar até ser restaurado em Configurações. */
+  archived?: boolean
   createdAt: number
 }
 
@@ -286,6 +302,8 @@ export type Preferences = {
   alwaysStartUnrestricted: boolean
   /** Organização visual da faixa superior. */
   topbarStyle: 'classic' | 'three-areas'
+  /** Local do controle Git: sidebar esquerda ou direita. */
+  gitControlPlacement: 'left' | 'right'
 
   /** Credenciais locais do Spotify Developer Dashboard para Now Playing. */
   spotifyClientId: string
@@ -400,6 +418,7 @@ export const DEFAULT_PREFERENCES: Preferences = {
   alwaysStartOnHome: false,
   alwaysStartUnrestricted: false,
   topbarStyle: 'classic',
+  gitControlPlacement: 'left',
   spotifyClientId: '',
   spotifyClientSecret: '',
   discordRichPresenceEnabled: true,
@@ -409,7 +428,7 @@ export const DEFAULT_PREFERENCES: Preferences = {
   topbarShowSync: true,
   topbarShowProfile: true,
   topbarShowMemory: true,
-  enabledFeatures: { todos: true, git: true, aiMemory: false },
+  enabledFeatures: { todos: true, git: true, browser: true, aiMemory: false },
   todoStoragePath: '',
   leftSidebarVisible: true,
   rightSidebarVisible: true,

@@ -18,7 +18,7 @@ type Props = {
 export function Modal({ open, onClose, title, children, footer, width = 440 }: Props) {
   const t = useT()
   return (
-    <Dialog.Root open={open} onOpenChange={(v) => !v && onClose()}>
+    <Dialog.Root open={open} onOpenChange={(v) => !v && open && onClose()}>
       <Dialog.Portal>
         <Dialog.Overlay className={styles.overlay} />
         <Dialog.Content

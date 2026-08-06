@@ -1,7 +1,7 @@
 import '@xterm/xterm/css/xterm.css'
 
 import type { Terminal } from '@xterm/xterm'
-import { AppWindow, Copy, ExternalLink, FolderOpen, LayoutGrid, X } from 'lucide-react'
+import { AppWindow, Copy, ExternalLink, FolderOpen, LayoutGrid, Maximize2, PanelRight, X } from 'lucide-react'
 import { useCallback, useEffect, useRef, useState } from 'react'
 
 import { pickFile } from '../../lib/dialog'
@@ -431,6 +431,38 @@ export function XTermView({
                   {t(linkActions.fileKind === 'video' ? 'xterm.playInApp' : 'xterm.openInApp')}
                 </span>
               </button>
+            ) : null}
+            {linkActions.fileKind === 'markdown' ? (
+              <>
+                <button
+                  type="button"
+                  className={styles.linkMenuItem}
+                  role="menuitem"
+                  onClick={() => {
+                    openLinkInAppViewer(linkActions.text)
+                    hideLinkActions()
+                  }}
+                >
+                  <Maximize2 size={15} />
+                  <span>{t('xterm.openMarkdownFullscreen')}</span>
+                </button>
+                <button
+                  type="button"
+                  className={styles.linkMenuItem}
+                  role="menuitem"
+                  onClick={() => {
+                    useUiStore.getState().openMarkdownSidebar(
+                      linkActions.text,
+                      linkActions.text.split(/[\\/]/).pop(),
+                    )
+                    useProjectsStore.getState().setPreferences({ rightSidebarVisible: true })
+                    hideLinkActions()
+                  }}
+                >
+                  <PanelRight size={15} />
+                  <span>{t('xterm.openMarkdownSidebar')}</span>
+                </button>
+              </>
             ) : null}
             <button
               type="button"

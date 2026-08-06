@@ -35,15 +35,15 @@ import styles from './MainMenu.module.css'
 export function MainMenu() {
   const t = useT()
   const open = useUiStore((s) => s.showMainMenu)
-  const toggle = useUiStore((s) => s.toggleMainMenu)
+  const closeMainMenu = useUiStore((s) => s.closeMainMenu)
   const openModal = useUiStore((s) => s.openModal_)
   const flat = useProjectsStore((s) => s.preferences.workspaceFlat)
   const setFlat = useProjectsStore((s) => s.setWorkspaceFlat)
 
   const ref = useRef<HTMLDivElement>(null)
 
-  useOnClickOutside(ref, () => toggle(), open)
-  useOnEscape(() => toggle(), open)
+  useOnClickOutside(ref, () => closeMainMenu(), open)
+  useOnEscape(() => closeMainMenu(), open)
 
   if (!open) return null
 
@@ -54,7 +54,7 @@ export function MainMenu() {
       console.error(err)
       window.alert(t('common.errorPrefix', { message: String(err) }))
     }
-    toggle()
+    closeMainMenu()
   }
 
   const reset = async () => {
@@ -70,7 +70,7 @@ export function MainMenu() {
         className={styles.item}
         onClick={() => {
           openModal('preferences')
-          toggle()
+          closeMainMenu()
         }}
       >
         <Settings size={14} /> <span>{t('menu.preferences')}</span>
@@ -80,7 +80,7 @@ export function MainMenu() {
         className={styles.item}
         onClick={() => {
           openModal('welcome')
-          toggle()
+          closeMainMenu()
         }}
       >
         <Sparkles size={14} /> <span>{t('menu.welcome')}</span>
@@ -90,7 +90,7 @@ export function MainMenu() {
         className={styles.item}
         onClick={() => {
           openModal('themePicker')
-          toggle()
+          closeMainMenu()
         }}
       >
         <Sun size={14} />
@@ -167,7 +167,7 @@ export function MainMenu() {
         className={styles.item}
         onClick={() => {
           useProjectsStore.getState().setOnboardingDone(false)
-          toggle()
+          closeMainMenu()
         }}
       >
         <RefreshCw size={14} /> <span>{t('menu.redoOnboarding')}</span>

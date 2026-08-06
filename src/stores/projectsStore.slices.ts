@@ -1,18 +1,9 @@
-/**
- * Slices do projectsStore — grupos de ações extraídos do create() pra manter o
- * arquivo principal menor. Cada slice recebe o `SliceCtx` (mutators do closure)
- * e devolve um pedaço tipado do estado. Comportamento idêntico ao original: os
- * corpos das ações são os mesmos, só passaram a receber os mutators via ctx.
- *
- * Domínios sem acoplamento com o mutator de navegação (`suppressNavigationSync`)
- * nem com os helpers de container vivem aqui. Groups/projects/terminals/workspace
- * seguem no create() por ora (acoplamento maior — split com verificação runtime).
- */
+/** Store action slices. Each slice receives the shared mutator context. */
 
 import { nanoid } from 'nanoid'
 import type { StoreApi } from 'zustand'
 
-import { pickMostRecentTab, resolveTerminalCwd, touchTerminalUsage } from '../lib/terminalFactory'
+import { resolveTerminalCwd, touchTerminalUsage } from '../lib/terminalFactory'
 import { cleanupPtys } from '../lib/terminalLifecycle'
 import {
   DEFAULT_TODOS,
@@ -172,12 +163,17 @@ export function createSubTabsSlice({ updateTerminal, updateSubTab }: SliceCtx): 
       updateTerminal(projectId, terminalId, (t) => {
         const closingTab = t.tabs.find((s) => s.id === tabId)
         if (closingTab?.ptyId) cleanupPtys([closingTab.ptyId])
+        const closingIndex = t.tabs.findIndex((tab) => tab.id === tabId)
         const remaining = t.tabs.filter((s) => s.id !== tabId)
         if (remaining.length === 0) return t
+        const adjacentTab =
+          closingIndex >= 0
+            ? (t.tabs[closingIndex + 1] ?? t.tabs[closingIndex - 1])
+            : undefined
         const activeTabId =
           t.activeTabId === tabId
-            ? (pickMostRecentTab(t, tabId)?.id ?? remaining[0].id)
-            : t.activeTabId
+            ? (adjacentTab?.id ?? remaining[0].id)
+            : (remaining.some((tab) => tab.id === t.activeTabId) ? t.activeTabId : remaining[0].id)
         const next = { ...t, tabs: remaining, activeTabId }
         return activeTabId ? touchTerminalUsage(next, activeTabId) : next
       }),

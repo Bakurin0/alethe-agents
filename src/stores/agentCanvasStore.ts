@@ -47,18 +47,12 @@ export type ToolEvent = {
 export type AgentNode = {
   id: string
   agentType: string
-  /**
-   * 'subagent' = worker efêmero das Fases 1–2.
-   * 'teammate' = membro de Agent Team (Fase 4). In-process, cada turno do
-   * teammate encarna como um subagent com agent_type = NOME do teammate e um
-   * agent_id novo — o node é um só, agregando as encarnações.
-   */
   kind: 'subagent' | 'teammate'
-  /** Nome do time (só teammates). */
+  /** Team name, for teammates only. */
   team: string | null
-  /** Quantas encarnações (turnos) já rodaram (só teammates). */
+  /** Number of teammate turns represented by this node. */
   turns: number
-  /** description do Agent tool call que (provavelmente) spawnou este node. */
+  /** Prompt from the Agent tool call that created this node. */
   prompt: string | null
   status: 'running' | 'idle' | 'done'
   startedAt: number
@@ -123,11 +117,11 @@ type AgentCanvasState = {
   lastEventAt: number | null
   /** Prompts de Agent tool calls da sessão principal aguardando o Start. */
   pendingPrompts: Record<string, PendingPrompt[]>
-  /** Nome do team ativo (PreToolUse TeamCreate do lead). */
+  /** Active team name from the lead's TeamCreate event. */
   teamName: string | null
-  /** Task list compartilhada do time, por task_id. */
+  /** Shared team tasks indexed by task ID. */
   tasks: Record<string, TeamTask>
-  /** agent_id de cada encarnação de teammate → id do node teammate. */
+  /** Maps each teammate incarnation ID to its aggregate node. */
   incarnations: Record<string, string>
 
   ingest: (raw: AgentHookPayload) => void
@@ -158,14 +152,11 @@ export const useAgentCanvasStore = create<AgentCanvasState>((set, get) => ({
         if (s.nodes.some((n) => n.id === id)) return s
         const agentType = raw.agent_type ?? 'unknown'
 
-        // Teammate in-process: cada turno encarna como subagent com
-        // agent_type = nome do teammate. Se já existe node teammate com esse
-        // nome, é uma encarnação dele — não cria card novo.
         const teammateIdx = s.nodes.findIndex(
           (n) => n.kind === 'teammate' && n.agentType === agentType,
         )
         if (teammateIdx !== -1) {
-          console.log(`[agentCanvasStore] encarnação de teammate ${agentType}: ${id}`)
+          console.log(`[agentCanvasStore] teammate incarnation ${agentType}: ${id}`)
           const nodes = [...s.nodes]
           nodes[teammateIdx] = {
             ...nodes[teammateIdx],
@@ -232,8 +223,6 @@ export const useAgentCanvasStore = create<AgentCanvasState>((set, get) => ({
           result: raw.last_assistant_message ?? nodes[idx].result,
           transcriptPath: raw.agent_transcript_path ?? nodes[idx].transcriptPath,
         }
-        // Poda a encarnação que terminou: sem isto, `incarnations` ganharia uma
-        // entrada por turno de teammate, pra sempre (a maior fonte de crescimento).
         if (s.incarnations[id] === undefined) return { nodes }
         const incarnations = { ...s.incarnations }
         delete incarnations[id]
@@ -337,7 +326,6 @@ export const useAgentCanvasStore = create<AgentCanvasState>((set, get) => ({
         ts: Date.now(),
       }
       set((s) => {
-        // agent_id pode ser uma encarnação de teammate — resolve pro node dele.
         const targetId = s.incarnations[agentId] ?? agentId
         const idx = s.nodes.findIndex((n) => n.id === targetId)
         if (idx === -1) {

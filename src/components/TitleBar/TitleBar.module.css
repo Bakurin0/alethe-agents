@@ -11,8 +11,8 @@
 
 .bar[data-style='three-areas'] {
   display: grid;
-  grid-template-columns: minmax(0, var(--topbar-left-width)) minmax(0, 1fr) minmax(
-      0,
+  grid-template-columns: minmax(38px, var(--topbar-left-width)) minmax(0, 1fr) minmax(
+      38px,
       var(--topbar-right-width)
     );
   padding-left: 0;

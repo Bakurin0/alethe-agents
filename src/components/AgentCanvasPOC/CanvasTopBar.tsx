@@ -59,7 +59,7 @@ type CanvasTopBarProps = {
   clearDisabled: boolean
 }
 
-/** Barra superior do canvas: voltar, zoom, uso, custo, orçamento e ações. */
+/** Canvas toolbar for navigation, zoom, usage, cost, budget, and actions. */
 export function CanvasTopBar({
   onBack,
   zoom,

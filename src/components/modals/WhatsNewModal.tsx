@@ -1,4 +1,4 @@
-import { Sparkles } from 'lucide-react'
+import { Newspaper } from 'lucide-react'
 
 import { useT } from '../../lib/i18n'
 import { useUiStore } from '../../stores/uiStore'
@@ -43,7 +43,7 @@ export function WhatsNewModal() {
     >
       <div className={styles.hero}>
         <span className={styles.icon}>
-          <Sparkles size={18} />
+          <Newspaper size={18} />
         </span>
         <div>
           <strong>

@@ -213,6 +213,66 @@
   background: var(--bg-sunken);
 }
 
+.emptyProjectIntro {
+  display: grid;
+  justify-items: center;
+  gap: 6px;
+  padding: 8px 12px 12px;
+  text-align: center;
+}
+
+.emptyProjectIcon {
+  width: 50px;
+  height: 50px;
+  display: grid;
+  place-items: center;
+  margin-bottom: 4px;
+  color: var(--accent);
+  border: 1px solid var(--accent-border);
+  border-radius: 15px;
+  background: var(--accent-soft);
+}
+
+.emptyProjectIntro strong {
+  color: var(--fg);
+  font-size: 17px;
+}
+
+.emptyProjectIntro span {
+  max-width: 38ch;
+  color: var(--fg-muted);
+  font-size: 12px;
+  line-height: 1.45;
+}
+
+.emptyAgentGrid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(108px, 1fr));
+  width: min(430px, 100%);
+  gap: 6px;
+}
+
+.emptyAgentButton {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  min-height: 32px;
+  color: var(--fg-muted);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--bg-elevated);
+  font-size: 11px;
+  cursor: pointer;
+}
+
+.emptyAgentButton:hover,
+.emptyAgentButtonActive {
+  color: var(--fg);
+  border-color: var(--accent);
+  background: var(--accent-soft);
+}
+
 .emptyFolderRow {
   display: flex;
   width: min(430px, 100%);

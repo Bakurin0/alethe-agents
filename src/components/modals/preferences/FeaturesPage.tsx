@@ -1,16 +1,16 @@
-import { BrainCircuit, GitBranch, ListTodo } from 'lucide-react'
+import { BrainCircuit, GitBranch, Globe2, ListTodo } from 'lucide-react'
 
 import { FEATURES } from '../../../lib/features'
 import { useT } from '../../../lib/i18n'
 import { useProjectsStore } from '../../../stores/projectsStore'
 import styles from '../PreferencesModal.module.css'
-import { SettingsSection } from './primitives'
 
 // Ícone por feature opcional. Mantido junto da página que o consome.
 const FEATURE_ICONS = {
   todos: ListTodo,
   git: GitBranch,
   aiMemory: BrainCircuit,
+  browser: Globe2,
 } as const
 
 export function FeaturesPage() {
@@ -19,11 +19,7 @@ export function FeaturesPage() {
   const setPreferences = useProjectsStore((state) => state.setPreferences)
 
   return (
-    <SettingsSection
-      id="optional-features"
-      title={t('prefs.features')}
-      description={t('prefs.featuresDesc')}
-    >
+    <div id="optional-features">
       <div className={styles.featureList}>
         {FEATURES.map((feature) => {
           const enabled = preferences.enabledFeatures[feature.id]
@@ -61,6 +57,6 @@ export function FeaturesPage() {
           )
         })}
       </div>
-    </SettingsSection>
+    </div>
   )
 }

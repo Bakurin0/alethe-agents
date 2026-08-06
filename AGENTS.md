@@ -125,6 +125,12 @@ Sub-tab, PTY) está resumido no `CONTRIBUTING.md`.
 
 ## graphify
 
+## Language and comment rules
+
+- Write all new source comments, JSDoc, documentation, changelog entries, and user-facing strings in English.
+- Locale files are the only exception: translated UI text belongs in the matching locale file.
+- Keep comments concise. Add them only when they explain non-obvious behavior, constraints, or decisions.
+
 This project has a knowledge graph at graphify-out/ with god nodes, community structure, and cross-file relationships.
 
 Universal across the 3 agent providers Alethe spawns (Claude Code, Codex, OpenCode) when the project has Graphify enabled: each gets the Graphify MCP server wired into its session automatically (Claude via `--mcp-config`; Codex/OpenCode via `.codex/config.toml`/`opencode.json` in the project root — see `graphify_codex_config_write`/`graphify_opencode_config_write` in `src-tauri/src/graphify.rs`).

@@ -6,7 +6,7 @@ import styles from './ErrorBoundary.module.css'
 
 type Props = {
   children: ReactNode
-  /** Rótulo opcional pro log (ex.: "view", "modals"). */
+  /** Optional log label, such as "view" or "modals". */
   label?: string
 }
 
@@ -14,11 +14,7 @@ type State = {
   error: Error | null
 }
 
-/**
- * Boundary de render. Sem isso, um throw em qualquer view/modal derruba o app
- * inteiro (tela branca). Aqui o erro vira um fallback temático local + log
- * persistido (via `record_frontend_error`), sem matar o resto da árvore.
- */
+/** Convert render errors into a themed fallback and a persisted diagnostic log. */
 export class ErrorBoundary extends Component<Props, State> {
   state: State = { error: null }
 
@@ -49,7 +45,7 @@ export class ErrorBoundary extends Component<Props, State> {
     const { error } = this.state
     if (!error) return this.props.children
 
-    // Class component não usa o hook useT — translate() puro lê o locale do store.
+    // Class components cannot use hooks; translate() reads the locale from the store.
     const locale = getLocale()
     const tr = (key: MessageKey) => translate(locale, key)
 

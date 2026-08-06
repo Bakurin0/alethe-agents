@@ -1,6 +1,7 @@
 import * as Dialog from '@radix-ui/react-dialog'
 import {
   Activity,
+  Archive,
   Blocks,
   ChevronRight,
   Info,
@@ -24,12 +25,20 @@ import { AppearancePage } from './preferences/AppearancePage'
 import { FeaturesPage } from './preferences/FeaturesPage'
 import { IntegrationsPage } from './preferences/IntegrationsPage'
 import { MultiagentPage } from './preferences/MultiagentPage'
+import { OrganizationPage } from './preferences/OrganizationPage'
 import { TerminalPage } from './preferences/TerminalPage'
 import { Avatar } from './preferences/primitives'
 import styles from './PreferencesModal.module.css'
 
 type CategoryId =
-  'account' | 'appearance' | 'features' | 'terminal' | 'integrations' | 'multiagent' | 'about'
+  | 'account'
+  | 'appearance'
+  | 'features'
+  | 'terminal'
+  | 'integrations'
+  | 'multiagent'
+  | 'organization'
+  | 'about'
 
 type Category = {
   id: CategoryId
@@ -67,6 +76,12 @@ export function PreferencesModal() {
         label: t('prefs.categoryAccount'),
         description: t('prefs.categoryAccountDesc'),
         Icon: UserRound,
+      },
+      {
+        id: 'organization',
+        label: t('prefs.categoryOrganization'),
+        description: t('prefs.categoryOrganizationDesc'),
+        Icon: Archive,
       },
       {
         id: 'appearance',
@@ -139,6 +154,13 @@ export function PreferencesModal() {
         keywords: 'theme tema colors cores light dark claro escuro',
       },
       {
+        category: 'organization',
+        target: 'archived-groups',
+        label: t('prefs.categoryOrganization'),
+        description: t('prefs.categoryOrganizationDesc'),
+        keywords: 'archive archived groups grupo arquivado restaurar restore',
+      },
+      {
         category: 'appearance',
         target: 'ui-zoom',
         label: t('prefs.uiZoom'),
@@ -158,6 +180,13 @@ export function PreferencesModal() {
         label: t('prefs.topbarStyle'),
         description: t('prefs.topbarStyleDesc'),
         keywords: 'topbar barra superior layout areas tabs sidebar',
+      },
+      {
+        category: 'appearance',
+        target: 'git-control-placement',
+        label: t('prefs.gitControlPlacement'),
+        description: t('prefs.gitControlPlacementDesc'),
+        keywords: 'git source control sidebar esquerda direita left right',
       },
       {
         category: 'features',
@@ -314,7 +343,7 @@ export function PreferencesModal() {
   }
 
   return (
-    <Dialog.Root open={open} onOpenChange={(nextOpen) => !nextOpen && closeModal()}>
+    <Dialog.Root open={open} onOpenChange={(nextOpen) => !nextOpen && open && closeModal()}>
       <Dialog.Portal>
         <Dialog.Overlay className={styles.overlay} />
         <Dialog.Content
@@ -439,6 +468,7 @@ export function PreferencesModal() {
                 {category === 'terminal' ? <TerminalPage enabledCount={enabledCount} /> : null}
                 {category === 'integrations' ? <IntegrationsPage /> : null}
                 {category === 'multiagent' ? <MultiagentPage /> : null}
+                {category === 'organization' ? <OrganizationPage /> : null}
                 {category === 'about' ? <AboutPage /> : null}
               </div>
             </div>

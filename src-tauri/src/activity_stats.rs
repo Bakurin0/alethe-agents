@@ -259,8 +259,7 @@ pub async fn get_activity_summary(
     app: AppHandle,
     dates: Vec<String>,
 ) -> Result<ActivitySummary, String> {
-    // Resolve o path na thread async (barato) e joga a leitura+agregação (pesado)
-    // pro spawn_blocking, pra não travar a thread principal do Tauri.
+    // Resolve the path asynchronously, then run file aggregation off the Tauri thread.
     let path = activity_stats_file_path(&app)?;
     tokio::task::spawn_blocking(move || get_activity_summary_inner(path, dates))
         .await

@@ -346,7 +346,11 @@ export default function App() {
     <>
       <div className={styles.appShell}>
         <TitleBar />
-        <PanelGroup orientation="horizontal" className={styles.shellBody}>
+        <PanelGroup
+          orientation="horizontal"
+          className={styles.shellBody}
+          resizeTargetMinimumSize={{ coarse: 28, fine: 18 }}
+        >
           <Panel
             id="alethe-left-sidebar"
             panelRef={leftPanelRef}

@@ -1,5 +1,6 @@
 import {
   FileText,
+  Archive,
   FolderOpen,
   Layout,
   MoveRight,
@@ -30,6 +31,7 @@ type MenuActions = Pick<
   | 'openProjectWorkspace'
   | 'addProjectToWorkspace'
   | 'renameProject'
+  | 'archiveProject'
   | 'moveProjectToGroup'
   | 'setProjectDisabled'
   | 'deleteProject'
@@ -38,6 +40,7 @@ type MenuActions = Pick<
   | 'renameGroup'
   | 'moveGroupToParent'
   | 'toggleGroupCollapsed'
+  | 'archiveGroup'
   | 'resumeGroup'
   | 'deleteGroup'
   | 'focusWorkspaceTerminal'
@@ -164,6 +167,12 @@ export function createSidebarMenus(deps: SidebarMenuDeps) {
     },
     {
       kind: 'item',
+      label: t('ui.sidebar.archiveProject'),
+      icon: <Archive size={14} />,
+      onClick: () => actions.archiveProject(project.id),
+    },
+    {
+      kind: 'item',
       label:
         project.terminals.length > 0 && project.terminals.every((term) => term.disabled)
           ? t('ui.sidebar.reactivateProject')
@@ -268,6 +277,12 @@ export function createSidebarMenus(deps: SidebarMenuDeps) {
       kind: 'item',
       label: group.collapsed ? t('ui.sidebar.expand') : t('ui.sidebar.collapse'),
       onClick: () => actions.toggleGroupCollapsed(group.id),
+    },
+    {
+      kind: 'item',
+      label: t('ui.sidebar.archiveGroup'),
+      icon: <Archive size={14} />,
+      onClick: () => actions.archiveGroup(group.id),
     },
     {
       kind: 'item',

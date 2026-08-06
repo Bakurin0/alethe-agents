@@ -5,9 +5,7 @@ import { recordFrontendError } from './lib/tauri'
 import './styles/reset.css'
 import './styles/theme.css'
 
-// Captura global de erros não tratados (sync + promessas rejeitadas) que o
-// ErrorBoundary não pega (ex.: callbacks de eventos de PTY). Throttle pra um
-// loop de erro não floodar o disco. Fire-and-forget — recordFrontendError nunca lança.
+// Capture uncaught errors that React boundaries cannot handle, such as PTY callbacks.
 let lastErrorAt = 0
 let lastErrorKey = ''
 function captureGlobalError(message: string, stack: string | null, kind: string) {

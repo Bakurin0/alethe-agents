@@ -17,7 +17,7 @@ export type AgentChipProps = {
   action: ReactNode
 }
 
-/** Chip de agente: ícone de persona, nome, custo e ação (instalar/remover). */
+/** Agent chip with persona icon, name, cost, and install/remove action. */
 export function AgentChip({
   name,
   cost,

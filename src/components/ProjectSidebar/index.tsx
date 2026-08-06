@@ -5,6 +5,7 @@ import {
   useSensor,
   useSensors,
   type DragEndEvent,
+  type DragStartEvent,
 } from '@dnd-kit/core'
 import {
   Folder,
@@ -65,7 +66,9 @@ export function ProjectSidebar() {
       focusWorkspaceTerminal: s.focusWorkspaceTerminal,
       toggleProjectCollapsed: s.toggleProjectCollapsed,
       toggleGroupCollapsed: s.toggleGroupCollapsed,
+      archiveGroup: s.archiveGroup,
       renameProject: s.renameProject,
+      archiveProject: s.archiveProject,
       deleteProject: s.deleteProject,
       renameGroup: s.renameGroup,
       deleteGroup: s.deleteGroup,
@@ -99,6 +102,7 @@ export function ProjectSidebar() {
   const openMarkdownSidebar = useUiStore((s) => s.openMarkdownSidebar)
   const setPreferences = useProjectsStore((s) => s.setPreferences)
   const [menu, setMenu] = useState<ContextMenuState>(null)
+  const [draggingId, setDraggingId] = useState<string | null>(null)
   const [sidebarTab, setSidebarTab] = useState<'files' | 'git' | 'projects'>('projects')
   const keepHome = activeView === 'home'
 
@@ -151,6 +155,7 @@ export function ProjectSidebar() {
   const sensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 8 } }))
 
   const onDragEnd = (event: DragEndEvent) => {
+    setDraggingId(null)
     const { active, over } = event
     if (!over) return
     const dragged = String(active.id)
@@ -231,9 +236,11 @@ export function ProjectSidebar() {
     }
   }
 
+  const onDragStart = (event: DragStartEvent) => setDraggingId(String(event.active.id))
+
   const { projectMenu, groupMenu, terminalMenu } = createSidebarMenus({
     t,
-    groups,
+    groups: groups.filter((group) => !group.archived),
     openPaneSets,
     actions: { ...actions, setPreferences },
     openModal,
@@ -291,11 +298,11 @@ export function ProjectSidebar() {
 
   const ungroupedProjects = ungroupedOrder
     .map((id) => projectsById.get(id))
-    .filter((p): p is Project => Boolean(p))
+    .filter((p): p is Project => p !== undefined && !p.archived)
 
   const groupsByParent = useMemo(() => {
     const map = new Map<string | null, Group[]>()
-    for (const g of groups) {
+    for (const g of groups.filter((group) => !group.archived)) {
       const key = g.parentGroupId
       const arr = map.get(key) ?? []
       arr.push(g)
@@ -312,7 +319,7 @@ export function ProjectSidebar() {
   const renderGroup = (g: Group): React.ReactNode => {
     const projectsInGroup = g.projectIds
       .map((id) => projectsById.get(id))
-      .filter((p): p is Project => Boolean(p))
+      .filter((p): p is Project => p !== undefined && !p.archived)
     const childGroups = groupsByParent.get(g.id) ?? []
     return (
       <GroupNode
@@ -332,6 +339,7 @@ export function ProjectSidebar() {
         onToggle={() => actions.toggleGroupCollapsed(g.id)}
         onOpenAll={() => onGroupOpenAll(g)}
         onOpenOnly={() => onGroupOpenAll(g, 'only')}
+        showDropHint={Boolean(draggingId)}
       />
     )
   }
@@ -385,7 +393,7 @@ export function ProjectSidebar() {
           <Folder size={14} />
           <span>{t('ui.sidebar.files')}</span>
         </button>
-        {showGitControl ? (
+        {showGitControl && preferences.gitControlPlacement === 'left' ? (
           <button
             type="button"
             role="tab"
@@ -502,7 +510,12 @@ export function ProjectSidebar() {
       ) : null}
 
       {sidebarTab === 'projects' ? (
-        <DndContext sensors={sensors} onDragEnd={onDragEnd}>
+        <DndContext
+          sensors={sensors}
+          onDragStart={onDragStart}
+          onDragCancel={() => setDraggingId(null)}
+          onDragEnd={onDragEnd}
+        >
           <div className={styles.list}>
             {projects.length === 0 && groups.length === 0 ? (
               <div className={styles.emptyWrap}>
@@ -521,9 +534,11 @@ export function ProjectSidebar() {
               <>
                 {(groupsByParent.get(null) ?? []).map(renderGroup)}
 
-                {ungroupedProjects.length > 0 ? (
-                  <UngroupedSection projects={ungroupedProjects} renderProject={renderProject} />
-                ) : null}
+                <UngroupedSection
+                  projects={ungroupedProjects}
+                  renderProject={renderProject}
+                  showDropZone={Boolean(draggingId)}
+                />
               </>
             )}
           </div>
@@ -573,16 +588,25 @@ export function ProjectSidebar() {
 function UngroupedSection({
   projects,
   renderProject,
+  showDropZone = false,
 }: {
   projects: Project[]
   renderProject: (p: Project) => React.ReactNode
+  showDropZone?: boolean
 }) {
+  const t = useT()
   const { setNodeRef, isOver } = useDroppable({ id: 'group:ungrouped' })
+  if (projects.length === 0 && !showDropZone) return null
   return (
     <div
       ref={setNodeRef}
-      className={`${styles.ungroupedSection} ${isOver ? styles.groupDropTarget : ''}`}
+      className={`${styles.ungroupedSection} ${isOver ? styles.groupDropTarget : ''} ${showDropZone ? styles.dropAreaActive : ''}`}
     >
+      {showDropZone ? (
+        <div className={styles.dropAreaLabel}>
+          {isOver ? t('ui.sidebar.dropHere') : t('ui.sidebar.ungroupedDropArea')}
+        </div>
+      ) : null}
       <div className={styles.ungroupedBody}>{projects.map((p) => renderProject(p))}</div>
     </div>
   )

@@ -1,7 +1,4 @@
-/**
- * Constantes e clamps compartilhados do projectsStore. Vivem num módulo próprio
- * pra serem usados tanto pelo store quanto pelas migrations sem import circular.
- */
+/** Shared projects-store constants and clamps. */
 
 const MIN_UI_ZOOM = 0.8
 const MAX_UI_ZOOM = 1.4
