@@ -105,6 +105,7 @@ Built with Tauri, Rust, React, TypeScript, Vite, `portable-pty`, and `xterm.js`.
 - Close containers without killing running processes.
 - Suspend groups to free memory.
 - Local backup export/import.
+- `alethe` terminal command to open any folder as a project.
 - Spotify Now Playing through the user's own Spotify app credentials.
 - Experimental agent planning canvas.
 - GitHub Actions release workflow for Windows, Linux, and macOS.
@@ -192,6 +193,25 @@ src-tauri/target/release/bundle/
 - Leave long-running terminals alive while changing layouts or closing visual containers.
 - Suspend inactive groups to free memory and restore them when the context is needed again.
 - Export a local backup before moving machines or testing risky changes.
+
+## Terminal Command
+
+Install the `alethe` command from **Settings ▸ Integrations ▸ Terminal command** to open a folder
+as a project without leaving the terminal:
+
+```bash
+alethe                # opens the current folder
+alethe .              # same
+alethe ~/some/project # opens the given folder
+```
+
+If the folder is already a project, Alethe brings it into the workspace instead of duplicating it.
+If it is not, the project is created with a terminal already pointing at that folder. When Alethe is
+already running, the existing window is focused rather than starting a second instance.
+
+The command is installed to `~/.local/bin/alethe` on macOS/Linux and to
+`%LOCALAPPDATA%\Alethe\bin\alethe.cmd` on Windows (added to the user `Path`). Reinstall it after
+moving or reinstalling the app — the settings screen flags a stale command.
 
 ## Spotify
 

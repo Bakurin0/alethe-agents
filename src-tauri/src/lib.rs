@@ -7,7 +7,9 @@ mod antigravity_usage;
 mod backup;
 mod claude_sessions;
 mod claude_usage;
+mod cli_launch;
 mod cli_resolver;
+mod cli_shim;
 mod codex_sessions;
 mod codex_usage;
 mod crash_watch;
@@ -120,6 +122,7 @@ pub fn run() {
         .manage(filesystem::FileWatchers::default())
         .manage(discord_presence::DiscordPresence::new())
         .manage(planning::PlanningWatchers::default())
+        .manage(cli_launch::PendingOpen::default())
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_notification::init())
         .plugin(tauri_plugin_process::init())
@@ -129,14 +132,13 @@ pub fn run() {
     // monotonicidade de `save_projects` (projects.rs): duas instâncias teriam
     // cada uma seu próprio LAST_WRITE_SEQUENCE em memória, e a garantia de
     // last-write-wins deixaria de valer entre processos. Segunda instância só
-    // foca a janela existente em vez de abrir outra.
+    // foca a janela existente em vez de abrir outra — e, quando veio de
+    // `alethe <path>` no terminal, entrega o diretório pedido pra ela (ver
+    // cli_launch.rs) antes de morrer.
     #[cfg(desktop)]
     {
-        builder = builder.plugin(tauri_plugin_single_instance::init(|app, _argv, _cwd| {
-            if let Some(window) = app.get_webview_window("main") {
-                let _ = window.unminimize();
-                let _ = window.set_focus();
-            }
+        builder = builder.plugin(tauri_plugin_single_instance::init(|app, argv, cwd| {
+            cli_launch::handle_second_instance(app, argv, cwd);
         }));
     }
 
@@ -147,6 +149,9 @@ pub fn run() {
                 let _ = window.set_title("(DEV) Alethe");
             }
             logging::set_logs_dir(app.handle());
+            // `alethe <path>` com o app fechado: guarda o alvo agora, o
+            // frontend consome no boot (a webview ainda não existe aqui).
+            cli_launch::capture_cold_start(app.handle());
             // Cantos arredondados no macOS (no-op nas outras plataformas). A
             // janela roda sem decorações nativas, então reaplicamos o
             // arredondamento no nível do AppKit.
@@ -225,6 +230,10 @@ pub fn run() {
             profiles::rename_profile,
             profiles::delete_profile,
             cli_resolver::find_cli_launcher,
+            cli_launch::cli_take_pending_open,
+            cli_shim::cli_shim_status,
+            cli_shim::cli_shim_install,
+            cli_shim::cli_shim_uninstall,
             backup::export_backup,
             backup::export_profile_backup,
             backup::import_backup,

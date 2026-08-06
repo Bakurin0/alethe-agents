@@ -336,6 +336,18 @@ export const ptBR: Record<MessageKey, string> = {
   'prefs.resetSessionEmptyBody':
     'Nenhum painel de agente aberto (Claude/Codex/OpenCode) foi encontrado.',
   'prefs.resetSessionFailed': 'Não deu pra retomar a última sessão.',
+  'prefs.cliCommand': 'Comando de terminal',
+  'prefs.cliCommandDesc':
+    "Instale o comando 'alethe' pra abrir qualquer pasta como projeto direto do terminal.",
+  'prefs.cliInstall': 'Instalar comando',
+  'prefs.cliReinstall': 'Reinstalar comando',
+  'prefs.cliUninstall': 'Remover',
+  'prefs.cliInstalledAt': 'Instalado em {path}',
+  'prefs.cliStale':
+    'O comando instalado aponta pra uma cópia antiga do Alethe. Reinstale pra atualizar o caminho.',
+  'prefs.cliNotOnPath':
+    '{dir} não está no seu PATH. Adicione no perfil do shell: export PATH="{dir}:$PATH"',
+  'prefs.cliUnsupported': 'O comando de terminal não está disponível nesta plataforma.',
   'prefs.spotify': 'Spotify',
   'prefs.spotifyDesc': 'Configure o aplicativo do Spotify usado no widget Now Playing.',
   'prefs.discordPresence': 'Rich Presence do Discord',
@@ -1156,6 +1168,7 @@ export const ptBR: Record<MessageKey, string> = {
   'notif.responded': '{label} respondeu.',
   'notif.responseReadyInPath': 'Resposta pronta em {path}.',
   'notif.responseReady': 'Resposta pronta.',
+  'notif.cliProjectCreated': 'Projeto criado pelo terminal',
   'notif.limitResetTitle': 'Limite resetado',
   'notif.limitResetBody': '{agent} — limite {window} liberado',
 

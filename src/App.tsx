@@ -38,6 +38,7 @@ import { WhatsNewModal } from './components/modals/WhatsNewModal'
 import { WelcomeModal } from './components/modals/WelcomeModal'
 import { useKeybindings } from './hooks/useKeybindings'
 import { useDiscordPresence } from './hooks/useDiscordPresence'
+import { useCliOpenRequests } from './hooks/useCliOpenRequests'
 import { useCloseConfirmation } from './hooks/useCloseConfirmation'
 import { useResourceSupervisor } from './hooks/useResourceSupervisor'
 import { startActivityTracker } from './lib/activityTracker'
@@ -198,6 +199,7 @@ export default function App() {
   useDiscordPresence()
   useCloseConfirmation()
   useResourceSupervisor(hydrated)
+  useCliOpenRequests(hydrated)
 
   useEffect(() => {
     void hydrate()

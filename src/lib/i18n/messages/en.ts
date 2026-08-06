@@ -335,6 +335,18 @@ export const en = {
   'prefs.resetSessionEmpty': 'No agents to resume',
   'prefs.resetSessionEmptyBody': 'No open agent panes (Claude/Codex/OpenCode) were found.',
   'prefs.resetSessionFailed': 'Could not resume the last session.',
+  'prefs.cliCommand': 'Terminal command',
+  'prefs.cliCommandDesc':
+    "Install the 'alethe' command so you can open any folder as a project straight from the terminal.",
+  'prefs.cliInstall': 'Install command',
+  'prefs.cliReinstall': 'Reinstall command',
+  'prefs.cliUninstall': 'Remove',
+  'prefs.cliInstalledAt': 'Installed at {path}',
+  'prefs.cliStale':
+    'The installed command points to an older copy of Alethe. Reinstall it to update the path.',
+  'prefs.cliNotOnPath':
+    '{dir} is not in your PATH. Add it to your shell profile: export PATH="{dir}:$PATH"',
+  'prefs.cliUnsupported': 'The terminal command is not available on this platform.',
   'prefs.spotify': 'Spotify',
   'prefs.spotifyDesc': 'Configure the Spotify application used by the Now Playing widget.',
   'prefs.discordPresence': 'Discord Rich Presence',
@@ -1149,6 +1161,7 @@ export const en = {
   'notif.responded': '{label} responded.',
   'notif.responseReadyInPath': 'Response ready in {path}.',
   'notif.responseReady': 'Response ready.',
+  'notif.cliProjectCreated': 'Project created from the terminal',
   'notif.limitResetTitle': 'Limit reset',
   'notif.limitResetBody': '{agent} — {window} limit is available again',
 

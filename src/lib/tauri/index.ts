@@ -3,6 +3,7 @@
 // importando de `.../lib/tauri` sem mudança — este barrel resolve tudo.
 
 export * from './agents'
+export * from './cli'
 export * from './filesystem'
 export * from './git'
 export * from './graphify'
