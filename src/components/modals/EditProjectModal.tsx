@@ -1,3 +1,4 @@
+import { Palette } from 'lucide-react'
 import { useEffect, useState } from 'react'
 
 import { GROUP_COLORS, type AgentType } from '../../lib/types'
@@ -13,6 +14,7 @@ import {
   stopGsdWatcher,
   gitListBranches,
 } from '../../lib/tauri'
+import { ColorPalettePopover } from './ColorPalettePopover'
 import { EditProjectAgentSettings } from './EditProjectAgentSettings'
 import { ImageInput } from './ImageInput'
 import { Modal } from './Modal'
@@ -33,6 +35,7 @@ export function EditProjectModal() {
   const setValidationCommands = useProjectsStore((s) => s.setValidationCommands)
   const setGsdWatcherEnabled = useProjectsStore((s) => s.setGsdWatcherEnabled)
   const setConflictAgentProvider = useProjectsStore((s) => s.setConflictAgentProvider)
+  const setConflictAgentModel = useProjectsStore((s) => s.setConflictAgentModel)
   const setGraphifyEnabled = useProjectsStore((s) => s.setGraphifyEnabled)
   const setAutoWorktree = useProjectsStore((s) => s.setAutoWorktree)
   const setMergePostAction = useProjectsStore((s) => s.setMergePostAction)
@@ -46,6 +49,7 @@ export function EditProjectModal() {
 
   const [name, setName] = useState('')
   const [color, setColor] = useState<string>(GROUP_COLORS[0])
+  const [isColorPopoverOpen, setIsColorPopoverOpen] = useState(false)
   const [iconUrl, setIconUrl] = useState('')
   const [worktreeMode, setWorktreeModeState] = useState<'gitWorktree' | 'localCopy'>('gitWorktree')
   const [validationCommandsStr, setValidationCommandsStr] = useState('')
@@ -53,6 +57,7 @@ export function EditProjectModal() {
   const [worktrees, setWorktrees] = useState<any[]>([])
   const [loadingWorktrees, setLoadingWorktrees] = useState(false)
   const [conflictProvider, setConflictProviderState] = useState<AgentType>('claude')
+  const [conflictModel, setConflictModelState] = useState('')
   const [graphifyEnabled, setGraphifyEnabledState] = useState(false)
   const [autoWorktree, setAutoWorktreeState] = useState(false)
   const [mergePostAction, setMergePostActionState] = useState<'relocateToNewBranch' | 'closeTerminal'>('relocateToNewBranch')
@@ -85,10 +90,12 @@ export function EditProjectModal() {
       setGsdWatcherEnabledState(project.gsdWatcherEnabled ?? false)
 
       setConflictProviderState(project.conflictAgentProvider ?? 'claude')
+      setConflictModelState(project.conflictAgentModel ?? '')
       setGraphifyEnabledState(project.graphifyEnabled ?? false)
       setAutoWorktreeState(project.autoWorktree ?? false)
       setMergePostActionState(project.mergePostAction ?? 'relocateToNewBranch')
       setActiveTab('focus')
+      setIsColorPopoverOpen(false)
 
       const repoPath = project.terminals[0]?.cwd
       if (repoPath) {
@@ -190,6 +197,10 @@ export function EditProjectModal() {
       setConflictAgentProvider(project.id, conflictProvider)
     }
 
+    if (conflictModel !== (project.conflictAgentModel ?? '')) {
+      setConflictAgentModel(project.id, conflictModel)
+    }
+
     if (graphifyEnabled !== (project.graphifyEnabled ?? false)) {
       setGraphifyEnabled(project.id, graphifyEnabled)
     }
@@ -272,7 +283,7 @@ export function EditProjectModal() {
 
       <div className={controls.field}>
         <label className={controls.label}>{t('crud.projectColorLabel')}</label>
-        <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+        <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'center' }}>
           {GROUP_COLORS.map((c) => (
             <button
               key={c}
@@ -289,6 +300,61 @@ export function EditProjectModal() {
               }}
             />
           ))}
+
+          {/* Cor customizada ativa (se não estiver nos presets do GROUP_COLORS e não for rainbow) */}
+          {color && !GROUP_COLORS.includes(color as any) && color !== 'rgb-rainbow' && (
+            <button
+              type="button"
+              onClick={() => setIsColorPopoverOpen(true)}
+              title={color}
+              aria-label={t('crud.colorSwatch', { color })}
+              style={{
+                width: 28,
+                height: 28,
+                borderRadius: '50%',
+                background: color,
+                border: '2px solid var(--fg)',
+                boxShadow: '0 0 0 1px var(--bg)',
+                cursor: 'pointer',
+              }}
+            />
+          )}
+
+          {/* Botão de Paleta Completa / Mais Cores */}
+          <button
+            type="button"
+            onClick={() => setIsColorPopoverOpen(true)}
+            title={t('crud.moreColors')}
+            aria-label={t('crud.moreColors')}
+            style={{
+              width: 28,
+              height: 28,
+              borderRadius: '50%',
+              background: 'var(--panel-hover)',
+              border: '1px solid var(--border-strong)',
+              display: 'grid',
+              placeItems: 'center',
+              color: 'var(--fg-muted)',
+              cursor: 'pointer',
+            }}
+          >
+            <Palette size={14} />
+          </button>
+
+          {/* Opção Arco-Íris Infinito (Rainbow RGB) */}
+          <button
+            type="button"
+            onClick={() => setColor('rgb-rainbow')}
+            title="Arco-Íris Infinito (RGB)"
+            className="swatch-rgb-rainbow"
+            style={{
+              width: 28,
+              height: 28,
+              borderRadius: '50%',
+              border: color === 'rgb-rainbow' ? '2px solid var(--fg)' : '2px solid transparent',
+              cursor: 'pointer',
+            }}
+          />
         </div>
       </div>
 
@@ -297,6 +363,7 @@ export function EditProjectModal() {
         value={iconUrl}
         onChange={setIconUrl}
         onEnter={submit}
+        previewColor={color}
         hint={t('crud.projectIconEditHint')}
       />
 
@@ -342,12 +409,15 @@ export function EditProjectModal() {
       </div> : null}
 
       {activeTab === 'agents' ? <div className={styles.panel}><EditProjectAgentSettings
+        projectId={project.id}
         worktreeMode={worktreeMode}
         onWorktreeModeChange={setWorktreeModeState}
         validationCommandsStr={validationCommandsStr}
         onValidationCommandsChange={setValidationCommandsStr}
         conflictProvider={conflictProvider}
         onConflictProviderChange={setConflictProviderState}
+        conflictModel={conflictModel}
+        onConflictModelChange={setConflictModelState}
         autoWorktree={autoWorktree}
         onAutoWorktreeChange={setAutoWorktreeState}
         graphifyEnabled={graphifyEnabled}
@@ -744,6 +814,13 @@ export function EditProjectModal() {
         </>
       )}
       </div> : null}
+
+      <ColorPalettePopover
+        open={isColorPopoverOpen}
+        onClose={() => setIsColorPopoverOpen(false)}
+        onSelectColor={(selected) => setColor(selected)}
+        selectedColor={color}
+      />
     </Modal>
   )
 }

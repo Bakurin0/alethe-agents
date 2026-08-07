@@ -27,7 +27,6 @@ import {
 } from '../../lib/sessionResume'
 import { waitForSessionHint } from '../../lib/sessionWatch'
 import { acquireSpawnSlot, releaseSpawnSlot } from '../../lib/spawnQueue'
-import { acquireWebglContext } from '../../lib/webglPool'
 import {
   aiMemoryCodexConfigWrite,
   aiMemoryDetect,
@@ -327,7 +326,12 @@ export function useXtermSession(params: {
         canvasAddon = null
       }
     }
-    let releaseWebglContext: (() => void) | null = acquireWebglContext()
+    // WebGL desligado de propósito: perda de contexto pode derrubar um
+    // syncScrollArea assíncrono interno do próprio xterm.js (fora do alcance
+    // do onContextLoss/try-catch abaixo) e crashar o pane. Canvas 2D
+    // (loadCanvasFallback, branch `else`) é o renderer real em uso — ainda
+    // bem mais rápido que o DOM puro, sem esse risco de instabilidade.
+    let releaseWebglContext: (() => void) | null = null
     if (releaseWebglContext) {
       try {
         webglAddon = new WebglAddon()

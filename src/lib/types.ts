@@ -152,6 +152,7 @@ export type Terminal = {
 export type PaneGroup = {
   id: string
   paneIds: string[]
+}
 
 /**
  * Registro de worktree "órfã" — uma pasta/registro que sobrou de uma limpeza

@@ -1495,6 +1495,7 @@ export const en = {
   /* ---- RFC-006/007/008 — safe merge cycle ---- */
   'merge.sectionTitle': 'Merge cycle',
   'merge.providerLabel': 'Conflict resolution agent',
+  'merge.modelLabel': 'Agent model ({provider})',
   'merge.needBranches': 'This repo needs at least two local branches to merge.',
   'merge.sourceLabel': 'Source branch',
   'merge.targetLabel': 'Target branch',

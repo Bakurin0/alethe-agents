@@ -39,7 +39,7 @@ import {
   type ProfilesState,
 } from '../lib/tauri'
 import { setStorageNamespace } from '../lib/storageNamespace'
-import { getProjectDefaultCwd } from '../lib/terminalFactory'
+import { getProjectDefaultCwd, getProjectRepoRoot } from '../lib/terminalFactory'
 import { migrate } from './projectsStore.migrations'
 import { createGroupsSlice, createProjectsSlice } from './projectsStore.projectSlices'
 import {
@@ -51,7 +51,7 @@ import { createContainersSlice, createTerminalsSlice } from './projectsStore.ter
 import { createWorkspaceSlice } from './projectsStore.workspaceSlices'
 
 // Re-export da API pública deste módulo consumida por outros arquivos.
-export { getProjectDefaultCwd }
+export { getProjectDefaultCwd, getProjectRepoRoot }
 export {
   MAX_RECENT_PROJECT_TABS,
   SPAWN_CONCURRENCY_LIMITS,
@@ -118,7 +118,15 @@ export type ProjectsState = ProjectsFile & {
   /** Migra terminais existentes (sem `worktreeAgentId`) do projeto pra worktrees
    *  isoladas — ação explícita via botão dedicado, nunca automática (ver
    *  `setAutoWorktree`). Suspende os PTYs antigos em vez de matar. */
-  migrateProjectTerminalsToWorktrees: (projectId: string) => Promise<void>
+  /** `gsdWatcherEnabledOverride`: valor ainda pendente (não salvo) da tela de
+   *  edição do projeto — o botão de migrar fica na mesma aba do checkbox GSD
+   *  e roda ANTES do "Salvar", então sem isso a migração lia o valor antigo
+   *  do store mesmo com a caixinha marcada na tela, e nunca instalava o
+   *  plugin GSD na worktree nova. */
+  migrateProjectTerminalsToWorktrees: (
+    projectId: string,
+    gsdWatcherEnabledOverride?: boolean,
+  ) => Promise<void>
   /** Upsert por `path` — sobrescreve a entrada existente (limpando `adminLockReason`
    * obsoleto se a nova falha não for lock administrativo) ou adiciona uma nova. */
   addOrphanWorktree: (projectId: string, entry: OrphanWorktree) => void
@@ -203,6 +211,7 @@ export type ProjectsState = ProjectsFile & {
         type: AgentType
         cwd: string
         extraArgs?: string[]
+        initialInput?: string
         runtimeProfile?: AgentRuntimeProfile
       }
     },

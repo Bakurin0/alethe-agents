@@ -1,20 +1,51 @@
+import { CircleCheck } from 'lucide-react'
+import { useEffect, useState } from 'react'
+
 import { useT } from '../../lib/i18n'
-import type { AgentType } from '../../lib/types'
+import { discoverProviderModels } from '../../lib/tauri'
+import { AGENT_TYPE_LABELS, PROVIDER_MODELS, type AgentType } from '../../lib/types'
+import { useProjectsStore } from '../../stores/projectsStore'
+import { AgentIcon } from '../icons/AgentIcons'
+import { ModelSearchablePicker, type ModelOption } from './ModelSearchablePicker'
 import controls from './controls.module.css'
 import styles from './EditProjectModal.module.css'
 
+const ALL_AGENTS_ORDER: AgentType[] = [
+  'claude',
+  'codex',
+  'antigravity',
+  'opencode',
+  'mimo',
+  'freebuff',
+  'shell',
+]
+const ALL_AGENTS: { type: AgentType; label: string }[] = ALL_AGENTS_ORDER.map((type) => ({
+  type,
+  label: AGENT_TYPE_LABELS[type],
+}))
+
+// Cache module-level (sobrevive a troca de aba/remount deste componente) —
+// evita rebater discoverProviderModels toda vez que o usuário volta pra essa aba.
+const globalModelsCache: Record<string, ModelOption[]> = {}
+
 /**
  * Seção "Multi-agent settings" do EditProjectModal (RFC-009): modo de worktree,
- * comandos de validação, provider de conflito e toggles (auto-worktree, graphify,
- * GSD watcher). Componente controlado — todo o estado vive no modal pai.
+ * comandos de validação, provider+modelo de conflito e toggles (auto-worktree,
+ * graphify, GSD watcher). Componente controlado — todo o estado de edição
+ * pendente vive no modal pai; lê o store diretamente só pra dados derivados
+ * (agentes habilitados, tema do terminal) e pra disparar a migração de
+ * terminais existentes (ação própria, não faz parte do "salvar" do modal).
  */
 export function EditProjectAgentSettings({
+  projectId,
   worktreeMode,
   onWorktreeModeChange,
   validationCommandsStr,
   onValidationCommandsChange,
   conflictProvider,
   onConflictProviderChange,
+  conflictModel,
+  onConflictModelChange,
   autoWorktree,
   onAutoWorktreeChange,
   graphifyEnabled,
@@ -22,12 +53,15 @@ export function EditProjectAgentSettings({
   gsdWatcherEnabled,
   onGsdWatcherEnabledChange,
 }: {
+  projectId: string
   worktreeMode: 'gitWorktree' | 'localCopy'
   onWorktreeModeChange: (mode: 'gitWorktree' | 'localCopy') => void
   validationCommandsStr: string
   onValidationCommandsChange: (value: string) => void
   conflictProvider: AgentType
   onConflictProviderChange: (provider: AgentType) => void
+  conflictModel: string
+  onConflictModelChange: (modelId: string) => void
   autoWorktree: boolean
   onAutoWorktreeChange: (enabled: boolean) => void
   graphifyEnabled: boolean
@@ -36,6 +70,51 @@ export function EditProjectAgentSettings({
   onGsdWatcherEnabledChange: (enabled: boolean) => void
 }) {
   const t = useT()
+  const enabledAgents = useProjectsStore((s) => s.preferences.enabledAgents)
+  const terminalTheme = useProjectsStore((s) => s.preferences.terminalTheme ?? s.preferences.uiTheme)
+  const migrateProjectTerminalsToWorktrees = useProjectsStore(
+    (s) => s.migrateProjectTerminalsToWorktrees,
+  )
+
+  const availableAgents = ALL_AGENTS.filter((a) => enabledAgents[a.type])
+  const conflictAgents = availableAgents.length > 0 ? availableAgents : ALL_AGENTS
+
+  const [discoveredModels, setDiscoveredModels] = useState<ModelOption[]>([])
+  const [loadingModels, setLoadingModels] = useState(false)
+  const [migratingWorktrees, setMigratingWorktrees] = useState(false)
+
+  useEffect(() => {
+    let active = true
+    const targetProvider = conflictProvider
+    const fallback = PROVIDER_MODELS[targetProvider] ?? []
+    const cached = globalModelsCache[targetProvider] || fallback
+    setDiscoveredModels(cached)
+
+    setLoadingModels(true)
+    discoverProviderModels(targetProvider)
+      .then((list) => {
+        if (!active) return
+        if (list && list.length > 0) {
+          globalModelsCache[targetProvider] = list
+          setDiscoveredModels(list)
+        } else {
+          globalModelsCache[targetProvider] = fallback
+          setDiscoveredModels(fallback)
+        }
+      })
+      .catch(() => {
+        if (!active) return
+        globalModelsCache[targetProvider] = fallback
+        setDiscoveredModels(fallback)
+      })
+      .finally(() => {
+        if (active) setLoadingModels(false)
+      })
+
+    return () => {
+      active = false
+    }
+  }, [conflictProvider])
 
   return (
     <>
@@ -80,17 +159,42 @@ export function EditProjectAgentSettings({
         />
       </div>
 
+      {/* SELETOR ESTRUTURADO DE AGENTE DE CONFLITOS (CARDS COM ÍCONES) */}
       <div className={controls.field}>
         <label className={controls.label}>{t('merge.providerLabel')}</label>
-        <select
-          className={controls.input}
-          value={conflictProvider}
-          onChange={(e) => onConflictProviderChange(e.target.value as AgentType)}
-        >
-          <option value="claude">Claude Code</option>
-          <option value="codex">Codex</option>
-          <option value="opencode">OpenCode</option>
-        </select>
+        <div className={controls.agentGrid}>
+          {conflictAgents.map((agent) => {
+            const active = conflictProvider === agent.type
+            return (
+              <button
+                key={agent.type}
+                type="button"
+                className={`${controls.agentCard} ${active ? controls.agentCardActive : ''}`}
+                onClick={() => onConflictProviderChange(agent.type)}
+              >
+                <span className={controls.agentIcon}>
+                  <AgentIcon type={agent.type} size={20} theme={terminalTheme} />
+                </span>
+                <span className={controls.agentLabel}>{agent.label}</span>
+                {active ? <CircleCheck size={16} className={controls.selectedIcon} /> : null}
+              </button>
+            )
+          })}
+        </div>
+      </div>
+
+      {/* SELETOR DE MODELO PESQUISÁVEL E ROLÁVEL */}
+      <div className={controls.field} style={{ marginTop: 10 }}>
+        <label className={controls.label}>
+          {t('merge.modelLabel', { provider: conflictProvider.toUpperCase() })}
+        </label>
+        <ModelSearchablePicker
+          value={conflictModel}
+          onChange={onConflictModelChange}
+          options={discoveredModels}
+          loading={loadingModels}
+          providerName={conflictProvider.toUpperCase()}
+        />
       </div>
 
       <div
@@ -108,6 +212,31 @@ export function EditProjectAgentSettings({
         >
           {t('multiAgent.autoWorktree')}
         </label>
+      </div>
+
+      {/* Migração de terminais JÁ existentes é uma ação explícita e separada
+          do toggle acima — o toggle só afeta agentes novos. Migrar os
+          existentes mata/suspende o PTY e reinicia o agente do zero na
+          worktree nova (sem continuidade de conversa). */}
+      <div style={{ marginTop: 4, marginBottom: 4 }}>
+        <button
+          type="button"
+          className={controls.btn}
+          disabled={migratingWorktrees}
+          onClick={() => {
+            if (migratingWorktrees) return
+            if (!confirm(t('multiAgent.migrateExistingConfirm'))) return
+            setMigratingWorktrees(true)
+            void migrateProjectTerminalsToWorktrees(projectId, gsdWatcherEnabled).finally(() =>
+              setMigratingWorktrees(false),
+            )
+          }}
+        >
+          {migratingWorktrees ? t('multiAgent.migrateExistingBusy') : t('multiAgent.migrateExisting')}
+        </button>
+        <p style={{ fontSize: 10, color: 'var(--fg-muted)', marginTop: 4 }}>
+          {t('multiAgent.migrateExistingHint')}
+        </p>
       </div>
 
       <div

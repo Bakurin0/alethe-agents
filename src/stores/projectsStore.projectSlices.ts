@@ -2,12 +2,15 @@
 
 import { nanoid } from 'nanoid'
 
+import { preparePtyRuntimeLaunch } from '../lib/agentRuntimeAdapter'
 import { getLocale, translate } from '../lib/i18n'
+import { buildAgentLaunch } from '../lib/sessionLaunch'
 import { clearTerminalPtyIds, collectTerminalPtyIds, getProjectRepoRoot } from '../lib/terminalFactory'
 import { cleanupPtys } from '../lib/terminalLifecycle'
-import { GROUP_COLORS } from '../lib/types'
+import { agentCliCommand, GROUP_COLORS } from '../lib/types'
 import type { Group, Project } from '../lib/types'
 import { sanitizeWorkspaceSnapshot } from '../lib/workspaceNavigation'
+import { useTerminalsStore } from './terminalsStore'
 import { useUiStore } from './uiStore'
 import { collectGroupProjectIds } from './projectsStore.migrations'
 import type { ProjectsState } from './projectsStore'
@@ -454,7 +457,7 @@ export function createProjectsSlice({ set, get, update, updateProject }: SliceCt
 
     setMergePostAction: (id, mergePostAction) => updateProject(id, (p) => ({ ...p, mergePostAction })),
 
-    migrateProjectTerminalsToWorktrees: async (projectId) => {
+    migrateProjectTerminalsToWorktrees: async (projectId, gsdWatcherEnabledOverride) => {
       if (migratingWorktreeProjectIds.has(projectId)) return // já em andamento — ignora clique duplicado
       const project = get().projects.find((p) => p.id === projectId)
       if (!project) return
@@ -469,7 +472,9 @@ export function createProjectsSlice({ set, get, update, updateProject }: SliceCt
 
       migratingWorktreeProjectIds.add(projectId)
       try {
-        const { worktreeProvision, suspendPty, gitStatus } = await import('../lib/tauri')
+        const { worktreeProvision, restartPty, gitStatus, gsdOpenCodePluginWrite } = await import(
+          '../lib/tauri'
+        )
 
         // git worktree add faz checkout do HEAD — qualquer mudança não commitada
         // no repo compartilhado não é copiada pra worktree nova. Preferimos
@@ -512,11 +517,58 @@ export function createProjectsSlice({ set, get, update, updateProject }: SliceCt
             )
             const info = await worktreeProvision(repo, agentId, project.worktreeMode ?? 'gitWorktree')
 
-            // Suspende (não mata) o PTY antigo: preserva scrollback/identidade
-            // em vez de apagar tudo — o novo PTY nasce na worktree isolada.
+            // Terminal migrado com watcher GSD ligado e rodando OpenCode nunca
+            // recebe o plugin sozinho — ele só é instalado no caminho normal de
+            // spawn (XTermView), que este fluxo pula de propósito (restart em
+            // vez de respawn, ver comentário abaixo). Sem isso, `.opencode/` e
+            // `.planning/` nunca nasceriam na worktree nova. Precisa rodar
+            // ANTES do restart, pra o plugin já existir quando o OpenCode subir
+            // de novo lá dentro. Best-effort, idempotente.
+            const gsdWatcherEnabled = gsdWatcherEnabledOverride ?? project.gsdWatcherEnabled
+            if (gsdWatcherEnabled && terminal.tabs.some((tab) => tab.type === 'opencode')) {
+              const modelChain = get().preferences.gsdSyncModelChain ?? []
+              await gsdOpenCodePluginWrite(info.path, modelChain).catch((error) => {
+                console.error(
+                  `[projectsStore] gsdOpenCodePluginWrite falhou pra ${info.path}:`,
+                  error,
+                )
+              })
+            }
+
+            // O pane de cada aba já está montado (`key={tab.id}`, estável) e o
+            // efeito de mount do XTermView só reage a `sessionPersistenceKey`/
+            // `retryKey` — mudar `cwd` no store sozinho não faz o painel notar
+            // nada, ele continua mostrando a sessão antiga na pasta antiga (bug
+            // real, visto direto: toast dizia "concluído" mas o terminal nunca
+            // saía do lugar). Reinicia CADA aba com PTY vivo NO MESMO ptyId
+            // (mesmo mecanismo do botão "Reiniciar" do menu de contexto) — o
+            // painel já escuta esse canal, então não precisa remontar. Sessão
+            // nova (sem resumeId): a conversa antiga não existe na worktree
+            // nova. Abas sem PTY (nunca abertas) só precisam do cwd atualizado
+            // — o primeiro mount já nasce no lugar certo.
             for (const tab of terminal.tabs) {
-              if (tab.ptyId) {
-                await suspendPty(tab.ptyId).catch(() => {})
+              if (!tab.ptyId) continue
+              const runtime = preparePtyRuntimeLaunch(tab.type, tab.runtimeProfile, tab.extraArgs ?? [])
+              const launch = buildAgentLaunch(tab.type, runtime.args)
+              useTerminalsStore.getState().beginRestart(tab.ptyId)
+              try {
+                await restartPty({
+                  id: tab.ptyId,
+                  cols: 80,
+                  rows: 24,
+                  command: agentCliCommand(tab.type),
+                  cwd: info.path,
+                  extraArgs: launch.args,
+                  env: runtime.env,
+                })
+                window.dispatchEvent(
+                  new CustomEvent('alethe:terminal-resize-request', { detail: { ptyId: tab.ptyId } }),
+                )
+              } catch (restartErr) {
+                console.warn(
+                  `[projectsStore] falha reiniciando aba na worktree nova (${terminal.name}):`,
+                  restartErr,
+                )
               }
             }
 
@@ -531,7 +583,7 @@ export function createProjectsSlice({ set, get, update, updateProject }: SliceCt
                   tabs: t.tabs.map((tab) => ({
                     ...tab,
                     cwd: info.path,
-                    ptyId: null, // força respawn no novo CWD da worktree
+                    sessionId: undefined,
                   })),
                 }
               }),

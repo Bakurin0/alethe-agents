@@ -21,7 +21,11 @@ pub fn start_gsd_watcher(
     let repo_root = crate::git_control::repository_root(&repo_path)?;
     let planning_dir = repo_root.join(".planning");
     if !planning_dir.is_dir() {
-        return Err("planning_directory_not_found".to_string());
+        // Comum logo que o watcher é ligado: o plugin GSD ainda não rodou
+        // nenhum ciclo (`.planning/` só nasce na primeira sincronização da
+        // sessão-filha). Cria vazia em vez de falhar — o notify::Watcher só
+        // precisa de um diretório pra existir, o conteúdo chega depois.
+        std::fs::create_dir_all(&planning_dir).map_err(|e| format!("mkdir_failed:{e}"))?;
     }
 
     let mut map = state.0.lock().map_err(|e| e.to_string())?;

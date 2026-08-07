@@ -1505,6 +1505,7 @@ export const ptBR: Record<MessageKey, string> = {
   /* ---- RFC-006/007/008 — ciclo de merge seguro ---- */
   'merge.sectionTitle': 'Ciclo de merge',
   'merge.providerLabel': 'Agente de resolução de conflitos',
+  'merge.modelLabel': 'Modelo do agente ({provider})',
   'merge.needBranches': 'Este repo precisa de ao menos dois branches locais para merge.',
   'merge.sourceLabel': 'Branch de origem',
   'merge.targetLabel': 'Branch de destino',

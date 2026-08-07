@@ -239,12 +239,18 @@ fn run_with_timeout(mut command: std::process::Command, timeout: Duration) {
     }
 }
 
-/// Mata um PID (Windows via taskkill /F, Unix via SIGKILL).
+/// Mata um PID (Windows via taskkill /F, Unix via SIGKILL). Descarta
+/// stdout/stderr do comando: sem isso, herdam o console do processo pai (o
+/// terminal do `tauri dev`) e "processo não encontrado" — esperado quando um
+/// descendente já morreu sozinho antes da nossa vez de matá-lo — vaza cru
+/// pro log, sem indicar nenhum problema real.
 fn kill_pid(pid: u32) {
     #[cfg(windows)]
     {
         let mut command = std::process::Command::new("taskkill");
         command.args(["/F", "/PID", &pid.to_string()]);
+        command.stdout(std::process::Stdio::null());
+        command.stderr(std::process::Stdio::null());
         crate::git_control::hide_console(&mut command);
         run_with_timeout(command, Duration::from_secs(3));
     }
@@ -252,6 +258,8 @@ fn kill_pid(pid: u32) {
     {
         let mut command = std::process::Command::new("kill");
         command.args(["-9", &pid.to_string()]);
+        command.stdout(std::process::Stdio::null());
+        command.stderr(std::process::Stdio::null());
         run_with_timeout(command, Duration::from_secs(3));
     }
 }
