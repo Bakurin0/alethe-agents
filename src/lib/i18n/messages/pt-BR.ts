@@ -322,6 +322,10 @@ export const ptBR: Record<MessageKey, string> = {
   'prefs.terminalTheme': 'Tema do terminal',
   'prefs.terminalThemeDesc':
     'Use o tema da interface ou escolha uma paleta exclusiva para terminais.',
+  'prefs.nativeTerminalMacos': 'Terminal nativo (Ghostty)',
+  'prefs.nativeTerminalMacosDesc':
+    'Use o mecanismo Ghostty integrado (renderização por GPU) em vez do terminal interno. Experimental. Reabra os terminais após alterar esta opção.',
+  'prefs.nativeTerminalMacosEnable': 'Habilitar terminal nativo (macOS)',
   'prefs.resourcePolicy': 'Proteção de memória',
   'prefs.resourcePolicyDesc':
     'Define um orçamento total do app e estaciona runtimes ocultos e ociosos antes de o Windows ficar sem memória.',

@@ -322,6 +322,10 @@ export const en = {
   'dictation.unsupported': 'Voice input is not available in this build.',
   'prefs.terminalTheme': 'Terminal theme',
   'prefs.terminalThemeDesc': 'Follow the interface theme or choose a dedicated terminal palette.',
+  'prefs.nativeTerminalMacos': 'Native terminal (Ghostty)',
+  'prefs.nativeTerminalMacosDesc':
+    'Use the embedded Ghostty engine (GPU rendering) instead of the internal terminal. Experimental. Reopen terminals after changing this.',
+  'prefs.nativeTerminalMacosEnable': 'Enable native terminal (macOS)',
   'prefs.resourcePolicy': 'Memory protection',
   'prefs.resourcePolicyDesc':
     'Set a total app budget and park hidden idle runtimes before Windows runs out of memory.',
