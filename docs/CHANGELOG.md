@@ -10,6 +10,12 @@ Mudanças relevantes do **Alethe** para quem usa o app. Formato inspirado em
 
 ## [Não lançado]
 
+## [1.4.1] — 2026-08-07
+
+### Corrigido
+
+- **Notas de versão incorretas no modal "Novidades" e na release do GitHub.** O texto vinha de uma cópia solta e desatualizada de `CHANGELOG.md` fora deste repositório; passou a refletir este arquivo, a fonte real.
+
 ## [1.4.0] — 2026-08-07
 
 Graphify vira recurso opcional, o comando `alethe` abre projetos direto do
@@ -129,6 +135,7 @@ da Home, da tela de carregamento e da sidebar, e o suporte ao Antigravity.
 - Rótulo de seção "Solto/Ungrouped" acima dos projetos sem grupo na sidebar.
 - Aviso textual de terminal estacionado no overlay (a ação de retomar continua).
 
-[Não lançado]: https://github.com/Kc1t/alethe-agents/compare/v1.4.0...HEAD
+[Não lançado]: https://github.com/Kc1t/alethe-agents/compare/v1.4.1...HEAD
+[1.4.1]: https://github.com/Kc1t/alethe-agents/compare/v1.4.0...v1.4.1
 [1.4.0]: https://github.com/Kc1t/alethe-agents/compare/v1.3.0...v1.4.0
 [1.3.0]: https://github.com/Kc1t/alethe-agents/releases/tag/v1.3.0

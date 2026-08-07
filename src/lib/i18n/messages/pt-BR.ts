@@ -447,6 +447,7 @@ export const ptBR: Record<MessageKey, string> = {
   'whatsNew.close': 'Entendi',
   'whatsNew.update': 'Ver atualização',
   'whatsNew.releaseHeading': 'v{version} — {date}',
+  'whatsNew.v141.note1': 'Corrigidas as notas de versão mostradas aqui e no GitHub — elas vinham de uma cópia solta e desatualizada do changelog.',
   'whatsNew.v140.note1': 'Graphify agora é opcional: ligue ou desligue o painel de grafo em Preferências sem mexer na config MCP dos agentes.',
   'whatsNew.v140.note2': 'O comando `alethe` no terminal abre a pasta atual como projeto — ou foca o app, se já estiver aberto.',
   'whatsNew.v140.note3': 'File Explorer: duplo-clique em qualquer arquivo para abri-lo como pane no workspace.',

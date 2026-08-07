@@ -444,6 +444,7 @@ export const en = {
   'whatsNew.close': 'Got it',
   'whatsNew.update': 'View update',
   'whatsNew.releaseHeading': 'v{version} — {date}',
+  'whatsNew.v141.note1': 'Fixed the release notes shown here and on GitHub — they were pulling from a stray, outdated copy of the changelog.',
   'whatsNew.v140.note1': 'Graphify is now optional: turn the code graph panel on or off from Preferences without touching the agents’ MCP config.',
   'whatsNew.v140.note2': 'The `alethe` terminal command opens the current folder as a project — or focuses the app if it is already open.',
   'whatsNew.v140.note3': 'File Explorer: double-click any file to open it as a pane in the workspace.',
