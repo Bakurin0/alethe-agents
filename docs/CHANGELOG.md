@@ -10,6 +10,13 @@ Mudanças relevantes do **Alethe** para quem usa o app. Formato inspirado em
 
 ## [Não lançado]
 
+## [1.4.0] — 2026-08-07
+
+Graphify vira recurso opcional, o comando `alethe` abre projetos direto do
+terminal, e uma leva grande de correções de estabilidade e segurança —
+listener HTTP do AgentCanvas, colar imagem nos agentes, retomada de sessão
+respeitando memória, e paridade Linux/macOS pro Antigravity e OpenCode.
+
 ### Adicionado
 
 - **Graphify como recurso opcional:** a visualização do grafo agora pode ser ativada ou desativada em Preferências, sem alterar a configuração MCP dos agentes.
@@ -19,6 +26,10 @@ Mudanças relevantes do **Alethe** para quem usa o app. Formato inspirado em
 - **Visualizar diffs no Git Control:** clique duas vezes em um arquivo na seção "Changes" ou "Staged" do Git Control para abrir um diff pane monoespaçado no workspace com as alterações.
 - Tela **"Sobre & Atualizações"** em Configurações: mostra a versão instalada do app, verifica atualizações sob demanda e instala a nova versão com barra de progresso e erros visíveis (em vez de a falha sumir sem aviso).
 - A **versão instalada** agora aparece sempre no rodapé da sidebar; clicar abre a tela "Sobre & Atualizações".
+
+### Alterado
+
+- **Tema do terminal** saiu da aba Terminal e agora fica em Preferências ▸ Appearance, ao lado do tema da interface.
 
 ### Corrigido
 
@@ -118,5 +129,6 @@ da Home, da tela de carregamento e da sidebar, e o suporte ao Antigravity.
 - Rótulo de seção "Solto/Ungrouped" acima dos projetos sem grupo na sidebar.
 - Aviso textual de terminal estacionado no overlay (a ação de retomar continua).
 
-[Não lançado]: https://github.com/Kc1t/alethe-agents/compare/v1.3.0...HEAD
+[Não lançado]: https://github.com/Kc1t/alethe-agents/compare/v1.4.0...HEAD
+[1.4.0]: https://github.com/Kc1t/alethe-agents/compare/v1.3.0...v1.4.0
 [1.3.0]: https://github.com/Kc1t/alethe-agents/releases/tag/v1.3.0
