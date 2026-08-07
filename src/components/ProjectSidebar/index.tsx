@@ -240,6 +240,7 @@ export function ProjectSidebar() {
 
   const { projectMenu, groupMenu, terminalMenu } = createSidebarMenus({
     t,
+    graphifyEnabled: preferences.enabledFeatures.graphify,
     groups: groups.filter((group) => !group.archived),
     openPaneSets,
     actions: { ...actions, setPreferences },

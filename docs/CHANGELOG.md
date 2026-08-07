@@ -12,6 +12,7 @@ Mudanças relevantes do **Alethe** para quem usa o app. Formato inspirado em
 
 ### Adicionado
 
+- **Graphify como recurso opcional:** a visualização do grafo agora pode ser ativada ou desativada em Preferências, sem alterar a configuração MCP dos agentes.
 - **Abrir projeto pelo terminal:** o comando `alethe` abre a pasta atual como projeto no Alethe — `alethe`, `alethe .` ou `alethe ~/algum/projeto`. Se a pasta já for um projeto, ele só é trazido pro workspace (sem duplicar); se não for, o projeto é criado com um terminal já apontando pra ela. Com o app aberto, a janela existente é focada em vez de subir uma segunda instância. Instale o comando em **Configurações ▸ Integrações ▸ Comando de terminal**.
 - Padrões de código documentados (`docs/CODE_STANDARDS.md`) e tooling de lint/format: referência única de estilo, estrutura de componentes, TypeScript, IPC, reuso de helpers, uso de `useEffect`/Zustand, i18n e checklist de PR, mais os comandos `npm run lint`/`npm run format` (ESLint flat + Prettier).
 - **Abrir arquivos no File Explorer:** clique duas vezes em qualquer arquivo na aba "File Explorer" da sidebar para abri-lo como pane no workspace.

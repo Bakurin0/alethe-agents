@@ -48,7 +48,7 @@ export type Theme =
   | 'orca'
 
 /** Módulos opcionais que podem ser ativados no onboarding ou nas Preferências. */
-export type FeatureId = 'todos' | 'git' | 'browser' | 'aiMemory'
+export type FeatureId = 'todos' | 'git' | 'browser' | 'graphify' | 'aiMemory'
 
 /** Item da lista pessoal global. A ordem do array é a ordem escolhida pelo usuário. */
 export type TodoItem = {
@@ -428,7 +428,7 @@ export const DEFAULT_PREFERENCES: Preferences = {
   topbarShowSync: true,
   topbarShowProfile: true,
   topbarShowMemory: true,
-  enabledFeatures: { todos: true, git: true, browser: true, aiMemory: false },
+  enabledFeatures: { todos: true, git: true, browser: true, graphify: true, aiMemory: false },
   todoStoragePath: '',
   leftSidebarVisible: true,
   rightSidebarVisible: true,

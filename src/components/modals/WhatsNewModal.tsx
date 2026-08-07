@@ -1,15 +1,16 @@
 import { Newspaper } from 'lucide-react'
 
-import { useT } from '../../lib/i18n'
+import { CHANGELOG_RELEASES, CURRENT_VERSION } from '../../lib/changelogData'
+import { intlLocale, useT } from '../../lib/i18n'
+import { useProjectsStore } from '../../stores/projectsStore'
 import { useUiStore } from '../../stores/uiStore'
 import { Modal } from './Modal'
 import controls from './controls.module.css'
 import styles from './WhatsNewModal.module.css'
 
-const CURRENT_VERSION = '1.3.0'
-
 export function WhatsNewModal() {
   const t = useT()
+  const locale = useProjectsStore((s) => s.preferences.language)
   const open = useUiStore((s) => s.openModal === 'whatsNew')
   const closeModal = useUiStore((s) => s.closeModal)
   const openModal = useUiStore((s) => s.openModal_)
@@ -24,6 +25,7 @@ export function WhatsNewModal() {
       open={open}
       onClose={closeModal}
       title={t('whatsNew.title', { version })}
+      width={480}
       footer={
         <>
           <button type="button" className={controls.btn} onClick={closeModal}>
@@ -59,11 +61,23 @@ export function WhatsNewModal() {
       {updateInfo?.notes ? (
         <div className={styles.notes}>{updateInfo.notes}</div>
       ) : (
-        <ul className={styles.list}>
-          {(['note1', 'note2', 'note3', 'note4'] as const).map((key) => (
-            <li key={key}>{t(`whatsNew.${key}`)}</li>
+        <div className={styles.releases}>
+          {CHANGELOG_RELEASES.map((release) => (
+            <section key={release.version} className={styles.release}>
+              <h3 className={styles.releaseHeading}>
+                {t('whatsNew.releaseHeading', {
+                  version: release.version,
+                  date: new Date(release.date).toLocaleDateString(intlLocale(locale)),
+                })}
+              </h3>
+              <ul className={styles.list}>
+                {release.noteKeys.map((key) => (
+                  <li key={key}>{t(key)}</li>
+                ))}
+              </ul>
+            </section>
           ))}
-        </ul>
+        </div>
       )}
     </Modal>
   )

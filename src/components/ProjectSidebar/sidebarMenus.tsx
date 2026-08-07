@@ -57,6 +57,7 @@ type MenuActions = Pick<
 
 export type SidebarMenuDeps = {
   t: ReturnType<typeof useT>
+  graphifyEnabled: boolean
   groups: Group[]
   openPaneSets: Record<string, Set<string>>
   actions: MenuActions
@@ -72,6 +73,7 @@ export type SidebarMenuDeps = {
 export function createSidebarMenus(deps: SidebarMenuDeps) {
   const {
     t,
+    graphifyEnabled,
     groups,
     openPaneSets,
     actions,
@@ -130,19 +132,23 @@ export function createSidebarMenus(deps: SidebarMenuDeps) {
       icon: <Layout size={14} />,
       onClick: () => openModal('layoutDesigner', { kind: 'project', id: project.id }),
     },
-    {
-      kind: 'item',
-      label: 'Visualizar Grafo (Graphify)',
-      onClick: () => {
-        const repoPath = project.terminals[0]?.cwd
-        if (repoPath) {
-          actions.createGraphifyPane(project.id, repoPath)
-          setActiveView('workspace')
-        } else {
-          alert('Adicione um terminal ao projeto primeiro para obter a raiz do repositório.')
-        }
-      },
-    },
+    ...(graphifyEnabled
+      ? [
+          {
+            kind: 'item' as const,
+            label: t('graphify.startInProject'),
+            onClick: () => {
+              const repoPath = project.terminals[0]?.cwd
+              if (repoPath) {
+                actions.createGraphifyPane(project.id, repoPath)
+                setActiveView('workspace')
+              } else {
+                alert('Adicione um terminal ao projeto primeiro para obter a raiz do repositório.')
+              }
+            },
+          },
+        ]
+      : []),
     {
       kind: 'item',
       label: project.groupId ? t('ui.sidebar.removeFromGroup') : t('ui.sidebar.moveToGroup'),

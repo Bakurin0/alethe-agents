@@ -49,8 +49,6 @@ import { checkForUpdate } from './lib/updater'
 import { useProjectsStore } from './stores/projectsStore'
 import { type InAppToast, useUiStore } from './stores/uiStore'
 import styles from './App.module.css'
-import { AsciiEffect } from './components/ui/ascii-effect'
-import aletheLoadingMark from './assets/alethe-loading-mark.png'
 
 const AgentCanvasPOC = lazy(() =>
   import('./components/AgentCanvasPOC').then((module) => ({ default: module.AgentCanvasPOC })),
@@ -74,29 +72,14 @@ function LoadingScreen() {
   return (
     <div className={styles.loadingScreen} role="status" aria-label={t('loading.initializing')}>
       <div className={styles.loadingInner}>
-        <div className={styles.loadingAscii} aria-hidden="true">
-          <AsciiEffect
-            imageSrc={aletheLoadingMark}
-            alt=""
-            variant="flow"
-            chars=" .:+=*#%@"
-            fontSize={7}
-            fontFamily="var(--font-mono)"
-            fontWeight={600}
-            brightnessBoost={2.6}
-            contrast={1.25}
-            threshold={0.02}
-            posterize={16}
-            dither="bayer"
-            ditherStrength={0.55}
-            flowSpeed={0.18}
-            flowStrength={6}
-            flowFrequency={0.024}
-            scale={0.9}
-            fit="contain"
-            colors={['var(--fg-faint)', 'var(--fg)']}
-            backgroundColor="transparent"
-          />
+        <div className={styles.loadingOrb} aria-hidden="true">
+          <div className={styles.loadingOrbHalo} />
+          <div className={styles.loadingOrbCore}>
+            <span className={styles.loadingOrbPrompt}>›_</span>
+          </div>
+          <span className={styles.loadingOrbRing} />
+          <span className={styles.loadingOrbRing} />
+          <span className={styles.loadingOrbRing} />
         </div>
         <div className={styles.loadingWordmark}>Alethe</div>
         <div className={styles.loadingConsole}>

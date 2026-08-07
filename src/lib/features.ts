@@ -24,6 +24,11 @@ export const FEATURES: readonly FeatureDefinition[] = [
     titleKey: 'features.browser.title',
     descriptionKey: 'features.browser.description',
   },
+  {
+    id: 'graphify',
+    titleKey: 'features.graphify.title',
+    descriptionKey: 'features.graphify.description',
+  },
 ]
 
 type StoredFeaturePreferences = {
@@ -40,6 +45,7 @@ export function normalizeEnabledFeatures(
       todos: raw.enabledFeatures.todos ?? true,
       git: raw.enabledFeatures.git ?? true,
       browser: raw.enabledFeatures.browser ?? true,
+      graphify: raw.enabledFeatures.graphify ?? true,
       // Opt-in explícito: nunca liga sem consentimento, mesmo em perfis já modulares.
       aiMemory: raw.enabledFeatures.aiMemory ?? false,
     }
@@ -48,6 +54,7 @@ export function normalizeEnabledFeatures(
     todos: raw === undefined,
     git: raw?.showGitControl ?? true,
     browser: true,
+    graphify: true,
     aiMemory: false,
   }
 }

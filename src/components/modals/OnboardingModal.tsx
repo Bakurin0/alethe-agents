@@ -1,5 +1,5 @@
 import * as Dialog from '@radix-ui/react-dialog'
-import { BrainCircuit, Check, GitBranch, Globe, ListTodo } from 'lucide-react'
+import { BrainCircuit, Check, GitBranch, Globe, ListTodo, Network } from 'lucide-react'
 import { useEffect, useRef, useState } from 'react'
 
 import aletheLogo from '../../assets/alethe-logo.png'
@@ -33,6 +33,7 @@ const FEATURE_ICONS = {
   git: GitBranch,
   browser: Globe,
   aiMemory: BrainCircuit,
+  graphify: Network,
 } as const
 
 export function OnboardingModal() {

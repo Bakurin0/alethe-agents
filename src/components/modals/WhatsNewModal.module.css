@@ -46,3 +46,25 @@
 .list li + li {
   margin-top: 7px;
 }
+
+.releases {
+  margin-top: 4px;
+  max-height: 360px;
+  overflow-y: auto;
+}
+
+.release + .release {
+  margin-top: 18px;
+}
+
+.releaseHeading {
+  margin: 0;
+  color: var(--fg);
+  font-size: 12px;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+}
+
+.release .list {
+  margin-top: 8px;
+}

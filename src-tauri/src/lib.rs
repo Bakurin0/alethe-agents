@@ -149,6 +149,9 @@ pub fn run() {
                 let _ = window.set_title("(DEV) Alethe");
             }
             logging::set_logs_dir(app.handle());
+            // Keep the terminal launcher available after installation.
+            #[cfg(not(debug_assertions))]
+            let _ = cli_shim::cli_shim_install();
             // `alethe <path>` com o app fechado: guarda o alvo agora, o
             // frontend consome no boot (a webview ainda não existe aqui).
             cli_launch::capture_cold_start(app.handle());

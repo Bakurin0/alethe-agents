@@ -4,7 +4,13 @@ import { normalizeEnabledFeatures } from './features'
 
 describe('normalizeEnabledFeatures', () => {
   it('enables the initial modules for a fresh profile', () => {
-    expect(normalizeEnabledFeatures(undefined)).toEqual({ todos: true, git: true, browser: true, aiMemory: false })
+    expect(normalizeEnabledFeatures(undefined)).toEqual({
+      todos: true,
+      git: true,
+      browser: true,
+      graphify: true,
+      aiMemory: false,
+    })
   })
 
   it('preserves legacy Git and keeps Todo off for existing profiles', () => {
@@ -12,6 +18,7 @@ describe('normalizeEnabledFeatures', () => {
       todos: false,
       git: false,
       browser: true,
+      graphify: true,
       aiMemory: false,
     })
   })
@@ -21,6 +28,7 @@ describe('normalizeEnabledFeatures', () => {
       todos: false,
       git: true,
       browser: true,
+      graphify: true,
       aiMemory: false,
     })
   })
@@ -28,6 +36,10 @@ describe('normalizeEnabledFeatures', () => {
   it('keeps AI Memory off unless explicitly enabled', () => {
     expect(
       normalizeEnabledFeatures({ enabledFeatures: { todos: true, git: true, aiMemory: true } }),
-    ).toEqual({ todos: true, git: true, browser: true, aiMemory: true })
+    ).toEqual({ todos: true, git: true, browser: true, graphify: true, aiMemory: true })
+  })
+
+  it('preserves an explicit Graphify preference', () => {
+    expect(normalizeEnabledFeatures({ enabledFeatures: { graphify: false } }).graphify).toBe(false)
   })
 })

@@ -160,6 +160,7 @@ export const ProjectContainer = memo(function ProjectContainer({
     return container.paneIds.map((id) => map.get(id)).filter((t): t is Terminal => Boolean(t))
   }, [project.terminals, container.paneIds])
   const graphifyPaneOpen = terminals.some((terminal) => terminal.kind === 'graphify')
+  const graphifyEnabled = useProjectsStore((s) => s.preferences.enabledFeatures.graphify)
   const graphifyCwd = terminals.find(
     (terminal) => terminal.kind !== 'graphify' && terminal.cwd,
   )?.cwd
@@ -221,7 +222,7 @@ export const ProjectContainer = memo(function ProjectContainer({
           </span>
           <span className={styles.tagCount}>{container.paneIds.length}</span>
           <div className={styles.tagActions}>
-            {!graphifyPaneOpen && graphifyCwd ? (
+            {graphifyEnabled && !graphifyPaneOpen && graphifyCwd ? (
               <button
                 type="button"
                 className={styles.tagBtn}

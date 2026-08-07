@@ -83,10 +83,19 @@ fn app_bundle(binary: &Path) -> Option<PathBuf> {
 
 /// `bin_dir` aparece no PATH do processo? Usado só pra avisar o usuário.
 fn dir_on_path(dir: &Path) -> bool {
-    let Some(path_var) = std::env::var_os("PATH") else {
-        return false;
-    };
-    std::env::split_paths(&path_var).any(|entry| entry == dir)
+    if let Some(path_var) = std::env::var_os("PATH") {
+        if std::env::split_paths(&path_var).any(|entry| entry == dir) {
+            return true;
+        }
+    }
+
+    #[cfg(windows)]
+    {
+        return windows_path::user_path_contains(dir);
+    }
+
+    #[cfg(not(windows))]
+    false
 }
 
 /// Escapa um caminho pra dentro de aspas simples de `sh`.
@@ -263,7 +272,10 @@ pub fn cli_shim_install() -> Result<CliShimStatus, String> {
     // Só o Windows precisa de registro: `~/.local/bin` já é convenção no PATH
     // das distros e do macOS, e editar rc de shell do usuário é invasivo demais.
     #[cfg(windows)]
-    windows_path::add_to_user_path(&bin_dir)?;
+    {
+        windows_path::add_to_user_path(&bin_dir)?;
+        windows_path::add_to_process_path(&bin_dir);
+    }
 
     build_status()
 }
@@ -332,6 +344,19 @@ mod windows_path {
         path.split(';').filter(|entry| !entry.trim().is_empty()).collect()
     }
 
+    pub fn user_path_contains(dir: &Path) -> bool {
+        let Ok(key) = open_environment() else {
+            return false;
+        };
+        let (current, _) = read_path(&key);
+        let target = dir.to_string_lossy().to_string();
+        entries(&current).iter().any(|entry| {
+            entry
+                .trim_end_matches('\\')
+                .eq_ignore_ascii_case(target.trim_end_matches('\\'))
+        })
+    }
+
     pub fn add_to_user_path(dir: &Path) -> Result<(), String> {
         let key = open_environment()?;
         let (current, vtype) = read_path(&key);
@@ -352,6 +377,23 @@ mod windows_path {
         write_path(&key, &updated, vtype)?;
         broadcast_environment_change();
         Ok(())
+    }
+
+    pub fn add_to_process_path(dir: &Path) {
+        let Some(current) = std::env::var_os("PATH") else {
+            std::env::set_var("PATH", dir);
+            return;
+        };
+        if std::env::split_paths(&current).any(|entry| {
+            entry
+                .to_string_lossy()
+                .trim_end_matches('\\')
+                .eq_ignore_ascii_case(dir.to_string_lossy().trim_end_matches('\\'))
+        }) {
+            return;
+        }
+        let updated = format!("{};{}", current.to_string_lossy(), dir.to_string_lossy());
+        std::env::set_var("PATH", updated);
     }
 
     pub fn remove_from_user_path(dir: &Path) -> Result<(), String> {

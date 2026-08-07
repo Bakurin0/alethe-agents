@@ -480,56 +480,17 @@ export function TitleBar() {
       <div className={styles.spacer} data-tauri-drag-region />
       <div className={styles.barEnd}>
         <div className={styles.widgets}>
-        <div className={styles.utilityGroup}>
-          {!threeAreas ? <button
-            type="button"
-            className={`${styles.iconBtn} ${updateInfo ? styles.whatsNewPending : ''}`}
-            onClick={() => openModal('whatsNew')}
-            title={t('whatsNew.button')}
-            aria-label={t('whatsNew.button')}
-          >
-            <Newspaper size={13} />
-            {updateInfo ? <span className={styles.whatsNewDot} /> : null}
-          </button> : null}
-          {!threeAreas && preferences.topbarShowSync ? (
-            <button
+          <div className={styles.utilityGroup}>
+            {!threeAreas ? <button
               type="button"
-              className={styles.syncPill}
-              title={t('sync.title')}
-              aria-label={t('sync.title')}
-              onClick={() => openModal('sync')}
+              className={`${styles.iconBtn} ${updateInfo ? styles.whatsNewPending : ''}`}
+              onClick={() => openModal('whatsNew')}
+              title={t('whatsNew.button')}
+              aria-label={t('whatsNew.button')}
             >
-              <RefreshCw size={12} />
-            </button>
-          ) : null}
-          {!threeAreas && preferences.topbarShowProfile ? (
-            <button
-              type="button"
-              className={styles.profilePill}
-              title={t('profile.manageAccounts')}
-              onClick={() => openModal('profiles')}
-            >
-              <Users size={12} />
-              <span className={styles.profilePillLabel}>
-                {activeProfile?.name ?? t('profile.localAccount')}
-              </span>
-            </button>
-          ) : null}
-        </div>
-        <div className={styles.statusGroup}>
-          {preferences.topbarShowClaudeUsage && claudeUsage !== null ? (
-            <div className={styles.usageWidget}>
-              <button
-                type="button"
-                className={`${styles.iconBtn} ${updateInfo ? styles.whatsNewPending : ''}`}
-                onClick={() => openModal('whatsNew')}
-                title={t('whatsNew.button')}
-                aria-label={t('whatsNew.button')}
-              >
-                <Sparkles size={13} />
-                {updateInfo ? <span className={styles.whatsNewDot} /> : null}
-              </button>
-            ) : null}
+              <Newspaper size={13} />
+              {updateInfo ? <span className={styles.whatsNewDot} /> : null}
+            </button> : null}
             {!threeAreas && preferences.topbarShowSync ? (
               <button
                 type="button"
