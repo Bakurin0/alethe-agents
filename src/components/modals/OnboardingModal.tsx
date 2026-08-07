@@ -96,7 +96,6 @@ export function OnboardingModal() {
         enabledAgents: {
           ...preferences.enabledAgents,
           shell: true,
-          ...availability,
         },
       })
       setDetectingAgents(false)
@@ -381,7 +380,7 @@ export function OnboardingModal() {
                             <button
                               key={agent.id}
                               type="button"
-                              disabled={detectingAgents || !installed}
+                              disabled={detectingAgents}
                               className={[
                                 styles.agentOption,
                                 active ? styles.agentOptionActive : '',

@@ -1,4 +1,5 @@
 import { ArchiveRestore, FolderArchive, Trash2 } from 'lucide-react'
+import { useMemo } from 'react'
 
 import { useT } from '../../../lib/i18n'
 import { useProjectsStore } from '../../../stores/projectsStore'
@@ -6,12 +7,16 @@ import styles from '../PreferencesModal.module.css'
 
 export function OrganizationPage() {
   const t = useT()
-  const groups = useProjectsStore((state) => state.groups.filter((group) => group.archived))
+  const allGroups = useProjectsStore((state) => state.groups)
   const unarchiveGroup = useProjectsStore((state) => state.unarchiveGroup)
   const deleteGroup = useProjectsStore((state) => state.deleteGroup)
-  const projects = useProjectsStore((state) => state.projects)
-  const archivedProjects = projects.filter((project) => project.archived)
+  const allProjects = useProjectsStore((state) => state.projects)
   const unarchiveProject = useProjectsStore((state) => state.unarchiveProject)
+  const groups = useMemo(() => allGroups.filter((group) => group.archived), [allGroups])
+  const archivedProjects = useMemo(
+    () => allProjects.filter((project) => project.archived),
+    [allProjects],
+  )
 
   return (
     <section className={styles.section}>

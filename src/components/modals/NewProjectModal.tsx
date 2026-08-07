@@ -1,9 +1,9 @@
 import { Folder } from 'lucide-react'
-import { useEffect, useState } from 'react'
+import { useState } from 'react'
 
 import { useUiStore } from '../../stores/uiStore'
 import { useProjectsStore } from '../../stores/projectsStore'
-import { GROUP_COLORS, type AgentType } from '../../lib/types'
+import { GROUP_COLORS } from '../../lib/types'
 import { useT } from '../../lib/i18n'
 import { pickDirectory } from '../../lib/dialog'
 import { ImageInput } from './ImageInput'
@@ -13,16 +13,10 @@ import controls from './controls.module.css'
 export function NewProjectModal() {
   const t = useT()
   const open = useUiStore((s) => s.openModal === 'newProject')
-  const context = useUiStore((s) => s.modalContext) as {
-    groupId?: string | null
-    createTerminalAfterCreate?: boolean
-  } | null
+  const context = useUiStore((s) => s.modalContext) as { groupId?: string | null } | null
   const closeModal = useUiStore((s) => s.closeModal)
   const createProject = useProjectsStore((s) => s.createProject)
-  const createTerminal = useProjectsStore((s) => s.createTerminal)
-  const openProjectWorkspace = useProjectsStore((s) => s.openProjectWorkspace)
-  const openTerminalWorkspace = useProjectsStore((s) => s.openTerminalWorkspace)
-  const enabledAgents = useProjectsStore((s) => s.preferences.enabledAgents)
+  const openModal = useUiStore((s) => s.openModal_)
   const groups = useProjectsStore((s) => s.groups)
 
   const [name, setName] = useState('')
@@ -30,26 +24,6 @@ export function NewProjectModal() {
   const [iconUrl, setIconUrl] = useState('')
   const [defaultCwd, setDefaultCwd] = useState('')
   const [groupId, setGroupId] = useState<string | null>(context?.groupId ?? null)
-  const [initialTerminalType, setInitialTerminalType] = useState<AgentType>('claude')
-  const withInitialTerminal = context?.createTerminalAfterCreate === true
-  const agentOptions: { type: AgentType; label: string }[] = [
-    { type: 'claude', label: 'Claude' },
-    { type: 'codex', label: 'Codex' },
-    { type: 'antigravity', label: 'Antigravity' },
-    { type: 'opencode', label: 'OpenCode' },
-    { type: 'shell', label: 'Shell' },
-    { type: 'mimo', label: 'Mimo' },
-    { type: 'freebuff', label: 'Freebuff' },
-  ]
-  const availableAgents = agentOptions.filter((agent) => enabledAgents[agent.type])
-
-  useEffect(() => {
-    if (!withInitialTerminal) return
-    const firstAvailable = availableAgents[0]?.type ?? 'shell'
-    if (!availableAgents.some((agent) => agent.type === initialTerminalType)) {
-      setInitialTerminalType(firstAvailable)
-    }
-  }, [availableAgents, initialTerminalType, withInitialTerminal])
 
   const reset = () => {
     setName('')
@@ -57,10 +31,9 @@ export function NewProjectModal() {
     setIconUrl('')
     setDefaultCwd('')
     setGroupId(context?.groupId ?? null)
-    setInitialTerminalType('claude')
   }
 
-  const submit = (addTerminal = withInitialTerminal) => {
+  const submit = () => {
     const trimmed = name.trim()
     if (!trimmed) return
     const project = createProject({
@@ -70,20 +43,8 @@ export function NewProjectModal() {
       groupId,
       defaultCwd: defaultCwd.trim() || undefined,
     })
-    if (addTerminal) {
-      const agent =
-        agentOptions.find((option) => option.type === initialTerminalType) ?? agentOptions[0]
-      const terminal = createTerminal(project.id, {
-        name: agent.label,
-        cwd: defaultCwd.trim(),
-        firstTab: { type: agent.type, cwd: defaultCwd.trim(), runtimeProfile: 'lean' },
-      })
-      openTerminalWorkspace(project.id, terminal.id)
-    } else {
-      openProjectWorkspace(project.id)
-    }
     reset()
-    closeModal()
+    openModal('newTerminal', { projectId: project.id })
   }
 
   const browse = async () => {
@@ -104,23 +65,13 @@ export function NewProjectModal() {
           <button type="button" className={controls.btn} onClick={closeModal}>
             {t('crud.cancel')}
           </button>
-          {withInitialTerminal ? (
-            <button
-              type="button"
-              className={controls.btn}
-              disabled={!name.trim()}
-              onClick={() => submit(false)}
-            >
-              {t('crud.createProjectOnly')}
-            </button>
-          ) : null}
           <button
             type="button"
             className={`${controls.btn} ${controls.btnPrimary}`}
             disabled={!name.trim()}
-            onClick={() => submit()}
+            onClick={submit}
           >
-            {withInitialTerminal ? t('crud.createProjectAndOpenTerminal') : t('crud.create')}
+            {t('crud.createProjectAndOpenTerminal')}
           </button>
         </>
       }
@@ -135,24 +86,6 @@ export function NewProjectModal() {
           placeholder={t('crud.projectNamePlaceholder')}
         />
       </div>
-
-      {withInitialTerminal ? (
-        <div className={controls.field}>
-          <label className={controls.label}>{t('crud.firstTerminalLabel')}</label>
-          <select
-            className={controls.input}
-            value={initialTerminalType}
-            onChange={(event) => setInitialTerminalType(event.target.value as AgentType)}
-          >
-            {availableAgents.map((agent) => (
-              <option key={agent.type} value={agent.type}>
-                {agent.label}
-              </option>
-            ))}
-          </select>
-          <span className={controls.hint}>{t('crud.firstTerminalHint')}</span>
-        </div>
-      ) : null}
 
       {groups.length > 0 ? (
         <div className={controls.field}>
