@@ -19,8 +19,9 @@ Na raiz do repositório — o diretório do app. Aqui ficam:
 
 - `src/` — frontend React.
 - `src-tauri/` — backend Rust/Tauri.
+- `docs/` — docs versionados (`FEATURES.md`, `CHANGELOG.md`, `OVERVIEW.md`, `BRAND.md`,
+  `DIAGNOSTICO_MATURIDADE_TECNICA.md`).
 - `package.json`, `vite.config.ts`, `tsconfig.json`, `tests/`.
-- `docs/` — docs versionados (`FEATURES.md`, `CHANGELOG.md`, `OVERVIEW.md`, `BRAND.md`).
 
 ## 3. Stack
 
@@ -76,7 +77,7 @@ Detalhes em `docs/BUILD_WINDOWS.md` (não versionado neste repo — só na máqu
 **Frontend (`src/`)**
 - `components/` — UI por feature (`HomeView/`, `WorkspaceView/`, `XTermView/`, `ProjectSidebar/`, `TitleBar/`, `modals/`…). 1 `.module.css` por componente.
 - `stores/` — Zustand: `projectsStore` (projetos/grupos/terminais/preferences, **persistido** em `projects.json`) e `uiStore` (modais/toasts/efêmero).
-- `lib/tauri.ts` — wrapper de `invoke` (todos os comandos do backend passam por aqui).
+- `lib/tauri/` — wrapper de `invoke`, dividido por domínio (`git`, `pty`, `agents`, `usage`…), com `index.ts` reexportando tudo — call-sites continuam importando de `lib/tauri` sem mudança.
 - `lib/i18n/` — sistema de i18n (`index.ts` + `messages/en.ts` + `messages/pt-BR.ts`).
 - `lib/types.ts` — tipos do domínio (`AgentType`, `Terminal`, `Project`, `Group`, `GridLayout`…).
 - `styles/theme.css` + `styles/reset.css` — tokens e reset.
@@ -89,7 +90,7 @@ Detalhes em `docs/BUILD_WINDOWS.md` (não versionado neste repo — só na máqu
 - `claude_sessions.rs` / `codex_sessions.rs` / `claude_usage.rs` — leitura de sessões e uso.
 - `spotify.rs`, `backup.rs`, `diagnostics.rs`, `agent_library.rs`, `agent_events.rs`, `stats.rs`.
 
-**Comunicação:** frontend chama `invoke(...)` via `lib/tauri.ts`; o terminal recebe streaming por
+**Comunicação:** frontend chama `invoke(...)` via `lib/tauri/`; o terminal recebe streaming por
 eventos Tauri `pty://data/{id}` e `pty://exit/{id}`.
 
 ## 7. Convenções
@@ -117,7 +118,11 @@ Versionado neste repo:
 - [`CONTRIBUTING.md`](CONTRIBUTING.md) — setup por SO, layout, regras da casa, convenção de commit/PR.
 - [`docs/FEATURES.md`](docs/FEATURES.md) — features em detalhe.
 - [`docs/CHANGELOG.md`](docs/CHANGELOG.md) — histórico voltado ao usuário.
-- [`docs/OVERVIEW.md`](docs/OVERVIEW.md) · [`docs/BRAND.md`](docs/BRAND.md).
+- [`docs/OVERVIEW.md`](docs/OVERVIEW.md) — modelo de domínio (Grupo, Projeto, Container, Pane,
+  Terminal, Sub-tab, PTY), stack e persistência.
+- [`docs/BRAND.md`](docs/BRAND.md).
+- [`docs/DIAGNOSTICO_MATURIDADE_TECNICA.md`](docs/DIAGNOSTICO_MATURIDADE_TECNICA.md) — diagnóstico
+  de organização, duplicação e performance do código, com recomendações priorizadas.
 
 Só na máquina do dono (não versionado): `CODE_STANDARDS.md`, `GLOSSARY.md`, `CONTEXTO_IA.md`,
 `HANDOFF_STATUS.md`, `CURRENT_STEP.md`. O glossário do domínio (Grupo, Projeto, Container, Pane,

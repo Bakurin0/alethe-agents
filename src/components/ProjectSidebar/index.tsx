@@ -37,6 +37,7 @@ import { createSidebarMenus } from './sidebarMenus'
 import { SidebarNowPlaying } from '../SidebarNowPlaying'
 import { UserProfile } from '../UserProfile'
 import { ContextMenu, type MenuItem } from './ContextMenu'
+import { SidebarMergePanel } from './SidebarMergePanel'
 import { SidebarUpdate } from './SidebarUpdate'
 import styles from './ProjectSidebar.module.css'
 
@@ -77,6 +78,7 @@ export function ProjectSidebar() {
       renameTerminal: s.renameTerminal,
       killTerminal: s.killTerminal,
       deleteTerminal: s.deleteTerminal,
+      deleteTerminalWithWorktreeCleanup: s.deleteTerminalWithWorktreeCleanup,
       setTerminalDisabled: s.setTerminalDisabled,
       moveTerminal: s.moveTerminal,
       moveProjectToGroup: s.moveProjectToGroup,
@@ -89,6 +91,7 @@ export function ProjectSidebar() {
       setSubTabCompletionUnread: s.setSubTabCompletionUnread,
       createFilePane: s.createFilePane,
       createGraphifyPane: s.createGraphifyPane,
+      setFullscreenPane: s.setFullscreenPane,
     })),
   )
 
@@ -269,6 +272,15 @@ export function ProjectSidebar() {
       }}
       onToggleCollapsed={() => actions.toggleProjectCollapsed(p.id)}
       onTerminalClick={(t) => {
+        // Terminal "viewer" de sessão GSD Sync: nunca vai pro fluxo genérico
+        // de abrir pane (que ou não faz nada, se ele não estiver em nenhum
+        // container, ou pior, cria um container/tab novo pra ele) — sempre
+        // abre em tela cheia, igual clicar na gaveta GSD Sync.
+        if (t.gsdSyncViewer) {
+          actions.setFullscreenPane(t.id)
+          setActiveView('workspace')
+          return
+        }
         actions.focusWorkspaceTerminal(p.id, t.id)
         setActiveTerminal(p.id, t.id)
         const activeTab = t.tabs.find((tab) => tab.id === t.activeTabId) ?? t.tabs[0]
@@ -279,6 +291,11 @@ export function ProjectSidebar() {
         setActiveView('workspace')
       }}
       onTerminalDoubleClick={(t) => {
+        if (t.gsdSyncViewer) {
+          actions.setFullscreenPane(t.id)
+          setActiveView('workspace')
+          return
+        }
         actions.openTerminalWorkspace(p.id, t.id)
         setActiveTerminal(p.id, t.id)
         requestPaneFocus(t.id)
@@ -291,7 +308,8 @@ export function ProjectSidebar() {
       onAddTerminal={() => openModal('newTerminal', { projectId: p.id })}
       onQuickOpen={() => activateProject(p, 'open')}
       onToggleDisabled={() => {
-        const allDisabled = p.terminals.length > 0 && p.terminals.every((term) => term.disabled)
+        const visible = p.terminals.filter((term) => !term.gsdSyncViewer)
+        const allDisabled = visible.length > 0 && visible.every((term) => term.disabled)
         actions.setProjectDisabled(p.id, !allDisabled)
       }}
     />
@@ -545,6 +563,9 @@ export function ProjectSidebar() {
           </div>
         </DndContext>
       ) : null}
+
+      {/* PAINEL DE MERGES NA BARRA LATERAL */}
+      <SidebarMergePanel />
 
       {menu ? (
         <ContextMenu x={menu.x} y={menu.y} items={menu.items} onClose={() => setMenu(null)} />

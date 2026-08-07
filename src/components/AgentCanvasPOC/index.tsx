@@ -120,6 +120,8 @@ function AgentCanvasInner() {
   const [edges, setEdges] = useState<Edge[]>([])
   const [hooksSettingsPath, setHooksSettingsPath] = useState<string | null>(null)
   const [hooksEndpoint, setHooksEndpoint] = useState<string | null>(null)
+  const [hooksError, setHooksError] = useState<string | null>(null)
+  const [hooksRetryNonce, setHooksRetryNonce] = useState(0)
   const [claudeExited, setClaudeExited] = useState<number | null>(null)
   const [copied, setCopied] = useState(false)
   const [paletteOpen, setPaletteOpen] = useState(false)
@@ -202,6 +204,7 @@ function AgentCanvasInner() {
   // Gera o settings com os hooks ANTES de spawnar o claude — o XTermView só
   // monta quando o path existe, senão a sessão nasceria sem hooks.
   useEffect(() => {
+    setHooksError(null)
     Promise.all([agentHooksEndpoint(), agentHooksSettingsPath()])
       .then(([endpoint, path]) => {
         console.log('[AgentCanvasPOC] hooks endpoint:', endpoint)
@@ -209,8 +212,14 @@ function AgentCanvasInner() {
         setHooksEndpoint(endpoint)
         setHooksSettingsPath(path)
       })
-      .catch((err) => console.error('[AgentCanvasPOC] falha gerando hooks settings:', err))
-  }, [])
+      .catch((err) => {
+        // Sem isso, uma falha aqui deixava o terminal Claude preso pra
+        // sempre em "Gerando configuração de hooks..." sem erro nem opção
+        // de tentar de novo.
+        console.error('[AgentCanvasPOC] falha gerando hooks settings:', err)
+        setHooksError(String(err))
+      })
+  }, [hooksRetryNonce])
 
   // Tabela de preço (uma vez) pra estimar a economia por roteamento.
   useEffect(() => {
@@ -728,6 +737,8 @@ function AgentCanvasInner() {
           onRestart={restartClaude}
           hooksSettingsPath={hooksSettingsPath}
           hooksEndpoint={hooksEndpoint}
+          hooksError={hooksError}
+          onRetryHooks={() => setHooksRetryNonce((n) => n + 1)}
           coreAgentsReady={coreAgentsReady}
           terminalTheme={terminalTheme}
           budgetUsd={budgetUsd}

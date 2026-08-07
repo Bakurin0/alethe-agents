@@ -134,6 +134,48 @@ export async function stopGsdWatcher(projectId: string, repoPath: string): Promi
   await invoke('stop_gsd_watcher', { projectId, repoPath })
 }
 
+export type PlanningStatus = {
+  hasPlanning: boolean
+  reportedComplete: boolean
+  progress: number | null
+  roadmapPendingCount: number | null
+  roadmapTotalCount: number | null
+  /** Corpo de STATE.md após o front-matter — objetivo + procedimento de teste escritos pelo skill do plugin OpenCode. */
+  notes: string | null
+}
+
+/** Lê `.planning/STATE.md`/`roadmap.md` da PRÓPRIA worktree — gate de conclusão de planejamento. */
+export async function readPlanningStatus(repoPath: string): Promise<PlanningStatus> {
+  return invoke<PlanningStatus>('read_planning_status', { repoPath })
+}
+
+/** Materializa o plugin OpenCode que mantém `.planning/` sincronizado sozinho (via todowrite + skill automático) nesta worktree/repo, e escreve a cadeia de fallback de modelos (preferência global) no sidecar de config que o plugin lê em runtime. Best-effort. */
+export async function gsdOpenCodePluginWrite(repo: string, modelChain: string[]): Promise<void> {
+  await invoke('gsd_opencode_plugin_write', { repo, modelChain })
+}
+
+/** Lê `.planning/.gsd-child-session` — id da sessão-filha isolada (se já existir) que o plugin OpenCode usa pra documentar goal.md/plan.md sem contaminar a sessão principal. */
+export async function readGsdChildSession(repoPath: string): Promise<string | null> {
+  return invoke<string | null>('read_gsd_child_session', { repoPath })
+}
+
+/** Verifica `.planning/.gsd-child-busy` — true enquanto a sessão-filha está processando um ciclo de sincronização. */
+export async function readGsdChildBusy(repoPath: string): Promise<boolean> {
+  return invoke<boolean>('read_gsd_child_busy', { repoPath })
+}
+
+/** Lê (e consome) `.planning/.gsd-child-error` — motivo curto quando TODA a cadeia de fallback de modelos da sessão-filha falhou. `null` = sem erro pendente. */
+export async function readGsdChildError(repoPath: string): Promise<string | null> {
+  return invoke<string | null>('read_gsd_child_error', { repoPath })
+}
+
+export type GsdProcedureStep = { description: string; category: string }
+
+/** Lê `.planning/procedure.json` — passos de teste estruturados registrados pela sessão-filha via tool dedicada (`gsd_record_step`), não texto solto de `plan.md`. Vira o checklist do "Briefing de Testes". */
+export async function readGsdProcedure(repoPath: string): Promise<GsdProcedureStep[]> {
+  return invoke<GsdProcedureStep[]>('read_gsd_procedure', { repoPath })
+}
+
 // --- RFC-002 — Scheduler ---
 
 export type SchedulerTask = {
@@ -144,6 +186,8 @@ export type SchedulerTask = {
   status: 'pending' | 'ready' | 'running' | 'completed' | 'failed' | 'blocked'
   assignedAgentId: string | null
   leaseResource: string | null
+  /** Caminho da worktree provisionada pra esta task, quando já rodando. */
+  worktreePath: string | null
   priority: number
 }
 
@@ -200,4 +244,38 @@ export async function setPlanningAutocommit(enabled: boolean): Promise<void> {
 
 export async function getPlanningAutocommit(): Promise<boolean> {
   return invoke<boolean>('get_planning_autocommit')
+}
+
+// --- Spotify ---
+
+export type NowPlaying = {
+  playing: boolean
+  track: string
+  artist: string
+  album: string
+  cover_url: string | null
+  duration_ms: number
+  progress_ms: number
+  track_url: string | null
+}
+
+export type SpotifyCredentials = {
+  clientId?: string
+  clientSecret?: string
+}
+
+export function spotifyLogin(credentials: SpotifyCredentials): Promise<void> {
+  return invoke('spotify_login', credentials)
+}
+
+export function spotifyLogout(): Promise<void> {
+  return invoke('spotify_logout')
+}
+
+export function spotifyStatus(): Promise<boolean> {
+  return invoke<boolean>('spotify_status')
+}
+
+export function spotifyGetCurrent(credentials: SpotifyCredentials): Promise<NowPlaying | null> {
+  return invoke<NowPlaying | null>('spotify_get_current', credentials)
 }

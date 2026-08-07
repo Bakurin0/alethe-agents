@@ -85,15 +85,32 @@ fn add_trace(event: EventBusPayload) {
 pub fn start_telemetry_watcher(app: AppHandle) {
     tauri::async_runtime::spawn(async move {
         let mut rx = crate::event_bus::subscribe();
-        while let Ok(event) = rx.recv().await {
-            // 1. Log to file
-            append_telemetry_log(&app, &event);
+        loop {
+            match rx.recv().await {
+                Ok(event) => {
+                    // 1. Log to file
+                    append_telemetry_log(&app, &event);
 
-            // 2. Update metrics
-            update_metrics(&event);
+                    // 2. Update metrics
+                    update_metrics(&event);
 
-            // 3. Keep trace
-            add_trace(event);
+                    // 3. Keep trace
+                    add_trace(event);
+                }
+                // Canal (capacidade 1024) encheu antes deste receiver
+                // conseguir processar tudo — o `while let Ok(...)` original
+                // saía do loop PRA SEMPRE no primeiro Lagged, deixando
+                // Execution metrics/Recent event history (aba Multi-Agent &
+                // Telemetry) congelados pelo resto da vida do app mesmo com
+                // eventos reais continuando a acontecer. O receiver continua
+                // válido; só os eventos perdidos não entram na métrica/trace.
+                Err(tokio::sync::broadcast::error::RecvError::Lagged(skipped)) => {
+                    eprintln!(
+                        "[telemetry] receiver atrasado, {skipped} evento(s) perdido(s) — continuando"
+                    );
+                }
+                Err(tokio::sync::broadcast::error::RecvError::Closed) => break,
+            }
         }
     });
 }

@@ -5,6 +5,8 @@ use serde_json::Value;
 use serde::{Deserialize, Serialize};
 use tauri::{AppHandle, Manager};
 
+pub(crate) use crate::provider_common::now_ms;
+
 const PROFILES_DIR_NAME: &str = "profiles";
 const PROFILES_REGISTRY_FILE: &str = "profiles.json";
 const DEFAULT_PROFILE_ID: &str = "default";
@@ -72,12 +74,6 @@ pub fn profile_data_dir_for_id(app: &AppHandle, profile_id: &str) -> Result<Path
     Ok(profile_dir(&root, profile_id))
 }
 
-pub fn now_ms() -> u64 {
-    match std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH) {
-        Ok(duration) => duration.as_millis() as u64,
-        Err(_) => 0,
-    }
-}
 
 pub fn default_profiles_index() -> ProfilesIndex {
     let now = now_ms();

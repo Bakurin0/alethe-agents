@@ -8,21 +8,32 @@ use zip::{CompressionMethod, ZipArchive, ZipWriter};
 use crate::paths::{activity_stats_file_path, app_data_dir};
 use crate::profiles::profile_data_dir_for_id;
 
-/// Package local profile data into a zip at `target_path`.
-/// Debug logs and temporary atomic-save artifacts are excluded.
+/// Empacota `projects.json` + `scrollback/` num zip salvo em `target_path`.
+/// Não inclui `spawn.log` (debug-only) nem `tmp` (artefatos do save atômico).
+///
+/// `async` + `spawn_blocking`: I/O de disco real (zip de todo o scrollback),
+/// mesma classe de bloqueio já corrigida em `cli_resolver.rs` — sem isso
+/// trava a thread de despacho de IPC do Tauri, sem indicador de progresso
+/// pro usuário além do botão "parecer travado".
 #[tauri::command]
-pub fn export_backup(app: AppHandle, target_path: String) -> Result<(), String> {
-    export_backup_from_dir(app_data_dir(&app)?, target_path)
+pub async fn export_backup(app: AppHandle, target_path: String) -> Result<(), String> {
+    let dir = app_data_dir(&app)?;
+    tokio::task::spawn_blocking(move || export_backup_from_dir(dir, target_path))
+        .await
+        .map_err(|error| format!("export_backup: falha na task bloqueante: {error}"))?
 }
 
+/// Igual a `export_backup`, mas pra um perfil específico (não necessariamente o ativo).
 #[tauri::command]
-pub fn export_profile_backup(
+pub async fn export_profile_backup(
     app: AppHandle,
     profile_id: String,
     target_path: String,
 ) -> Result<(), String> {
     let dir = profile_data_dir_for_id(&app, &profile_id)?;
-    export_backup_from_dir(dir, target_path)
+    tokio::task::spawn_blocking(move || export_backup_from_dir(dir, target_path))
+        .await
+        .map_err(|error| format!("export_profile_backup: falha na task bloqueante: {error}"))?
 }
 
 fn export_backup_from_dir(dir: PathBuf, target_path: String) -> Result<(), String> {
@@ -98,8 +109,16 @@ fn export_backup_from_dir(dir: PathBuf, target_path: String) -> Result<(), Strin
 /// Replace local state with the contents of `source_path`. Remove existing
 /// scrollback first so deleted PTY data is not retained.
 /// preserva apenas o projects.json novo.
+///
+/// `async` + `spawn_blocking`: mesmo motivo de `export_backup`.
 #[tauri::command]
-pub fn import_backup(app: AppHandle, source_path: String) -> Result<(), String> {
+pub async fn import_backup(app: AppHandle, source_path: String) -> Result<(), String> {
+    tokio::task::spawn_blocking(move || import_backup_inner(app, source_path))
+        .await
+        .map_err(|error| format!("import_backup: falha na task bloqueante: {error}"))?
+}
+
+fn import_backup_inner(app: AppHandle, source_path: String) -> Result<(), String> {
     let dir = app_data_dir(&app)?;
     fs::create_dir_all(&dir).map_err(|e| e.to_string())?;
 

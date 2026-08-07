@@ -37,6 +37,7 @@ export const ProjectContainer = memo(function ProjectContainer({
   const t = useT()
   const setCollapsed = useProjectsStore((s) => s.setContainerCollapsed)
   const setFullscreen = useProjectsStore((s) => s.setFullscreenContainer)
+  const isolatedPaneId = useProjectsStore((s) => s.preferences.isolatedPaneId)
   const setWorkspaceFlat = useProjectsStore((s) => s.setWorkspaceFlat)
   const closeContainer = useProjectsStore((s) => s.closeContainer)
   const openContainerWithAllPanes = useProjectsStore((s) => s.openContainerWithAllPanes)
@@ -155,10 +156,19 @@ export const ProjectContainer = memo(function ProjectContainer({
   }
   const isDropTarget = droppable.isOver && !draggable.isDragging
 
+  // Fullscreen isolando UMA pane só (gaveta GSD Sync) — reaproveita o mesmo
+  // fullscreen de container de sempre, só troca quais terminais são
+  // renderizados. O terminal isolado busca direto em `project.terminals`,
+  // não em `container.paneIds`, porque a pane "GSD Sync" nunca é inserida
+  // na grade normal — só existe pra esse fullscreen isolado.
   const terminals = useMemo<Terminal[]>(() => {
+    if (isFullscreen && isolatedPaneId) {
+      const isolated = project.terminals.find((term) => term.id === isolatedPaneId)
+      if (isolated) return [isolated]
+    }
     const map = new Map(project.terminals.map((t) => [t.id, t]))
     return container.paneIds.map((id) => map.get(id)).filter((t): t is Terminal => Boolean(t))
-  }, [project.terminals, container.paneIds])
+  }, [project.terminals, container.paneIds, isFullscreen, isolatedPaneId])
   const graphifyPaneOpen = terminals.some((terminal) => terminal.kind === 'graphify')
   const graphifyEnabled = useProjectsStore((s) => s.preferences.enabledFeatures.graphify)
   const graphifyCwd = terminals.find(
@@ -169,19 +179,20 @@ export const ProjectContainer = memo(function ProjectContainer({
   // Cor do grupo fica reservada pro bullet/tag na sidebar (organização).
   // Fallback pro neutro se o projeto não tem cor.
   const accent = project.color || group?.color || 'var(--border-strong)'
+  const isRainbow = accent === 'rgb-rainbow'
 
   if (container.collapsed) {
     return (
       <div
-        className={styles.collapsed}
-        style={{ ['--container-accent' as string]: accent }}
+        className={`${styles.collapsed} ${isRainbow ? 'rainbow-container-border' : ''}`}
+        style={{ ['--container-accent' as string]: isRainbow ? undefined : accent }}
         onClick={() => setCollapsed(project.id, false)}
         title={`${group ? group.name + ' · ' : ''}${t('ws.containerExpandHint', { name: project.name })}`}
       >
         {project.iconUrl ? (
           <img src={project.iconUrl} alt="" className={styles.projectIcon} />
         ) : (
-          <span className={styles.bullet} style={{ background: accent }} />
+          <span className={`${styles.bullet} ${isRainbow ? 'swatch-rgb-rainbow' : ''}`} style={isRainbow ? undefined : { background: accent }} />
         )}
         <span className={styles.collapsedName}>{project.name}</span>
         <span className={styles.collapsedCount}>{container.paneIds.length}</span>
@@ -193,10 +204,10 @@ export const ProjectContainer = memo(function ProjectContainer({
     <div
       ref={setRefs}
       data-pane-box="1"
-      className={`${styles.box} ${draggable.isDragging ? styles.boxDragging : ''} ${
+      className={`${styles.box} ${isRainbow ? 'rainbow-container-border' : ''} ${draggable.isDragging ? styles.boxDragging : ''} ${
         isDropTarget ? styles.boxDropTarget : ''
       }`}
-      style={{ ['--container-accent' as string]: accent }}
+      style={{ ['--container-accent' as string]: isRainbow ? undefined : accent }}
     >
       {showHeader ? (
         <div className={styles.tag}>
@@ -220,7 +231,7 @@ export const ProjectContainer = memo(function ProjectContainer({
           <span className={styles.tagName} title={project.name}>
             {project.name}
           </span>
-          <span className={styles.tagCount}>{container.paneIds.length}</span>
+          <span className={styles.tagCount}>{terminals.length}</span>
           <div className={styles.tagActions}>
             {graphifyEnabled && !graphifyPaneOpen && graphifyCwd ? (
               <button

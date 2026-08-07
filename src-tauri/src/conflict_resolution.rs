@@ -49,12 +49,17 @@ pub struct ConflictEnv {
     pub prompt_path: Option<String>,
 }
 
-#[derive(Debug, Clone, Serialize)]
+#[derive(Debug, Clone, Serialize, Default)]
 #[serde(rename_all = "camelCase")]
 pub struct MergeOutcome {
     pub merged: bool,
     pub stage: String,
     pub output: String,
+    /// Camada 3 do Escudo (aviso, nunca bloqueia): endpoints chamados pelo
+    /// frontend sem rota de backend correspondente encontrada no ambiente
+    /// efêmero. Best-effort — falha silenciosa não impede o merge.
+    #[serde(default)]
+    pub contract_warnings: Vec<crate::contract_check::ContractWarning>,
 }
 
 fn validate_env_id(id: &str) -> Result<(), String> {
@@ -121,8 +126,25 @@ fn build_prompt(meta: &MergeMeta, conflicts: &[ConflictFile]) -> String {
 
 /// Provisiona o ambiente efêmero com o merge aplicado (com marcadores, se houver
 /// conflito). Publica `MergeRequested` (+ `MergeConflict` quando aplicável).
+///
+/// Comandos deste arquivo rodam `git`/IO de verdade — igual ao `spawn_pty` do
+/// `pty.rs` e aos comandos de `worktrees.rs` (ambos já corrigidos), isso nunca
+/// pode rodar direto na thread de despacho do Tauri. Lógica de cada comando
+/// fica numa função `_inner` síncrona comum (testável direto), e o
+/// `#[tauri::command]` exposto é só um wrapper fino em `spawn_blocking`.
 #[tauri::command]
-pub fn merge_prepare(
+pub async fn merge_prepare(
+    repo: String,
+    source: String,
+    target: String,
+    project_id: Option<String>,
+) -> Result<ConflictEnv, String> {
+    tokio::task::spawn_blocking(move || merge_prepare_inner(repo, source, target, project_id))
+        .await
+        .map_err(|error| format!("merge_prepare: falha na task bloqueante: {error}"))?
+}
+
+pub(crate) fn merge_prepare_inner(
     repo: String,
     source: String,
     target: String,
@@ -167,7 +189,7 @@ pub fn merge_prepare(
         let path = env.join(PROMPT_FILE);
         std::fs::write(&path, build_prompt(&meta, &conflicts))
             .map_err(|e| format!("write_failed:{e}"))?;
-        Some(path.to_string_lossy().into_owned())
+        Some(git_arg(&path))
     };
 
     emit(
@@ -185,7 +207,12 @@ pub fn merge_prepare(
 
     Ok(ConflictEnv {
         id,
-        path: env.to_string_lossy().into_owned(),
+        // `env` vem de um `root` já canonicalizado (prefixo `\\?\` no Windows) —
+        // sem stripar aqui, o frontend usa esse `path` como cwd pra spawnar o
+        // agente de resolução de conflito, e nem todo CLI tolera esse prefixo
+        // como diretório de trabalho (mesma causa-raiz corrigida em
+        // `worktrees::worktree_provision`/`worktree_list`).
+        path: git_arg(&env),
         branch,
         clean,
         conflicts,
@@ -215,7 +242,17 @@ fn leftover_markers(env: &Path, paths: &[String]) -> Vec<String> {
 /// branch alvo → teardown. Se qualquer etapa falhar, o ambiente é PRESERVADO
 /// para inspeção/retry e o motivo volta em `MergeOutcome`.
 #[tauri::command]
-pub fn merge_finalize(
+pub async fn merge_finalize(
+    repo: String,
+    env_id: String,
+    validation_commands: Vec<String>,
+) -> Result<MergeOutcome, String> {
+    tokio::task::spawn_blocking(move || merge_finalize_inner(repo, env_id, validation_commands))
+        .await
+        .map_err(|error| format!("merge_finalize: falha na task bloqueante: {error}"))?
+}
+
+pub(crate) fn merge_finalize_inner(
     repo: String,
     env_id: String,
     validation_commands: Vec<String>,
@@ -239,6 +276,7 @@ pub fn merge_finalize(
             merged: false,
             stage: "conflict_markers".to_string(),
             output: format!("Marcadores de conflito restantes em: {}", markers.join(", ")),
+            ..Default::default()
         });
     }
     checked_output(&env, &["add", "-A"])?;
@@ -250,6 +288,7 @@ pub fn merge_finalize(
                 merged: false,
                 stage: "unmerged".to_string(),
                 output: format!("Arquivos não resolvidos: {}", still.join(", ")),
+                ..Default::default()
             });
         }
     }
@@ -269,9 +308,15 @@ pub fn merge_finalize(
             merged: false,
             stage: format!("validation:{}", validation.stage),
             output: validation.output,
+            ..Default::default()
         });
     }
     emit("MergeValidated", &meta, serde_json::json!({}));
+
+    // Camada 3 do Escudo — Verificador de Contrato de API (heurístico, best-effort).
+    // Nunca falha o merge: erro na checagem só vira lista vazia de avisos.
+    let contract_warnings = crate::contract_check::contract_check(env.to_string_lossy().into_owned())
+        .unwrap_or_default();
 
     let message = format!("merge(alethe): {} -> {}", meta.source, meta.target);
     // Depois de um merge_rebase_onto_target bem-sucedido, a reconciliação já
@@ -299,6 +344,7 @@ pub fn merge_finalize(
                 "O branch alvo '{}' não está checked out no repositório (atual: '{}'). Faça checkout e finalize de novo.",
                 meta.target, head
             ),
+            ..Default::default()
         });
     }
     let branch = format!("alethe/merge-{env_id}");
@@ -317,6 +363,7 @@ pub fn merge_finalize(
             merged: false,
             stage: stage.to_string(),
             output: error,
+            ..Default::default()
         });
     }
 
@@ -334,7 +381,7 @@ pub fn merge_finalize(
 
     // Grafo é conhecimento versionado: snapshot automático pós-integração
     // (best-effort — sem grafo no repo, só ignora). Amarra RFC-004 ↔ RFC-006.
-    let _ = crate::graphify::graphify_snapshot(
+    let _ = crate::graphify::graphify_snapshot_inner(
         root.to_string_lossy().into_owned(),
         meta.project_id.clone(),
     );
@@ -343,6 +390,7 @@ pub fn merge_finalize(
         merged: true,
         stage: "merged".to_string(),
         output: message,
+        contract_warnings,
     })
 }
 
@@ -369,7 +417,13 @@ fn safe_abort(env: &Path, args: &[&str]) -> Result<(), String> {
 /// EFÊMERO (nunca o do usuário). Erro que não seja lock administrativo aqui
 /// indica corrupção real do ambiente — o front trata como `TerminalError`.
 #[tauri::command]
-pub fn merge_preflight_abort(repo: String, env_id: String) -> Result<(), String> {
+pub async fn merge_preflight_abort(repo: String, env_id: String) -> Result<(), String> {
+    tokio::task::spawn_blocking(move || merge_preflight_abort_inner(repo, env_id))
+        .await
+        .map_err(|error| format!("merge_preflight_abort: falha na task bloqueante: {error}"))?
+}
+
+pub(crate) fn merge_preflight_abort_inner(repo: String, env_id: String) -> Result<(), String> {
     let root = repository_root(&repo)?;
     validate_env_id(&env_id)?;
     let env = env_dir(&root, &env_id);
@@ -399,7 +453,13 @@ pub fn merge_preflight_abort(repo: String, env_id: String) -> Result<(), String>
 ///   superfície de "resolver" de antes, front volta a `resolving`.
 /// - Falha dura (não-conflito) → aborta e devolve `stage: "rebase_failed"`.
 #[tauri::command]
-pub fn merge_rebase_onto_target(repo: String, env_id: String) -> Result<MergeOutcome, String> {
+pub async fn merge_rebase_onto_target(repo: String, env_id: String) -> Result<MergeOutcome, String> {
+    tokio::task::spawn_blocking(move || merge_rebase_onto_target_inner(repo, env_id))
+        .await
+        .map_err(|error| format!("merge_rebase_onto_target: falha na task bloqueante: {error}"))?
+}
+
+pub(crate) fn merge_rebase_onto_target_inner(repo: String, env_id: String) -> Result<MergeOutcome, String> {
     let root = repository_root(&repo)?;
     validate_env_id(&env_id)?;
     let env = env_dir(&root, &env_id);
@@ -417,6 +477,7 @@ pub fn merge_rebase_onto_target(repo: String, env_id: String) -> Result<MergeOut
             merged: false,
             stage: "rebase_ok".to_string(),
             output: "Reconciliado com o alvo atualizado — pronto para reintegrar.".to_string(),
+            ..Default::default()
         });
     }
 
@@ -445,6 +506,7 @@ pub fn merge_rebase_onto_target(repo: String, env_id: String) -> Result<MergeOut
             merged: false,
             stage: "rebase_conflict".to_string(),
             output: format!("Conflitos ao reconciliar com o alvo atualizado: {paths}"),
+            ..Default::default()
         });
     }
 
@@ -456,6 +518,7 @@ pub fn merge_rebase_onto_target(repo: String, env_id: String) -> Result<MergeOut
         merged: false,
         stage: "rebase_failed".to_string(),
         output: if stderr.is_empty() { "rebase_failed".to_string() } else { stderr },
+        ..Default::default()
     })
 }
 
@@ -472,7 +535,13 @@ pub struct ForceCleanupResult {
 /// de `git worktree prune` best-effort. O front decide `pruneOnly` vs
 /// `requiresRawDeletion` com base em `deleted`/`pruned`.
 #[tauri::command]
-pub fn merge_force_cleanup(repo: String, env_id: String) -> Result<ForceCleanupResult, String> {
+pub async fn merge_force_cleanup(repo: String, env_id: String) -> Result<ForceCleanupResult, String> {
+    tokio::task::spawn_blocking(move || merge_force_cleanup_inner(repo, env_id))
+        .await
+        .map_err(|error| format!("merge_force_cleanup: falha na task bloqueante: {error}"))?
+}
+
+pub(crate) fn merge_force_cleanup_inner(repo: String, env_id: String) -> Result<ForceCleanupResult, String> {
     let root = repository_root(&repo)?;
     validate_env_id(&env_id)?;
     let envs_base = merge_envs_dir(&root);
@@ -501,7 +570,13 @@ pub fn merge_force_cleanup(repo: String, env_id: String) -> Result<ForceCleanupR
 
 /// Destrói o ambiente efêmero sem integrar nada.
 #[tauri::command]
-pub fn merge_abort(repo: String, env_id: String) -> Result<(), String> {
+pub async fn merge_abort(repo: String, env_id: String) -> Result<(), String> {
+    tokio::task::spawn_blocking(move || merge_abort_inner(repo, env_id))
+        .await
+        .map_err(|error| format!("merge_abort: falha na task bloqueante: {error}"))?
+}
+
+pub(crate) fn merge_abort_inner(repo: String, env_id: String) -> Result<(), String> {
     let root = repository_root(&repo)?;
     validate_env_id(&env_id)?;
     let env = env_dir(&root, &env_id);
@@ -523,6 +598,17 @@ mod tests {
     use super::*;
     use crate::merge_analyzer::tests::conflicting_repo;
     use std::fs;
+
+    // Testes chamam a lógica síncrona direto, sem precisar de runtime async —
+    // os `#[tauri::command]` async acima são só wrappers finos em
+    // `spawn_blocking`. Shadowing explícito vence o `use super::*` acima sem
+    // conflito (regra padrão de resolução de nomes do Rust).
+    use super::merge_abort_inner as merge_abort;
+    use super::merge_finalize_inner as merge_finalize;
+    use super::merge_force_cleanup_inner as merge_force_cleanup;
+    use super::merge_prepare_inner as merge_prepare;
+    use super::merge_preflight_abort_inner as merge_preflight_abort;
+    use super::merge_rebase_onto_target_inner as merge_rebase_onto_target;
 
     #[test]
     fn full_cycle_conflict_resolution_validation_and_ff() {

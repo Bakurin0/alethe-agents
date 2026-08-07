@@ -2,10 +2,12 @@
 
 import { nanoid } from 'nanoid'
 
+import { getLocale, translate } from '../lib/i18n'
 import {
   clearTerminalPtyIds,
   collectTerminalPtyIds,
   getProjectDefaultCwd,
+  getProjectRepoRoot,
   makeDefaultTerminal,
   makeDiffPane,
   makeFilePane,
@@ -19,8 +21,13 @@ import {
 import { cleanupPtys } from '../lib/terminalLifecycle'
 import type { Terminal } from '../lib/types'
 import { sanitizeWorkspaceSnapshot } from '../lib/workspaceNavigation'
+import { useUiStore } from './uiStore'
 import type { ProjectsState } from './projectsStore'
 import type { SliceCtx } from './projectsStore.slices'
+
+function t(key: Parameters<typeof translate>[1], params?: Record<string, string | number>) {
+  return translate(getLocale(), key, params)
+}
 
 type TerminalsSlice = Pick<
   ProjectsState,
@@ -31,7 +38,9 @@ type TerminalsSlice = Pick<
   | 'createWebPane'
   | 'createGraphifyPane'
   | 'renameTerminal'
+  | 'markGsdSyncViewer'
   | 'deleteTerminal'
+  | 'deleteTerminalWithWorktreeCleanup'
   | 'killTerminal'
   | 'moveTerminal'
   | 'setTerminalDisabled'
@@ -96,14 +105,33 @@ export function createTerminalsSlice({ get, update, updateTerminal }: SliceCtx):
       const project = state.projects.find((p) => p.id === projectId)
       const wantsIsolation = Boolean(project?.autoWorktree) && args.firstTab.type !== 'shell'
       if (project && wantsIsolation) {
-        const repo = getProjectDefaultCwd(project, state.projects)
+        // getProjectRepoRoot prioriza um terminal SEM worktreeAgentId (raiz
+        // "pura" conhecida). Se TODOS os terminais já estiverem isolados (ou
+        // se o projeto não tiver NENHUM terminal ainda — nada de histórico
+        // pra derivar nada), ela devolve vazio e isolamento silenciosamente
+        // não acontecia. Os dois fallbacks abaixo são seguros porque
+        // worktree_provision resolve a raiz de verdade via `--git-common-dir`
+        // no backend (main_repository_root), não via `--show-toplevel` — não
+        // cria mais worktree aninhada mesmo partindo de outra worktree ou de
+        // qualquer subpasta arbitrária dentro do repo. Último fallback
+        // (args.cwd) é a própria pasta escolhida no modal — só relevante
+        // quando o projeto não tem terminal nenhum pra referenciar ainda.
+        const repo =
+          getProjectRepoRoot(project) || getProjectDefaultCwd(project, state.projects) || args.cwd.trim()
         if (repo) {
           const agentId = `${args.firstTab.type.slice(0, 2)}-${nanoid(6)}`.replace(
             /[^A-Za-z0-9_-]/g,
             'x',
           )
           try {
-            const { worktreeProvision } = await import('../lib/tauri')
+            const { worktreeProvision, gitInit } = await import('../lib/tauri')
+            // Se a pasta não for um repositório Git ainda, auto-inicializa o Git
+            // silenciosamente para garantir que a worktree nasça sem erros.
+            try {
+              await gitInit(repo)
+            } catch (initErr) {
+              console.warn('[projectsStore] auto-gitInit no spawn falhou:', initErr)
+            }
             const info = await worktreeProvision(
               repo,
               agentId,
@@ -117,6 +145,10 @@ export function createTerminalsSlice({ get, update, updateTerminal }: SliceCtx):
             })
           } catch (error) {
             console.warn('[projectsStore] autoWorktree falhou; terminal normal:', error)
+            useUiStore.getState().pushToast({
+              title: t('term.autoIsolationFailedTitle'),
+              body: t('term.autoIsolationFailedBody', { error: String(error).slice(0, 200) }),
+            })
           }
         }
       }
@@ -271,23 +303,41 @@ export function createTerminalsSlice({ get, update, updateTerminal }: SliceCtx):
     renameTerminal: (projectId, terminalId, name) =>
       updateTerminal(projectId, terminalId, (t) => ({ ...t, name })),
 
+    markGsdSyncViewer: (projectId, terminalId) =>
+      updateTerminal(projectId, terminalId, (t) => (t.gsdSyncViewer ? t : { ...t, gsdSyncViewer: true })),
+
     deleteTerminal: (projectId, terminalId) =>
       update((state) => {
-        const terminal = state.projects
-          .find((p) => p.id === projectId)
-          ?.terminals.find((t) => t.id === terminalId)
-        if (terminal) cleanupPtys(collectTerminalPtyIds([terminal]))
+        const project = state.projects.find((p) => p.id === projectId)
+        const terminal = project?.terminals.find((t) => t.id === terminalId)
+        // Deletar o terminal de um agente isolado (worktreeAgentId) é sempre o
+        // teardown da worktree inteira — arrasta junto o terminal "viewer" GSD
+        // Sync da mesma worktree (casado por `cwd`, já que o viewer não tem
+        // `worktreeAgentId` próprio). Sem isso, o PTY do viewer (se já foi
+        // aberto ao menos uma vez pela gaveta) vaza pra sempre: assim que o
+        // agente morre, o viewer some da lista vigiada e nunca mais aparece em
+        // lugar nenhum da interface pra ser fechado manualmente. Centralizado
+        // aqui (em vez de em cada chamador) pra cobrir TODOS os caminhos de
+        // teardown — merge integrado, abort, rejeição — de uma vez só.
+        const idsToRemove = new Set([terminalId])
+        if (terminal?.worktreeAgentId && terminal.cwd) {
+          for (const sibling of project?.terminals ?? []) {
+            if (sibling.gsdSyncViewer && sibling.cwd === terminal.cwd) idsToRemove.add(sibling.id)
+          }
+        }
+        const terminalsToClean = (project?.terminals ?? []).filter((t) => idsToRemove.has(t.id))
+        if (terminalsToClean.length > 0) cleanupPtys(collectTerminalPtyIds(terminalsToClean))
         const projects = state.projects.map((p) => {
           if (p.id !== projectId) return p
           const paneGroups = (p.paneGroups ?? [])
             .map((group) => ({
               ...group,
-              paneIds: group.paneIds.filter((id) => id !== terminalId),
+              paneIds: group.paneIds.filter((id) => !idsToRemove.has(id)),
             }))
             .filter((group) => group.paneIds.length > 1)
           return {
             ...p,
-            terminals: p.terminals.filter((t) => t.id !== terminalId),
+            terminals: p.terminals.filter((t) => !idsToRemove.has(t.id)),
             paneGroups: paneGroups.length > 0 ? paneGroups : undefined,
           }
         })
@@ -295,7 +345,7 @@ export function createTerminalsSlice({ get, update, updateTerminal }: SliceCtx):
         const containers = state.workspace.containers
           .map((c) => {
             if (c.projectId !== projectId) return c
-            return { ...c, paneIds: c.paneIds.filter((id) => id !== terminalId) }
+            return { ...c, paneIds: c.paneIds.filter((id) => !idsToRemove.has(id)) }
           })
           .filter((c) => c.paneIds.length > 0)
         const tabs = state.workspace.tabs
@@ -304,7 +354,7 @@ export function createTerminalsSlice({ get, update, updateTerminal }: SliceCtx):
               !(
                 tab.kind === 'terminal' &&
                 tab.sourceProjectId === projectId &&
-                tab.sourceId === terminalId
+                idsToRemove.has(tab.sourceId ?? '')
               ),
           )
           .map((tab) => ({
@@ -327,15 +377,48 @@ export function createTerminalsSlice({ get, update, updateTerminal }: SliceCtx):
             activeTabId: tabIds.has(state.workspace.activeTabId ?? '')
               ? state.workspace.activeTabId
               : (tabs[0]?.id ?? null),
-            focusedTerminalId:
-              state.workspace.focusedTerminalId === terminalId
-                ? null
-                : state.workspace.focusedTerminalId,
+            focusedTerminalId: idsToRemove.has(state.workspace.focusedTerminalId ?? '')
+              ? null
+              : state.workspace.focusedTerminalId,
             history,
             historyIndex: Math.min(state.workspace.historyIndex, history.length - 1),
           },
         }
       }),
+
+    deleteTerminalWithWorktreeCleanup: async (projectId, terminalId) => {
+      const project = get().projects.find((p) => p.id === projectId)
+      const terminal = project?.terminals.find((t) => t.id === terminalId)
+      if (!terminal?.worktreeAgentId) {
+        get().deleteTerminal(projectId, terminalId)
+        return
+      }
+      const { killPtyTree, worktreeRemove } = await import('../lib/tauri')
+      const ptyIds = collectTerminalPtyIds([terminal])
+      // Mesma causa-raiz já corrigida no fluxo de merge: no Windows, apagar
+      // uma pasta que ainda é o cwd de um processo vivo falha — aguarda a
+      // árvore de processos morrer de verdade antes de tentar remover.
+      await Promise.all(ptyIds.map((id) => killPtyTree(id).catch(() => [])))
+      const repo = getProjectRepoRoot(project)
+      if (repo) {
+        try {
+          await worktreeRemove(repo, terminal.worktreeAgentId, true)
+        } catch (err) {
+          // "worktree_not_found" = já tinha sido removida, inofensivo. Falha
+          // real vira órfã rastreada (mesma rede de segurança do fluxo de
+          // merge) — sem isso a pasta ficava perdida em disco sem nenhum
+          // rastro na interface pra limpar depois.
+          if (!String(err).includes('worktree_not_found')) {
+            get().addOrphanWorktree(projectId, {
+              path: terminal.cwd ?? '',
+              mode: 'gitWorktree',
+            })
+          }
+          console.warn('[projectsStore] falha removendo worktree ao deletar terminal:', err)
+        }
+      }
+      get().deleteTerminal(projectId, terminalId)
+    },
 
     killTerminal: (projectId, terminalId) =>
       update((state) => {
@@ -457,6 +540,7 @@ type ContainersSlice = Pick<
   | 'setContainerCollapsed'
   | 'setContainerInternalLayout'
   | 'setFullscreenContainer'
+  | 'setFullscreenPane'
   | 'setWorkspaceFlat'
 >
 
@@ -725,8 +809,22 @@ export function createContainersSlice({ get, update, updateContainer }: SliceCtx
 
     setFullscreenContainer: (projectId) =>
       update((state) => ({
-        preferences: { ...state.preferences, fullscreenContainerId: projectId },
+        preferences: { ...state.preferences, fullscreenContainerId: projectId, isolatedPaneId: null },
       })),
+
+    setFullscreenPane: (terminalId) =>
+      update((state) => {
+        if (!terminalId) {
+          return {
+            preferences: { ...state.preferences, fullscreenContainerId: null, isolatedPaneId: null },
+          }
+        }
+        const owner = state.projects.find((p) => p.terminals.some((term) => term.id === terminalId))
+        if (!owner) return
+        return {
+          preferences: { ...state.preferences, fullscreenContainerId: owner.id, isolatedPaneId: terminalId },
+        }
+      }),
 
     setWorkspaceFlat: (flat) =>
       update((state) => ({

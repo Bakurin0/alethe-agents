@@ -1,9 +1,9 @@
 use serde::Serialize;
-use std::env;
 use std::fs;
 use std::io::{BufRead, BufReader};
 use std::path::{Path, PathBuf};
-use std::time::SystemTime;
+
+use crate::provider_common::{file_modified_ms, normalize_cwd, provider_home_dir};
 
 #[derive(Serialize)]
 pub struct CodexSessionSnapshot {
@@ -14,28 +14,7 @@ pub struct CodexSessionSnapshot {
 }
 
 pub(crate) fn codex_sessions_dir() -> Option<PathBuf> {
-    let home = env::var_os("USERPROFILE")
-        .or_else(|| env::var_os("HOME"))
-        .map(PathBuf::from)?;
-    Some(home.join(".codex").join("sessions"))
-}
-
-fn modified_ms(metadata: &fs::Metadata) -> u128 {
-    metadata
-        .modified()
-        .ok()
-        .and_then(|m| m.duration_since(SystemTime::UNIX_EPOCH).ok())
-        .map(|d| d.as_millis())
-        .unwrap_or(0)
-}
-
-fn normalize_cwd(cwd: &str) -> String {
-    let trimmed = cwd.trim().trim_end_matches(|c: char| c == '\\' || c == '/');
-    if cfg!(windows) {
-        trimmed.replace('/', "\\").to_ascii_lowercase()
-    } else {
-        trimmed.to_string()
-    }
+    provider_home_dir(&[".codex", "sessions"])
 }
 
 pub(crate) fn collect_jsonl_files(dir: &Path, out: &mut Vec<PathBuf>) {
@@ -72,7 +51,7 @@ fn parse_codex_session(path: &Path, metadata: &fs::Metadata) -> Option<CodexSess
     Some(CodexSessionSnapshot {
         id,
         cwd,
-        modified_at_ms: modified_ms(metadata),
+        modified_at_ms: file_modified_ms(metadata),
         size_bytes: metadata.len(),
     })
 }
@@ -95,8 +74,18 @@ pub(crate) fn session_meta_id(path: &Path) -> Option<String> {
         .map(|s| s.to_string())
 }
 
+/// `async` + `spawn_blocking`: varre diretórios de sessão no disco, mesma
+/// classe de I/O bloqueante já corrigida em `cli_resolver.rs`; chamado a
+/// cada spawn/validação de resumo de terminal (`XTermView`), então travar a
+/// thread de despacho do Tauri aqui trava outros comandos IPC concorrentes.
 #[tauri::command]
-pub fn snapshot_codex_sessions(cwd: String) -> Result<Vec<CodexSessionSnapshot>, String> {
+pub async fn snapshot_codex_sessions(cwd: String) -> Result<Vec<CodexSessionSnapshot>, String> {
+    tokio::task::spawn_blocking(move || snapshot_codex_sessions_inner(cwd))
+        .await
+        .map_err(|error| format!("snapshot_codex_sessions: falha na task bloqueante: {error}"))?
+}
+
+fn snapshot_codex_sessions_inner(cwd: String) -> Result<Vec<CodexSessionSnapshot>, String> {
     let target_cwd = normalize_cwd(&cwd);
     if target_cwd.is_empty() {
         return Ok(Vec::new());

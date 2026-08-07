@@ -11,6 +11,7 @@ import {
   type ResourcePolicyInput,
 } from '../lib/tauri'
 import { getLocale, translate } from '../lib/i18n'
+import { computeVisibleFocusedPtyIds } from '../lib/ptyVisibility'
 import { ensureSpawnQueueProgress, setSpawnPressureBlocked } from '../lib/spawnQueue'
 import { useProjectsStore } from '../stores/projectsStore'
 import { useTerminalsStore } from '../stores/terminalsStore'
@@ -39,36 +40,12 @@ function collectRuntimeMetas(): PtyRuntimeMeta[] {
   const terminalsState = useTerminalsStore.getState()
   const ui = useUiStore.getState()
   const now = Date.now()
-  const visiblePtys = new Set<string>()
-  const focusedPtys = new Set<string>()
+  const { visible: visiblePtys, focused: focusedPtys } = computeVisibleFocusedPtyIds()
   const known = new Set<string>()
   const metas: PtyRuntimeMeta[] = []
-  const workspaceVisible = ui.activeView === 'workspace'
-  const focusedTerminalIds = new Set(
-    [ui.focusedTerminalId, ui.activeTerminal?.terminalId].filter(
-      (id): id is string => typeof id === 'string',
-    ),
-  )
 
   for (const project of projectsState.projects) {
-    const container = projectsState.workspace.containers.find(
-      (entry) => entry.projectId === project.id,
-    )
     for (const terminal of project.terminals) {
-      const activeTab = terminal.tabs.find((tab) => tab.id === terminal.activeTabId)
-      if (
-        activeTab?.ptyId &&
-        workspaceVisible &&
-        container &&
-        !container.collapsed &&
-        container.paneIds.includes(terminal.id)
-      ) {
-        visiblePtys.add(activeTab.ptyId)
-      }
-      if (activeTab?.ptyId && focusedTerminalIds.has(terminal.id)) {
-        focusedPtys.add(activeTab.ptyId)
-      }
-
       for (const tab of terminal.tabs) {
         if (!tab.ptyId) continue
         known.add(tab.ptyId)

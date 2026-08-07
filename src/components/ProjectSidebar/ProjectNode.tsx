@@ -58,11 +58,16 @@ export function ProjectNode({
     draggable.setNodeRef(node)
   }
 
-  const allDisabled =
-    project.terminals.length > 0 && project.terminals.every((term) => term.disabled)
+  // Terminal "viewer" da gaveta GSD Sync: só leitura (sem como digitar nele),
+  // não faz sentido misturado com os terminais normais/interativos aqui —
+  // fica escondido dessa árvore inteira (lista, contadores, "tudo pausado").
+  // Único jeito de vê-lo continua sendo a gaveta GSD Sync.
+  const visibleTerminals = project.terminals.filter((term) => !term.gsdSyncViewer)
+
+  const allDisabled = visibleTerminals.length > 0 && visibleTerminals.every((term) => term.disabled)
   const branch = useProjectBranch(projectRepresentativeCwd(project))
   const runningCount = useTerminalsStore((state) =>
-    project.terminals.reduce(
+    visibleTerminals.reduce(
       (n, term) =>
         n +
         (term.tabs.some((tab) => tab.ptyId && state.byPtyId[tab.ptyId]?.status === 'working')
@@ -71,7 +76,7 @@ export function ProjectNode({
       0,
     ),
   )
-  const totalCount = project.terminals.length
+  const totalCount = visibleTerminals.length
   const focusedTerminalId = useUiStore((s) =>
     s.activeTerminal?.projectId === project.id ? s.activeTerminal?.terminalId : undefined,
   )
@@ -135,9 +140,9 @@ export function ProjectNode({
           </button>
         </div>
 
-        {!project.collapsed && project.terminals.length > 0 ? (
+        {!project.collapsed && visibleTerminals.length > 0 ? (
           <div className={styles.activeCardAgentsList}>
-            {project.terminals.map((term) => (
+            {visibleTerminals.map((term) => (
               <TerminalNode
                 key={term.id}
                 project={project}
@@ -184,7 +189,7 @@ export function ProjectNode({
         ) : (
           <span
             className={`${styles.inactiveDot} ${
-              project.terminals.some((term) => !term.disabled) ? styles.inactiveDotActive : ''
+              visibleTerminals.some((term) => !term.disabled) ? styles.inactiveDotActive : ''
             }`}
             onClick={(e) => {
               e.stopPropagation()

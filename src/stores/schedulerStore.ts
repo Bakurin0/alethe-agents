@@ -27,8 +27,8 @@ type SchedulerState = {
 /** Prompt inicial do agente de task GSD — aponta pro planejamento e trava escopo. */
 function taskPrompt(taskTitle: string): string {
   return (
-    `Sua tarefa: "${taskTitle}". Leia o arquivo correspondente em .planning/ ` +
-    '(ou .planning/tasks/) do repositório original para o contexto completo, ' +
+    `Sua tarefa: "${taskTitle}". Leia .planning/task.md, .planning/plan.md e ` +
+    '.planning/goal.md do repositório original para o contexto completo, ' +
     'implemente SOMENTE essa tarefa neste diretório isolado e avise quando terminar.'
   )
 }

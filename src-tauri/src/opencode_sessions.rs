@@ -13,12 +13,22 @@ pub struct OpenCodeSessionSnapshot {
 /// o filesystem é case-sensitive, então lowercasear incondicionalmente
 /// colidiria dois diretórios diferentes (ex.: `/home/u/Project` vs
 /// `/home/u/project`).
+///
+/// Também remove o prefixo verbatim `\\?\` (e `\\?\UNC\`) antes de comparar —
+/// o `directory` que o próprio `opencode` reporta na sua lista de sessões
+/// nunca vem com esse prefixo, então sem remover aqui um cwd de worktree
+/// canonicalizado nunca batia e a sessão nunca era encontrada (mesma raiz do
+/// bug já corrigido em `worktrees::git_arg`).
 fn normalize_path(path: &str) -> String {
     let trimmed = path.trim().trim_end_matches(|c: char| c == '\\' || c == '/');
+    let unprefixed = trimmed
+        .strip_prefix(r"\\?\UNC\")
+        .map(|rest| format!(r"\\{rest}"))
+        .unwrap_or_else(|| trimmed.strip_prefix(r"\\?\").unwrap_or(trimmed).to_string());
     if cfg!(windows) {
-        trimmed.replace('/', "\\").to_ascii_lowercase()
+        unprefixed.replace('/', "\\").to_ascii_lowercase()
     } else {
-        trimmed.to_string()
+        unprefixed
     }
 }
 
@@ -27,12 +37,26 @@ fn normalize_path(path: &str) -> String {
 /// entrada traz o campo `directory` — filtramos por ele pra nunca vazar sessão
 /// de outro projeto (ex.: `--continue` global pegando a sessão errada).
 /// Retorna as sessões ordenadas por data de modificação (mais recente primeiro).
+///
+/// `async` + `spawn_blocking`: roda um subprocesso (`opencode session list`)
+/// de verdade, chamado a cada spawn/validação de resumo de terminal
+/// (`XTermView`) — como `fn` síncrona isso travaria a thread de despacho de
+/// IPC do Tauri, mesma classe de bug já corrigida em `cli_resolver.rs`.
 #[tauri::command]
-pub fn snapshot_opencode_sessions(cwd: String) -> Result<Vec<OpenCodeSessionSnapshot>, String> {
+pub async fn snapshot_opencode_sessions(cwd: String) -> Result<Vec<OpenCodeSessionSnapshot>, String> {
+    tokio::task::spawn_blocking(move || snapshot_opencode_sessions_inner(cwd))
+        .await
+        .map_err(|error| format!("snapshot_opencode_sessions: falha na task bloqueante: {error}"))?
+}
+
+fn snapshot_opencode_sessions_inner(cwd: String) -> Result<Vec<OpenCodeSessionSnapshot>, String> {
     let mut command = Command::new("opencode");
     command.args(["session", "list", "--format", "json", "--max-count", "50"]);
     if !cwd.is_empty() && Path::new(&cwd).is_dir() {
-        command.current_dir(&cwd);
+        // `opencode` é resolvido via shim `.cmd` no Windows — o mesmo prefixo
+        // `\\?\` que o cmd.exe recusa como diretório atual (ver worktrees::git_arg)
+        // se aplica aqui.
+        command.current_dir(crate::worktrees::git_arg(Path::new(&cwd)));
     }
     let output = command
         .output()

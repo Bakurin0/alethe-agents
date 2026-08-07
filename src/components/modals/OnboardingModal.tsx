@@ -75,7 +75,8 @@ export function OnboardingModal() {
   useEffect(() => {
     if (preferences.onboardingDone || agentDetectionStartedRef.current) return
     agentDetectionStartedRef.current = true
-    let cancelled = false
+
+    const AGENT_DETECTION_TIMEOUT_MS = 6000
 
     const detectAgents = async () => {
       const detected = await Promise.all(
@@ -83,13 +84,16 @@ export function OnboardingModal() {
           const command = agentCliCommand(agent.id)
           if (!command) return [agent.id, false] as const
           try {
-            return [agent.id, Boolean(await findCliLauncher(command))] as const
+            const timeout = new Promise<null>((resolve) =>
+              setTimeout(() => resolve(null), AGENT_DETECTION_TIMEOUT_MS),
+            )
+            const result = await Promise.race([findCliLauncher(command), timeout])
+            return [agent.id, Boolean(result)] as const
           } catch {
             return [agent.id, false] as const
           }
         }),
       )
-      if (cancelled) return
 
       const availability = Object.fromEntries(detected) as Record<CodingAgent, boolean>
       setAgentAvailability(availability)
@@ -103,9 +107,6 @@ export function OnboardingModal() {
     }
 
     void detectAgents()
-    return () => {
-      cancelled = true
-    }
   }, [preferences.enabledAgents, preferences.onboardingDone, setPreferences])
 
   useEffect(() => {

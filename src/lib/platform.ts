@@ -31,11 +31,19 @@ export function shouldUseNativeBackend(
  * separador (`\`) e caixa. Fora disso (Linux/macOS) deixa caminho intacto —
  * o filesystem lá é case-sensitive e lowercasear cegamente pode colidir dois
  * diretórios diferentes (ex: `/home/user/Project` vs `/home/user/project`).
+ *
+ * Também remove o prefixo verbatim `\\?\` do Windows (e sua variante UNC,
+ * `\\?\UNC\`) ANTES do teste de drive-letter — sem isso, um cwd de worktree
+ * canonicalizado (`\\?\D:\...`) nunca batia com o path "normal" que o próprio
+ * CLI do agente reporta em sua própria lista de sessões, então a sessão nunca
+ * era encontrada/reivindicada (raiz do mesmo bug já corrigido no backend em
+ * `worktrees::git_arg`).
  */
 export function normalizeCwd(path: string): string {
   const trimmed = path.trim().replace(/[\\/]+$/, '')
-  if (/^[a-z]:/i.test(trimmed)) return trimmed.replace(/\//g, '\\').toLowerCase()
-  return trimmed
+  const unprefixed = trimmed.replace(/^\\\\\?\\UNC\\/i, '\\\\').replace(/^\\\\\?\\/, '')
+  if (/^[a-z]:/i.test(unprefixed)) return unprefixed.replace(/\//g, '\\').toLowerCase()
+  return unprefixed
 }
 
 /**

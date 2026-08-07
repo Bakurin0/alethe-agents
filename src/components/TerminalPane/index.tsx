@@ -106,7 +106,7 @@ export const TerminalPane = memo(function TerminalPane({
   const setSubTabSessionId = useProjectsStore((s) => s.setSubTabSessionId)
   const setSubTabInitialInput = useProjectsStore((s) => s.setSubTabInitialInput)
   const setSubTabCompletionUnread = useProjectsStore((s) => s.setSubTabCompletionUnread)
-  const deleteTerminal = useProjectsStore((s) => s.deleteTerminal)
+  const deleteTerminalWithWorktreeCleanup = useProjectsStore((s) => s.deleteTerminalWithWorktreeCleanup)
   const setProjectGridLayout = useProjectsStore((s) => s.setProjectGridLayout)
   const openModal = useUiStore((s) => s.openModal_)
   const setFocusedTerminal = useUiStore((s) => s.setFocusedTerminal)
@@ -115,6 +115,7 @@ export const TerminalPane = memo(function TerminalPane({
   const clearPaneSelection = useUiStore((s) => s.clearPaneSelection)
   const groupPanes = useProjectsStore((s) => s.groupPanes)
   const requestPaneFocus = useUiStore((s) => s.requestPaneFocus)
+  const pushToast = useUiStore((s) => s.pushToast)
   const terminalTheme = useProjectsStore(
     (s) => s.preferences.terminalTheme ?? s.preferences.uiTheme,
   )
@@ -128,6 +129,14 @@ export const TerminalPane = memo(function TerminalPane({
     const p = s.projects.find((p) => p.id === projectId)
     if (!p?.graphifyEnabled) return null
     return terminal.cwd || p.terminals[0]?.cwd || null
+  })
+
+  // Gate de Conclusão de Planejamento GSD: projeto com o monitoramento
+  // ligado ganha o plugin OpenCode que mantém .planning/ sincronizado
+  // sozinho (ver XTermView, gatilho condicionado a command === 'opencode').
+  const gsdWatcherEnabled = useProjectsStore((s) => {
+    const p = s.projects.find((p) => p.id === projectId)
+    return Boolean(p?.gsdWatcherEnabled)
   })
 
   // Resize de span no grid do PROJETO (quando project.layoutMode === 'grid').
@@ -226,6 +235,7 @@ export const TerminalPane = memo(function TerminalPane({
       window.setTimeout(() => requestPaneFocus(terminal.id), 160)
     } catch (err) {
       console.error('restart pty falhou', err)
+      pushToast({ title: t('ui.terminal.restartFailed'), body: String(err) })
     }
   }
 
@@ -244,7 +254,7 @@ export const TerminalPane = memo(function TerminalPane({
 
   const onDelete = () => {
     if (!window.confirm(t('ui.sidebar.confirmDeleteTerminal', { name: terminal.name }))) return
-    deleteTerminal(projectId, terminal.id)
+    void deleteTerminalWithWorktreeCleanup(projectId, terminal.id)
     if (isFocusMode) setFocusedTerminal(null)
   }
 
@@ -282,7 +292,11 @@ export const TerminalPane = memo(function TerminalPane({
       className={`${styles.pane} ${isFocusMode ? styles.paneFocus : ''} ${terminal.disabled ? styles.disabled : ''} ${dragging ? styles.dragging : ''} ${dropTarget ? styles.dropTarget : ''}`}
     >
       <header className={styles.header}>
-        <div className={styles.headLeft}>
+        <div
+          className={styles.headLeft}
+          onDoubleClick={() => setFocusedTerminal(isFocusMode ? null : terminal.id)}
+          title={isFocusMode ? t('ui.terminal.exitFocusModeEsc') : t('ui.terminal.focusModeFullscreen')}
+        >
           {canDragPane ? (
             <button
               type="button"
@@ -421,6 +435,8 @@ export const TerminalPane = memo(function TerminalPane({
                   runtimeProfile={activeTab.runtimeProfile}
                   sessionId={activeTab.sessionId}
                   graphifyRepo={graphifyRepo}
+                  gsdWatcherEnabled={gsdWatcherEnabled}
+                  trustSessionId={terminal.gsdSyncViewer}
                   terminalTheme={terminalTheme}
                   onSpawned={(id) => {
                     if (activeTab.ptyId !== id) {

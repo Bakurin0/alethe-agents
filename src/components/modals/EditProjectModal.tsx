@@ -35,6 +35,7 @@ export function EditProjectModal() {
   const setConflictAgentProvider = useProjectsStore((s) => s.setConflictAgentProvider)
   const setGraphifyEnabled = useProjectsStore((s) => s.setGraphifyEnabled)
   const setAutoWorktree = useProjectsStore((s) => s.setAutoWorktree)
+  const setMergePostAction = useProjectsStore((s) => s.setMergePostAction)
   const cleanupOrphanWorktrees = useProjectsStore((s) => s.cleanupOrphanWorktrees)
   const isCleaningOrphans = useProjectsStore((s) => s.isCleaningOrphans)
   const merge = useMergeStore()
@@ -54,6 +55,7 @@ export function EditProjectModal() {
   const [conflictProvider, setConflictProviderState] = useState<AgentType>('claude')
   const [graphifyEnabled, setGraphifyEnabledState] = useState(false)
   const [autoWorktree, setAutoWorktreeState] = useState(false)
+  const [mergePostAction, setMergePostActionState] = useState<'relocateToNewBranch' | 'closeTerminal'>('relocateToNewBranch')
   const [branches, setBranches] = useState<string[]>([])
   const [newAgentName, setNewAgentName] = useState('')
   const [creatingAgent, setCreatingAgent] = useState(false)
@@ -85,6 +87,7 @@ export function EditProjectModal() {
       setConflictProviderState(project.conflictAgentProvider ?? 'claude')
       setGraphifyEnabledState(project.graphifyEnabled ?? false)
       setAutoWorktreeState(project.autoWorktree ?? false)
+      setMergePostActionState(project.mergePostAction ?? 'relocateToNewBranch')
       setActiveTab('focus')
 
       const repoPath = project.terminals[0]?.cwd
@@ -193,6 +196,10 @@ export function EditProjectModal() {
 
     if (autoWorktree !== (project.autoWorktree ?? false)) {
       setAutoWorktree(project.id, autoWorktree)
+    }
+
+    if (mergePostAction !== project.mergePostAction) {
+      setMergePostAction(project.id, mergePostAction)
     }
 
     if (gsdWatcherEnabled !== project.gsdWatcherEnabled) {
@@ -547,6 +554,32 @@ export function EditProjectModal() {
                   </option>
                 ))}
               </select>
+            </div>
+          </div>
+
+          <div className={controls.field} style={{ marginTop: 8 }}>
+            <label className={controls.label}>Ação pós-Merge do Agente</label>
+            <div style={{ display: 'flex', gap: 16, marginTop: 4 }}>
+              <label style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 12, cursor: 'pointer' }}>
+                <input
+                  type="radio"
+                  name="mergePostAction"
+                  value="relocateToNewBranch"
+                  checked={mergePostAction === 'relocateToNewBranch'}
+                  onChange={() => setMergePostActionState('relocateToNewBranch')}
+                />
+                Criar nova branch e manter chat ativo
+              </label>
+              <label style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 12, cursor: 'pointer' }}>
+                <input
+                  type="radio"
+                  name="mergePostAction"
+                  value="closeTerminal"
+                  checked={mergePostAction === 'closeTerminal'}
+                  onChange={() => setMergePostActionState('closeTerminal')}
+                />
+                Encerrar terminal do agente
+              </label>
             </div>
           </div>
 

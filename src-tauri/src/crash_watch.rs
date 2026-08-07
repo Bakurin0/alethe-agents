@@ -34,20 +34,29 @@ pub struct SessionRecord {
     pub ptys_mb: f64,
     pub webview_mb: f64,
     pub process_count: usize,
+    /// Se a rede de segurança contra terminais órfãos (Job Object, Windows)
+    /// foi instalada com sucesso NESTA sessão. `false` também em plataformas
+    /// não-Windows. Ver `pty::install_kill_on_close_guard`.
+    #[serde(default)]
+    pub job_guard_active: bool,
+}
+
+/// Relatório exposto ao front no boot: o registro da sessão anterior (se ela
+/// não saiu limpa) + quantos processos órfãos foram varridos/mortos agora,
+/// nesta inicialização, via `process_tree::sweep_orphans_from_previous_session`.
+#[derive(Serialize, Clone)]
+pub struct CrashReport {
+    pub session: SessionRecord,
+    pub orphans_reaped: usize,
 }
 
 static STATE: OnceLock<Mutex<SessionRecord>> = OnceLock::new();
 static FILE: OnceLock<PathBuf> = OnceLock::new();
-/// Registro da sessão anterior SE ela não saiu limpa (= provável crash). None se
+/// Relatório da sessão anterior SE ela não saiu limpa (= provável crash). None se
 /// saiu limpa ou se é o primeiro boot.
-static LAST_CRASH: OnceLock<Option<SessionRecord>> = OnceLock::new();
+static LAST_CRASH: OnceLock<Option<CrashReport>> = OnceLock::new();
 
-fn now_ms() -> u64 {
-    SystemTime::now()
-        .duration_since(UNIX_EPOCH)
-        .map(|d| d.as_millis() as u64)
-        .unwrap_or(0)
-}
+use crate::provider_common::now_ms;
 
 fn unix_secs() -> u64 {
     SystemTime::now()
@@ -72,17 +81,19 @@ fn write_record(rec: &SessionRecord) {
 }
 
 /// Deixa um log legível da saída suja anterior (além do JSON estruturado).
-fn append_unclean_log(dir: &Path, prev: &SessionRecord) {
+fn append_unclean_log(dir: &Path, prev: &SessionRecord, orphans_reaped: usize) {
     let path = dir.join(format!("unclean-exit-{}.log", unix_secs()));
     if let Ok(mut file) = fs::OpenOptions::new().create(true).append(true).open(path) {
         let _ = writeln!(
             file,
             "previous session did NOT exit cleanly (likely crash/kill/OOM)\n\
-             app_version={} started_at_ms={} last_heartbeat_ms={}\n\
-             last memory: total={:.0} MB · ptys={:.0} MB · webview={:.0} MB · {} processes",
+             app_version={} started_at_ms={} last_heartbeat_ms={} job_guard_active={}\n\
+             last memory: total={:.0} MB · ptys={:.0} MB · webview={:.0} MB · {} processes\n\
+             orphan sweep at this boot: {orphans_reaped} process tree(s) killed",
             prev.app_version,
             prev.started_at_ms,
             prev.last_heartbeat_ms,
+            prev.job_guard_active,
             prev.total_mb,
             prev.ptys_mb,
             prev.webview_mb,
@@ -100,20 +111,31 @@ pub fn start(app: AppHandle) {
     let _ = fs::create_dir_all(&dir);
     let path = dir.join("last_session.json");
 
-    // Sessão anterior suja? Vira o "relatório de crash" exposto pro front.
+    // Sessão anterior suja? Vira o "relatório de crash" exposto pro front —
+    // e dispara uma segunda camada de defesa: varre `pty_roots.json` (deixado
+    // pela sessão anterior) e mata qualquer árvore ainda viva. Cobre o caso
+    // raro do Job Object (`pty::install_kill_on_close_guard`) ter falhado
+    // silenciosamente naquela sessão. Só varre quando há indício de saída
+    // suja — numa saída limpa o arquivo já fica vazio (todo PTY foi
+    // desregistrado antes de sair).
     let prev_crash = fs::read(&path)
         .ok()
         .and_then(|bytes| serde_json::from_slice::<SessionRecord>(&bytes).ok())
         .filter(|prev| !prev.clean_exit);
-    if let Some(prev) = &prev_crash {
-        append_unclean_log(&dir, prev);
-    }
-    let _ = LAST_CRASH.set(prev_crash);
+    let last_crash = if let Some(prev) = prev_crash {
+        let orphans_reaped = crate::process_tree::sweep_orphans_from_previous_session();
+        append_unclean_log(&dir, &prev, orphans_reaped);
+        Some(CrashReport { session: prev, orphans_reaped })
+    } else {
+        None
+    };
+    let _ = LAST_CRASH.set(last_crash);
 
     let fresh = SessionRecord {
         started_at_ms: now_ms(),
         clean_exit: false,
         app_version: env!("CARGO_PKG_VERSION").to_string(),
+        job_guard_active: crate::pty::job_guard_active(),
         ..Default::default()
     };
     let _ = FILE.set(path);
@@ -144,9 +166,18 @@ pub fn mark_clean_exit() {
     }
 }
 
-/// Relatório da sessão anterior se ela não saiu limpa (provável crash). O front
-/// chama no boot pra avisar o usuário com o estado de memória de quando caiu.
+/// Relatório da sessão anterior se ela não saiu limpa (provável crash), mais
+/// quantos processos órfãos foram varridos/mortos nesta inicialização. O
+/// front chama no boot pra avisar o usuário com o estado de quando caiu.
 #[tauri::command]
-pub fn get_last_crash_report() -> Option<SessionRecord> {
+pub fn get_last_crash_report() -> Option<CrashReport> {
     LAST_CRASH.get().cloned().flatten()
+}
+
+/// Status da rede de segurança (Job Object, Windows) NESTA sessão em
+/// execução agora — separado de `get_last_crash_report` porque esse é sobre a
+/// sessão atual, não a anterior. Exposto pra UI de diagnóstico.
+#[tauri::command]
+pub fn get_job_guard_status() -> bool {
+    crate::pty::job_guard_active()
 }

@@ -10,6 +10,11 @@ import {
 } from '../../lib/tauri'
 import { webRectsEqual } from '../../lib/webRect'
 
+/** Intervalo do polling de saída do processo (ver useEffect abaixo). Baixo o
+ * bastante pra fechar o pane sem demora perceptível, alto o bastante pra não
+ * disparar uma chamada IPC por pane a cada fração de segundo. */
+const EXIT_POLL_MS = 2000
+
 export type GhosttySurfaceProps = {
   /** ID estável da surface — usamos o id da sub-tab (mesmo papel do ptyId). */
   surfaceId: string
@@ -262,7 +267,7 @@ export function GhosttySurface({
       } catch {
         /* erro transitório — tenta de novo */
       }
-    }, 700)
+    }, EXIT_POLL_MS)
     return () => {
       stopped = true
       window.clearInterval(iv)

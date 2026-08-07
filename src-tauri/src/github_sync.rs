@@ -12,13 +12,13 @@
 
 use std::fs;
 use std::path::{Path, PathBuf};
-use std::time::{SystemTime, UNIX_EPOCH};
 
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Map, Value};
 use tauri::AppHandle;
 
 use crate::paths::{activity_stats_file_path, app_data_dir, projects_file_path};
+use crate::provider_common::now_ms;
 
 const GIST_DESCRIPTION: &str = "Alethe sync — projects & activity (managed by the app)";
 const USER_AGENT: &str = "Alethe";
@@ -47,13 +47,6 @@ pub struct GithubSyncStatus {
     pub gist_url: Option<String>,
     pub last_push_ms: Option<u64>,
     pub last_pull_ms: Option<u64>,
-}
-
-fn now_ms() -> u64 {
-    SystemTime::now()
-        .duration_since(UNIX_EPOCH)
-        .map(|d| d.as_millis() as u64)
-        .unwrap_or(0)
 }
 
 fn config_path(app: &AppHandle) -> Result<PathBuf, String> {

@@ -1,4 +1,6 @@
+use std::collections::hash_map::DefaultHasher;
 use std::collections::{HashMap, HashSet};
+use std::hash::{Hash, Hasher};
 use std::sync::{Mutex, OnceLock};
 use serde::{Serialize, Deserialize};
 use nanoid::nanoid;
@@ -24,6 +26,10 @@ pub struct Task {
     pub status: TaskStatus,
     pub assigned_agent_id: Option<String>,
     pub lease_resource: Option<String>,
+    /// Caminho da worktree provisionada pra esta task (populado quando o
+    /// provisionamento termina) — usado pra detectar Running -> Completed
+    /// checando o `.planning/` real dessa worktree (ver `run_scheduler_tick`).
+    pub worktree_path: Option<String>,
     pub priority: i32,
 }
 
@@ -59,101 +65,78 @@ pub fn get_scheduler() -> &'static Mutex<Scheduler> {
     }))
 }
 
-fn parse_gsd_markdown(project_id: &str, file_path: &std::path::Path, content: &str) -> Option<Task> {
-    let mut id = file_path.file_stem()?.to_string_lossy().to_string();
-    let mut title = id.clone();
-    let mut dependencies = Vec::new();
-    let mut status = TaskStatus::Pending;
-
-    if content.starts_with("---") {
-        if let Some(end_idx) = content[3..].find("---") {
-            let frontmatter = &content[3..end_idx + 3];
-            for line in frontmatter.lines() {
-                let parts: Vec<&str> = line.splitn(2, ':').collect();
-                if parts.len() == 2 {
-                    let key = parts[0].trim().to_lowercase();
-                    let val = parts[1].trim();
-                    match key.as_str() {
-                        "id" => id = val.trim_matches('"').trim_matches('\'').to_string(),
-                        "title" => title = val.trim_matches('"').trim_matches('\'').to_string(),
-                        "status" => {
-                            let s = val.trim_matches('"').trim_matches('\'').to_lowercase();
-                            status = match s.as_str() {
-                                "completed" | "done" => TaskStatus::Completed,
-                                "running" | "in_progress" => TaskStatus::Running,
-                                "failed" => TaskStatus::Failed,
-                                "blocked" => TaskStatus::Blocked,
-                                "ready" => TaskStatus::Ready,
-                                _ => TaskStatus::Pending,
-                            };
-                        }
-                        "dependencies" | "depends_on" => {
-                            let cleaned = val.trim_matches('[').trim_matches(']');
-                            for dep in cleaned.split(',') {
-                                let dep_trimmed = dep.trim().trim_matches('"').trim_matches('\'');
-                                if !dep_trimmed.is_empty() {
-                                    dependencies.push(dep_trimmed.to_string());
-                                }
-                            }
-                        }
-                        _ => {}
-                    }
-                }
-            }
-        }
-    }
-
-    Some(Task {
-        id,
-        project_id: project_id.to_string(),
-        title,
-        dependencies,
-        status,
-        assigned_agent_id: None,
-        lease_resource: None,
-        priority: 0,
-    })
+/// Id estável e namespaced por projeto pra um item do checklist real
+/// (`task.md`) — hash do texto do item. Namespacing por `project_id` corrige
+/// uma colisão de id entre projetos que existia no formato antigo (dois
+/// projetos com uma task chamada igual se sobrescreviam no mapa global).
+fn derive_item_task_id(project_id: &str, text: &str) -> String {
+    let mut hasher = DefaultHasher::new();
+    text.hash(&mut hasher);
+    format!("{project_id}-gsd-{:x}", hasher.finish())
 }
 
+/// Lê o backlog real de `.planning/task.md` no REPO PRINCIPAL do projeto (não
+/// worktrees de agente — essas só ganham `.planning/` depois que o trabalho
+/// já começou, então nunca poderiam originar uma task genuinamente `Pending`)
+/// e sincroniza com o scheduler. Cada item do checklist vira uma task
+/// agendável; dependência é a cadeia sequencial pela ordem da lista — o
+/// formato real (escrito por `alethe-gsd-state.ts` a partir de `todowrite`)
+/// não tem grafo de dependência explícito.
 pub fn load_gsd_tasks(project_id: &str, repo_path: &str) -> Result<(), String> {
     let repo_root = crate::git_control::repository_root(repo_path)?;
-    let planning_dir = repo_root.join(".planning");
-    if !planning_dir.is_dir() {
-        return Ok(());
-    }
-
-    let mut parsed_tasks = HashMap::new();
-    let mut scan_dir = |dir: &std::path::Path| -> Result<(), String> {
-        let entries = std::fs::read_dir(dir).map_err(|e| e.to_string())?;
-        for entry in entries.flatten() {
-            let path = entry.path();
-            if path.is_file() && path.extension().and_then(|s| s.to_str()) == Some("md") {
-                if let Ok(content) = std::fs::read_to_string(&path) {
-                    if let Some(task) = parse_gsd_markdown(project_id, &path, &content) {
-                        parsed_tasks.insert(task.id.clone(), task);
-                    }
-                }
-            }
-        }
-        Ok(())
+    let task_md_path = repo_root.join(".planning").join("task.md");
+    let Ok(content) = std::fs::read_to_string(&task_md_path) else {
+        return Ok(()); // sem backlog ainda — estado válido, não é erro
     };
 
-    let _ = scan_dir(&planning_dir);
-    let tasks_sub = planning_dir.join("tasks");
-    if tasks_sub.is_dir() {
-        let _ = scan_dir(&tasks_sub);
+    let items = crate::planning_gate::parse_roadmap_items(&content);
+    let mut fresh_ids: HashSet<String> = HashSet::new();
+    let mut fresh_tasks: Vec<Task> = Vec::new();
+    let mut prev_id: Option<String> = None;
+    for item in &items {
+        if item.text.is_empty() {
+            continue; // linha malformada (checkbox sem texto) — ignora
+        }
+        let id = derive_item_task_id(project_id, &item.text);
+        fresh_ids.insert(id.clone());
+        fresh_tasks.push(Task {
+            id: id.clone(),
+            project_id: project_id.to_string(),
+            title: item.text.clone(),
+            dependencies: match &prev_id {
+                Some(p) => vec![p.clone()],
+                None => Vec::new(),
+            },
+            status: if item.checked { TaskStatus::Completed } else { TaskStatus::Pending },
+            assigned_agent_id: None,
+            lease_resource: None,
+            worktree_path: None,
+            priority: 0,
+        });
+        prev_id = Some(id);
     }
 
     let mut scheduler = get_scheduler().lock().unwrap();
-    for (id, mut task) in parsed_tasks {
-        if let Some(existing) = scheduler.tasks.get(&id) {
-            if existing.status == TaskStatus::Running || existing.status == TaskStatus::Completed {
+    // Tasks Running/Completed/Failed deste projeto sobrevivem mesmo se a
+    // linha correspondente sumir/mudar no task.md (não some o histórico de
+    // um agente no meio do trabalho); Pending que sumiu do texto é
+    // descartada, pra não acumular backlog fantasma.
+    scheduler.tasks.retain(|id, task| {
+        task.project_id != project_id
+            || fresh_ids.contains(id)
+            || matches!(task.status, TaskStatus::Running | TaskStatus::Completed | TaskStatus::Failed)
+    });
+
+    for mut task in fresh_tasks {
+        if let Some(existing) = scheduler.tasks.get(&task.id) {
+            if matches!(existing.status, TaskStatus::Running | TaskStatus::Completed | TaskStatus::Failed) {
                 task.status = existing.status.clone();
                 task.assigned_agent_id = existing.assigned_agent_id.clone();
                 task.lease_resource = existing.lease_resource.clone();
+                task.worktree_path = existing.worktree_path.clone();
             }
         }
-        scheduler.tasks.insert(id, task);
+        scheduler.tasks.insert(task.id.clone(), task);
     }
 
     Ok(())
@@ -231,7 +214,7 @@ pub fn run_scheduler_tick(project_id: &str, repo_path: &str) -> Result<(), Strin
 
             let mode = mode_for_project(&t.project_id);
             tauri::async_runtime::spawn(async move {
-                match crate::worktrees::worktree_provision(
+                match crate::worktrees::worktree_provision_inner(
                     repo_path_clone.clone(),
                     agent_id_clone.clone(),
                     mode,
@@ -243,6 +226,11 @@ pub fn run_scheduler_tick(project_id: &str, repo_path: &str) -> Result<(), Strin
                             project_id_clone.clone(),
                             task_id_clone.clone(),
                         );
+                        if let Ok(mut sched) = get_scheduler().lock() {
+                            if let Some(task) = sched.tasks.get_mut(&task_id_clone) {
+                                task.worktree_path = Some(info.path.clone());
+                            }
+                        }
                         // O SPAWN do agente é do FRONT (humano-no-terminal): o
                         // backend só pede — o front cria um Terminal visível no
                         // projeto com cwd na worktree (padrão do mergeStore).
@@ -281,6 +269,39 @@ pub fn run_scheduler_tick(project_id: &str, repo_path: &str) -> Result<(), Strin
                 }
             });
         }
+    }
+
+    // 3. Running -> Completed se a própria worktree do agente reporta
+    // planejamento concluído — reusa `planning_gate::compute_planning_status`,
+    // a mesma checagem que já alimenta o Gate de Conclusão de Planejamento da
+    // Central de Merges, em vez de inventar um segundo critério de "pronto".
+    let mut to_complete = Vec::new();
+    for task in scheduler.tasks.values() {
+        if task.project_id == project_id && task.status == TaskStatus::Running {
+            if let Some(worktree_path) = &task.worktree_path {
+                let status = crate::planning_gate::compute_planning_status(std::path::Path::new(worktree_path));
+                if status.has_planning && status.reported_complete {
+                    to_complete.push(task.id.clone());
+                }
+            }
+        }
+    }
+    for id in to_complete {
+        let mut to_remove_lease = None;
+        if let Some(t) = scheduler.tasks.get_mut(&id) {
+            t.status = TaskStatus::Completed;
+            to_remove_lease = t.lease_resource.take();
+        }
+        if let Some(ref resource) = to_remove_lease {
+            scheduler.leases.remove(resource);
+        }
+        crate::event_bus::publish_event_simple(
+            "TaskCompleted",
+            &format!("sched-{}", nanoid!()),
+            Some(project_id.to_string()),
+            Some(id),
+            serde_json::json!({}),
+        );
     }
 
     Ok(())
@@ -375,22 +396,150 @@ pub fn start_scheduler_event_loop() {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::fs;
+    use std::time::{SystemTime, UNIX_EPOCH};
+
+    fn unique_project_id(label: &str) -> String {
+        format!("test-{label}-{}", nanoid!())
+    }
+
+    fn temp_git_repo(label: &str) -> std::path::PathBuf {
+        let suffix = SystemTime::now().duration_since(UNIX_EPOCH).unwrap().as_nanos();
+        let root = std::env::temp_dir().join(format!("alethe-scheduler-{label}-{suffix}"));
+        fs::create_dir_all(&root).unwrap();
+        crate::git_control::checked_output(&root, &["init", "-b", "main"]).unwrap();
+        crate::git_control::checked_output(&root, &["config", "user.name", "Alethe Test"]).unwrap();
+        crate::git_control::checked_output(&root, &["config", "user.email", "alethe@example.invalid"]).unwrap();
+        fs::write(root.join("a.txt"), "a\n").unwrap();
+        crate::git_control::checked_output(&root, &["add", "-A"]).unwrap();
+        crate::git_control::checked_output(&root, &["commit", "-m", "base"]).unwrap();
+        root
+    }
 
     #[test]
-    fn test_gsd_markdown_parser() {
-        let content = r#"---
-id: task-foo
-title: "Foo Task"
-dependencies: [task-bar, task-baz]
-status: done
----
-# Descricao da Task
-"#;
-        let file_path = std::path::Path::new("task-foo.md");
-        let task = parse_gsd_markdown("proj-1", file_path, content).unwrap();
-        assert_eq!(task.id, "task-foo");
-        assert_eq!(task.title, "Foo Task");
-        assert_eq!(task.dependencies, vec!["task-bar", "task-baz"]);
+    fn derive_item_task_id_is_deterministic_and_namespaced_by_project() {
+        let a1 = derive_item_task_id("proj-a", "Fazer login");
+        let a2 = derive_item_task_id("proj-a", "Fazer login");
+        let b = derive_item_task_id("proj-b", "Fazer login");
+        assert_eq!(a1, a2, "mesmo projeto + mesmo texto = mesmo id");
+        assert_ne!(a1, b, "projetos diferentes nunca colidem, mesmo com texto igual");
+    }
+
+    #[test]
+    fn load_gsd_tasks_reads_real_task_md_and_builds_sequential_chain() {
+        let project_id = unique_project_id("chain");
+        let root = temp_git_repo("chain");
+        fs::create_dir_all(root.join(".planning")).unwrap();
+        fs::write(
+            root.join(".planning").join("task.md"),
+            "- [x] Item A\n- [ ] Item B\n- [ ] Item C\n",
+        )
+        .unwrap();
+
+        load_gsd_tasks(&project_id, root.to_string_lossy().as_ref()).unwrap();
+
+        let scheduler = get_scheduler().lock().unwrap();
+        let mut tasks: Vec<&Task> = scheduler
+            .tasks
+            .values()
+            .filter(|t| t.project_id == project_id)
+            .collect();
+        tasks.sort_by(|a, b| a.title.cmp(&b.title));
+        assert_eq!(tasks.len(), 3);
+
+        let a = tasks.iter().find(|t| t.title == "Item A").unwrap();
+        let b = tasks.iter().find(|t| t.title == "Item B").unwrap();
+        let c = tasks.iter().find(|t| t.title == "Item C").unwrap();
+        assert_eq!(a.status, TaskStatus::Completed);
+        assert!(a.dependencies.is_empty());
+        assert_eq!(b.status, TaskStatus::Pending);
+        assert_eq!(b.dependencies, vec![a.id.clone()]);
+        assert_eq!(c.status, TaskStatus::Pending);
+        assert_eq!(c.dependencies, vec![b.id.clone()]);
+
+        drop(scheduler);
+        fs::remove_dir_all(root).unwrap();
+    }
+
+    #[test]
+    fn load_gsd_tasks_reload_preserves_running_and_drops_stale_pending() {
+        let project_id = unique_project_id("reload");
+        let root = temp_git_repo("reload");
+        fs::create_dir_all(root.join(".planning")).unwrap();
+        fs::write(
+            root.join(".planning").join("task.md"),
+            "- [ ] Item A\n- [ ] Item B\n",
+        )
+        .unwrap();
+        load_gsd_tasks(&project_id, root.to_string_lossy().as_ref()).unwrap();
+
+        let item_a_id = derive_item_task_id(&project_id, "Item A");
+        let item_b_id = derive_item_task_id(&project_id, "Item B");
+        {
+            let mut scheduler = get_scheduler().lock().unwrap();
+            let task = scheduler.tasks.get_mut(&item_a_id).unwrap();
+            task.status = TaskStatus::Running;
+            task.worktree_path = Some("D:/fake/worktree".to_string());
+        }
+
+        // Reescreve o task.md sem NENHUma das duas linhas originais.
+        fs::write(root.join(".planning").join("task.md"), "- [ ] Item C\n").unwrap();
+        load_gsd_tasks(&project_id, root.to_string_lossy().as_ref()).unwrap();
+
+        let scheduler = get_scheduler().lock().unwrap();
+        let a = scheduler.tasks.get(&item_a_id).expect("Running sobrevive mesmo com a linha removida");
+        assert_eq!(a.status, TaskStatus::Running);
+        assert_eq!(a.worktree_path.as_deref(), Some("D:/fake/worktree"));
+        assert!(
+            scheduler.tasks.get(&item_b_id).is_none(),
+            "Pending cuja linha sumiu deve ser descartada"
+        );
+        let item_c_id = derive_item_task_id(&project_id, "Item C");
+        assert!(scheduler.tasks.get(&item_c_id).is_some());
+
+        drop(scheduler);
+        fs::remove_dir_all(root).unwrap();
+    }
+
+    #[test]
+    fn run_scheduler_tick_completes_running_task_when_worktree_planning_is_done() {
+        let project_id = unique_project_id("complete");
+        let suffix = SystemTime::now().duration_since(UNIX_EPOCH).unwrap().as_nanos();
+        let worktree = std::env::temp_dir().join(format!("alethe-scheduler-wt-{suffix}"));
+        fs::create_dir_all(worktree.join(".planning")).unwrap();
+        fs::write(worktree.join(".planning").join("status.md"), "Status: Completed\n").unwrap();
+
+        let task_id = format!("{project_id}-manual-task");
+        {
+            let mut scheduler = get_scheduler().lock().unwrap();
+            scheduler.leases.insert(format!("worktree:{task_id}"));
+            scheduler.tasks.insert(
+                task_id.clone(),
+                Task {
+                    id: task_id.clone(),
+                    project_id: project_id.clone(),
+                    title: "Task manual".to_string(),
+                    dependencies: Vec::new(),
+                    status: TaskStatus::Running,
+                    assigned_agent_id: Some("agent-manual".to_string()),
+                    lease_resource: Some(format!("worktree:{task_id}")),
+                    worktree_path: Some(worktree.to_string_lossy().to_string()),
+                    priority: 0,
+                },
+            );
+        }
+
+        run_scheduler_tick(&project_id, "unused-repo-path").unwrap();
+
+        let scheduler = get_scheduler().lock().unwrap();
+        let task = scheduler.tasks.get(&task_id).unwrap();
         assert_eq!(task.status, TaskStatus::Completed);
+        assert!(
+            !scheduler.leases.contains(&format!("worktree:{task_id}")),
+            "lease deve ser liberado quando a task completa"
+        );
+
+        drop(scheduler);
+        fs::remove_dir_all(worktree).unwrap();
     }
 }

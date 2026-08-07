@@ -13,6 +13,8 @@ export type ImageInputProps = {
   placeholder?: string
   hint?: string
   onEnter?: () => void
+  previewColor?: string
+  projectName?: string
 }
 
 export function ImageInput({
@@ -22,6 +24,8 @@ export function ImageInput({
   placeholder,
   hint,
   onEnter,
+  previewColor,
+  projectName,
 }: ImageInputProps) {
   const t = useT()
   const fileInputRef = useRef<HTMLInputElement | null>(null)
@@ -48,10 +52,47 @@ export function ImageInput({
     onChange(dataUrl)
   }
 
+  const isRainbow = previewColor === 'rgb-rainbow'
+  const initial = (projectName || 'P').trim().charAt(0).toUpperCase()
+
   return (
     <div className={controls.field}>
       <label className={controls.label}>{label}</label>
-      <div className={controls.inputActionRow}>
+      <div className={controls.inputActionRow} style={{ alignItems: 'center' }}>
+        {/* Card de Preview Dedicado de Foto/Ícone (44x44px) */}
+        <div
+          style={{
+            width: 44,
+            height: 44,
+            borderRadius: 10,
+            overflow: 'hidden',
+            flexShrink: 0,
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            border: '1px solid var(--border-strong)',
+            background: isRainbow ? undefined : (previewColor || 'var(--panel)'),
+            boxShadow: '0 2px 8px rgba(0, 0, 0, 0.3)',
+            color: '#fff',
+            fontWeight: 700,
+            fontSize: 18,
+          }}
+          className={isRainbow ? 'swatch-rgb-rainbow' : undefined}
+          title={value ? 'Preview da Foto/Ícone' : 'Foto Padrão'}
+        >
+          {value ? (
+            <img
+              src={value}
+              alt="Icon Preview"
+              style={{ width: '100%', height: '100%', objectFit: 'cover' }}
+              onError={(e) => {
+                e.currentTarget.style.display = 'none'
+              }}
+            />
+          ) : (
+            <span>{initial}</span>
+          )}
+        </div>
         <input
           className={controls.input}
           value={value}

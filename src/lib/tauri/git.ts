@@ -22,6 +22,11 @@ export async function gitStatus(path: string): Promise<GitRepositoryStatus> {
   return invoke<GitRepositoryStatus>('git_status', { path })
 }
 
+/** Inicializa um repositório Git na pasta (com commit inicial) — devolve a raiz do repo. Idempotente. */
+export async function gitInit(path: string): Promise<string> {
+  return invoke<string>('git_init', { path })
+}
+
 export async function gitStage(repoRoot: string, paths: string[]): Promise<void> {
   return invoke('git_stage', { repoRoot, paths })
 }
@@ -56,6 +61,24 @@ export async function gitPull(repoRoot: string): Promise<string> {
 
 export async function gitListBranches(repoRoot: string): Promise<string[]> {
   return invoke<string[]>('git_list_branches', { repoRoot })
+}
+
+export async function cloneGithubRepo(url: string, targetDir: string): Promise<string> {
+  return invoke<string>('clone_github_repo', { url, targetDir })
+}
+
+export type DiffSummaryEntry = { path: string; status: string }
+
+/** Diff real (`--name-status`, three-dot) entre `source` e `target`, unido com o estado não
+ * commitado da worktree quando `worktreePath` é informado (senão trabalho ainda não commitado
+ * fica invisível) — alimenta o Briefing de Testes e o Gate de Verificação da Central de Merges. */
+export async function gitDiffSummary(
+  repoRoot: string,
+  source: string,
+  target: string,
+  worktreePath?: string,
+): Promise<DiffSummaryEntry[]> {
+  return invoke<DiffSummaryEntry[]>('git_diff_summary', { repoRoot, source, target, worktreePath })
 }
 
 // --- RFC-003 — Worktrees ---
@@ -135,6 +158,9 @@ export type MergeOutcome = {
   merged: boolean
   stage: string
   output: string
+  /** Camada 3 do Escudo (aviso, nunca bloqueia): endpoints chamados pelo
+   *  frontend sem rota de backend correspondente encontrada. */
+  contractWarnings: ContractWarning[]
 }
 
 export async function mergeAnalyze(
@@ -188,4 +214,61 @@ export async function mergeForceCleanup(
   envId: string,
 ): Promise<MergeForceCleanupResult> {
   return invoke<MergeForceCleanupResult>('merge_force_cleanup', { repo, envId })
+}
+
+// --- Bloco 2 da Central de Merges — motor multi-stack, contrato de API, probe de saúde ---
+
+export type ProjectStack = 'web' | 'cli' | 'desktop' | 'fullstack' | 'unknown'
+
+export type StackDetection = {
+  stack: ProjectStack
+  hasFrontend: boolean
+  hasBackend: boolean
+  hasTauri: boolean
+  suggestedCommands: string[]
+}
+
+/** Heurística por arquivo-marcador (sem AST) — só pra pré-preencher sugestão
+ *  de comandos de validação, nunca roda sozinha nem substitui o que o
+ *  usuário já escreveu. */
+export async function detectProjectStack(repo: string): Promise<StackDetection> {
+  return invoke<StackDetection>('detect_project_stack', { repo })
+}
+
+export type ApiCallSite = {
+  file: string
+  line: number
+  method: string | null
+  pathPattern: string
+}
+
+export type ContractWarning = {
+  call: ApiCallSite
+  reason: string
+}
+
+/** Camada de AVISO (nunca bloqueia sozinha): roda no ambiente efêmero de
+ *  merge_prepare, nunca no worktree do usuário. */
+export async function contractCheck(envPath: string): Promise<ContractWarning[]> {
+  return invoke<ContractWarning[]>('contract_check', { envPath })
+}
+
+export type HealthProbeResult = {
+  started: boolean
+  responded: boolean
+  statusCode: number | null
+  elapsedMs: number
+  outputTail: string
+}
+
+/** Sobe `startCommand` no ambiente efêmero numa porta isolada e testa `path`
+ *  até responder ou estourar `timeoutMs`. Mata a árvore de processo sempre,
+ *  não importa o resultado. Camada de AVISO — nunca bloqueia sozinha. */
+export async function healthProbe(
+  envPath: string,
+  startCommand: string,
+  path: string,
+  timeoutMs: number,
+): Promise<HealthProbeResult> {
+  return invoke<HealthProbeResult>('health_probe', { envPath, startCommand, path, timeoutMs })
 }

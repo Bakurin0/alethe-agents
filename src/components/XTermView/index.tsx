@@ -37,6 +37,20 @@ export type XTermViewProps = {
    * o spawn injeta o MCP do grafo (Claude via `--mcp-config`, Codex/OpenCode via
    * merge no config do projeto) e garante o bootstrap do grafo. */
   graphifyRepo?: string | null
+  /** Gate de Conclusão de Planejamento GSD: projeto com o monitoramento
+   * ligado. Presente + `command === 'opencode'`: instala automaticamente o
+   * plugin que mantém `.planning/` sincronizado sozinho antes do spawn. */
+  gsdWatcherEnabled?: boolean
+  /**
+   * Pula a validação de "sessão órfã" (checagem contra `opencode session
+   * list`) pro `sessionId` recebido — usado pelo terminal "viewer" da gaveta
+   * GSD Sync. Confirmado empiricamente: `opencode session list` nunca lista
+   * sessões-filha (têm `parent_id` setado pelo próprio servidor do OpenCode,
+   * mesmo sem o cliente pedir isso), então a validação normal sempre trata
+   * essa sessão como órfã, descarta o resume e apaga `sessionId` do tab —
+   * era a causa real do "resume abre em branco".
+   */
+  trustSessionId?: boolean
   runtimeProfile?: AgentRuntimeProfile
   terminalTheme?: Theme
   onSpawned?: (id: string) => void
@@ -62,6 +76,8 @@ export function XTermView({
   sessionKey,
   env,
   graphifyRepo,
+  gsdWatcherEnabled,
+  trustSessionId,
   // Terminais antigos sem perfil persistido entram no modo lean para não
   // iniciar Claude com concorrência/MCP ilimitados por acidente. `full` segue
   // disponível quando o usuário escolhe explicitamente no modal.
@@ -282,6 +298,8 @@ export function XTermView({
     sessionId,
     env,
     graphifyRepo,
+    gsdWatcherEnabled,
+    trustSessionId,
     runtimeProfile,
     terminalTheme,
     cliPathOverride,

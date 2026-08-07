@@ -51,6 +51,14 @@ export async function setPtyReadState(id: string, active: boolean): Promise<void
   await invoke('set_pty_read_state', { id, active })
 }
 
+/** Visibilidade lógica do painel (aba/grupo ativo, não colapsado) — NÃO
+ * pausa o agente (isso é `setPtyReadState`, que travaria o `write()` dele).
+ * Só decide se o backend manda o próximo lote pro canal `data` (render caro)
+ * ou pro `activity` (throttlado, ver `listenPtyActivity`). */
+export async function setPtyVisible(id: string, visible: boolean): Promise<void> {
+  await invoke('set_pty_visible', { id, visible })
+}
+
 export async function setPtyPriority(id: string, active: boolean): Promise<void> {
   await invoke('set_pty_priority', { id, active })
 }
@@ -154,6 +162,17 @@ export async function listPtyProcesses(): Promise<PtyProcessSnapshot[]> {
 
 export function listenPtyData(id: string, handler: (chunk: string) => void): Promise<UnlistenFn> {
   return listen<string>(`pty://data/${id}`, (event) => handler(event.payload))
+}
+
+/** Canal de baixa cadência (~450ms) que o backend usa quando o painel está
+ * invisível — mesmo texto do `pty://data`, só que throttlado. Alimenta
+ * `recordIo`/`AgentCompletionMonitor` sem custo de render enquanto o pane
+ * não está sendo desenhado. */
+export function listenPtyActivity(
+  id: string,
+  handler: (chunk: string) => void,
+): Promise<UnlistenFn> {
+  return listen<string>(`pty://activity/${id}`, (event) => handler(event.payload))
 }
 
 export function listenPtyExit(

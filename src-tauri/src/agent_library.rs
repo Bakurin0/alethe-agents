@@ -17,8 +17,17 @@ fn agents_dir(folder: &str) -> PathBuf {
     PathBuf::from(folder).join(".claude").join("agents")
 }
 
+/// `async` + `spawn_blocking`: varredura de disco, mesma classe de I/O
+/// bloqueante já corrigida em `cli_resolver.rs` — sem isso trava a thread de
+/// despacho de IPC do Tauri.
 #[tauri::command]
-pub fn list_installed_agents(folder: String) -> Vec<InstalledAgent> {
+pub async fn list_installed_agents(folder: String) -> Vec<InstalledAgent> {
+    tokio::task::spawn_blocking(move || list_installed_agents_inner(folder))
+        .await
+        .unwrap_or_default()
+}
+
+fn list_installed_agents_inner(folder: String) -> Vec<InstalledAgent> {
     let dir = agents_dir(&folder);
     let Ok(entries) = fs::read_dir(&dir) else {
         return Vec::new();

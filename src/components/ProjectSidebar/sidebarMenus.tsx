@@ -52,6 +52,7 @@ type MenuActions = Pick<
   | 'killTerminal'
   | 'setLaneVisible'
   | 'deleteTerminal'
+  | 'deleteTerminalWithWorktreeCleanup'
   | 'setPreferences'
 >
 
@@ -67,6 +68,11 @@ export type SidebarMenuDeps = {
   setFocusedTerminal: UiState['setFocusedTerminal']
   requestPaneFocus: UiState['requestPaneFocus']
   openMarkdownSidebar: UiState['openMarkdownSidebar']
+}
+
+/** Terminais "reais" de um projeto, sem o viewer somente-leitura da gaveta GSD Sync. */
+function visibleProjectTerminals(project: Project): Terminal[] {
+  return project.terminals.filter((term) => !term.gsdSyncViewer)
 }
 
 /** Fábrica dos menus de contexto (projeto/grupo/terminal) da sidebar. */
@@ -180,13 +186,14 @@ export function createSidebarMenus(deps: SidebarMenuDeps) {
     {
       kind: 'item',
       label:
-        project.terminals.length > 0 && project.terminals.every((term) => term.disabled)
+        visibleProjectTerminals(project).length > 0 &&
+        visibleProjectTerminals(project).every((term) => term.disabled)
           ? t('ui.sidebar.reactivateProject')
           : t('ui.sidebar.disableProject'),
       icon: <Power size={14} />,
       onClick: () => {
-        const allDisabled =
-          project.terminals.length > 0 && project.terminals.every((term) => term.disabled)
+        const terms = visibleProjectTerminals(project)
+        const allDisabled = terms.length > 0 && terms.every((term) => term.disabled)
         actions.setProjectDisabled(project.id, !allDisabled)
       },
     },
@@ -386,7 +393,7 @@ export function createSidebarMenus(deps: SidebarMenuDeps) {
 
   const confirmAndDeleteTerminal = (projectId: string, term: Terminal) => {
     if (window.confirm(t('ui.sidebar.confirmDeleteTerminal', { name: term.name }))) {
-      actions.deleteTerminal(projectId, term.id)
+      void actions.deleteTerminalWithWorktreeCleanup(projectId, term.id)
     }
   }
 

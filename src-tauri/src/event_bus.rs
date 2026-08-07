@@ -15,6 +15,17 @@ pub struct EventBusPayload {
 
 static EVENT_BUS_SENDER: OnceLock<broadcast::Sender<EventBusPayload>> = OnceLock::new();
 
+/// Handle salvo uma vez no `.setup()` do app (ver `lib.rs`) — permite que
+/// `publish()` também emita como evento Tauri de verdade pro frontend, sem
+/// precisar enfiar `AppHandle` como parâmetro em toda função que publica no
+/// bus (o que quebraria os testes unitários que chamam essas funções direto,
+/// fora de um runtime Tauri).
+static APP_HANDLE: OnceLock<tauri::AppHandle> = OnceLock::new();
+
+pub fn set_app_handle(app: tauri::AppHandle) {
+    let _ = APP_HANDLE.set(app);
+}
+
 pub fn get_sender() -> &'static broadcast::Sender<EventBusPayload> {
     EVENT_BUS_SENDER.get_or_init(|| {
         let (tx, _) = broadcast::channel(1024);
@@ -24,7 +35,11 @@ pub fn get_sender() -> &'static broadcast::Sender<EventBusPayload> {
 
 pub fn publish(event: EventBusPayload) {
     let sender = get_sender();
-    let _ = sender.send(event);
+    let _ = sender.send(event.clone());
+    if let Some(app) = APP_HANDLE.get() {
+        use tauri::Emitter;
+        let _ = app.emit("alethe://event-bus", &event);
+    }
 }
 
 pub fn subscribe() -> broadcast::Receiver<EventBusPayload> {

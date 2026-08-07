@@ -10,6 +10,7 @@ import {
   gitStatus,
   worktreeFetchBranch,
   worktreeRemove,
+  killPtyTree,
   watchFile,
   unwatchFile,
   listenFileChanged,
@@ -52,6 +53,19 @@ export type MergePhase =
   | 'failed'
   | 'terminal_error'
 
+/** Fases em que já existe um merge em andamento — uma integração por vez
+ *  (ver integrateWorktree). Exportado pra UI (SidebarMergePanel) desabilitar
+ *  ações de outros cards enquanto uma integração está ocupada, sem duplicar
+ *  a lista. */
+export const MERGE_BUSY_PHASES: MergePhase[] = [
+  'analyzing',
+  'preparing',
+  'resolving',
+  'finalizing_commit',
+  'branch_diverged',
+  'rebase_attempt',
+]
+
 type MergeState = {
   phase: MergePhase
   projectId: string | null
@@ -62,6 +76,9 @@ type MergeState = {
   error: string | null
   /** Terminal efêmero criado para o agente de conflito (para teardown/reabertura). */
   agentTerminalId: string | null
+  /** ID da worktree de origem, quando o merge nasceu de integrateWorktree — permite
+   *  à UI (SidebarMergePanel) saber qual card corresponde ao merge ativo no momento. */
+  worktreeAgentId: string | null
   /** Lock de reentrância: true durante qualquer chamada de finalize/retry/abort-bruto em progresso. */
   isFinalizing: boolean
   /** Tentativas de "Retry Manual" desde o último sucesso — zera em merged/idle. */
@@ -70,7 +87,13 @@ type MergeState = {
   adminLockReason: string | null
 
   analyze: (project: Project, repo: string, source: string, target: string) => Promise<void>
-  start: (project: Project, repo: string, source: string, target: string) => Promise<void>
+  start: (
+    project: Project,
+    repo: string,
+    source: string,
+    target: string,
+    worktreeAgentId?: string,
+  ) => Promise<void>
   /** `silentRetry`: usado pelo poll de fallback — não reabre terminal nem mostra toast em falha (o agente pode só ainda estar trabalhando). */
   finalize: (opts?: { silentRetry?: boolean }) => Promise<void>
   /** Reexecuta o abort preventivo no ambiente efêmero e chama finalize do topo. Lock administrativo não incrementa retryCount nem vira TerminalError. */
@@ -110,16 +133,17 @@ function retryPrompt(failureContext: string): string {
   )
 }
 
-/** Args iniciais por provider para abrir o CLI já com a tarefa. */
-function providerArgs(provider: AgentType, prompt: string): string[] {
+/** Args iniciais por provider para abrir o CLI já com a tarefa e o modelo correto. */
+function providerArgs(provider: AgentType, prompt: string, model?: string): string[] {
+  const modelFlags = model ? ['--model', model] : []
   switch (provider) {
     case 'codex':
-      return [prompt]
+      return [...modelFlags, prompt]
     case 'opencode':
-      return [prompt]
+      return [...modelFlags, prompt]
     case 'claude':
     default:
-      return [prompt]
+      return [...modelFlags, prompt]
   }
 }
 
@@ -151,13 +175,14 @@ function reopenAgentTerminal(
     store.deleteTerminal(projectId, agentTerminalId)
   }
   const provider = project.conflictAgentProvider ?? 'claude'
+  const model = project.conflictAgentModel
   const terminal = store.createTerminal(projectId, {
     name: `merge ${env.id.slice(0, 6)}`,
     cwd: env.path,
     firstTab: {
       type: provider,
       cwd: env.path,
-      extraArgs: providerArgs(provider, retryPrompt(failureContext)),
+      extraArgs: providerArgs(provider, retryPrompt(failureContext), model),
     },
   })
   set({ agentTerminalId: terminal.id })
@@ -247,6 +272,7 @@ export const useMergeStore = create<MergeState>((set, get) => ({
   outcome: null,
   error: null,
   agentTerminalId: null,
+  worktreeAgentId: null,
   isFinalizing: false,
   retryCount: 0,
   adminLockReason: null,
@@ -261,7 +287,7 @@ export const useMergeStore = create<MergeState>((set, get) => ({
     }
   },
 
-  start: async (project, repo, source, target) => {
+  start: async (project, repo, source, target, worktreeAgentId) => {
     stopResolvingWatch()
     set({
       phase: 'preparing',
@@ -271,6 +297,7 @@ export const useMergeStore = create<MergeState>((set, get) => ({
       outcome: null,
       error: null,
       agentTerminalId: null,
+      worktreeAgentId: worktreeAgentId ?? null,
       isFinalizing: false,
       retryCount: 0,
       adminLockReason: null,
@@ -285,13 +312,14 @@ export const useMergeStore = create<MergeState>((set, get) => ({
       }
       // Conflito: spawna o agente efêmero num terminal visível do projeto.
       const provider = project.conflictAgentProvider ?? 'claude'
+      const model = project.conflictAgentModel
       const terminal = useProjectsStore.getState().createTerminal(project.id, {
         name: `merge ${env.id.slice(0, 6)}`,
         cwd: env.path,
         firstTab: {
           type: provider,
           cwd: env.path,
-          extraArgs: providerArgs(provider, conflictPrompt()),
+          extraArgs: providerArgs(provider, conflictPrompt(), model),
         },
       })
       set({ phase: 'resolving', agentTerminalId: terminal.id })
@@ -335,6 +363,14 @@ export const useMergeStore = create<MergeState>((set, get) => ({
           adminLockReason: null,
         })
         toast(t('merge.mergedTitle'), outcome.output)
+        // Camada 3 do Escudo (aviso, nunca bloqueou o merge acima) — informa
+        // depois de integrado, pra revisão posterior do usuário.
+        if (outcome.contractWarnings.length > 0) {
+          toast(
+            t('merge.contractWarningsTitle', { count: outcome.contractWarnings.length }),
+            outcome.contractWarnings.map((w) => `${w.call.pathPattern} (${w.call.file}:${w.call.line})`).join('\n'),
+          )
+        }
         return
       }
 
@@ -424,15 +460,7 @@ export const useMergeStore = create<MergeState>((set, get) => ({
   },
 
   integrateWorktree: async (project, repo, worktreeAgentId, paneTerminalId) => {
-    const busyPhases: MergePhase[] = [
-      'analyzing',
-      'preparing',
-      'resolving',
-      'finalizing_commit',
-      'branch_diverged',
-      'rebase_attempt',
-    ]
-    if (busyPhases.includes(get().phase)) {
+    if (MERGE_BUSY_PHASES.includes(get().phase)) {
       toast(t('merge.busyTitle'), t('merge.busy'))
       return
     }
@@ -442,13 +470,37 @@ export const useMergeStore = create<MergeState>((set, get) => ({
       await worktreeFetchBranch(repo, worktreeAgentId)
       const target = (await gitStatus(repo)).branch
       const source = `alethe/agent-${worktreeAgentId}`
-      await get().start(project, repo, source, target)
+      await get().start(project, repo, source, target, worktreeAgentId)
       const { phase } = get()
       if (phase === 'merged') {
-        // Integrado limpo: destrói a worktree e o pane do agente.
-        await worktreeRemove(repo, worktreeAgentId, true).catch((err) =>
-          console.warn('[mergeStore] worktree já removida?', err),
-        )
+        // Integrado limpo: mata o processo do agente ANTES de tentar remover
+        // a worktree — mesma causa-raiz do bug de "Rejeitar" já corrigido
+        // (no Windows, apagar uma pasta que ainda é o cwd de um processo vivo
+        // falha). Aguarda de verdade a árvore de processos morrer.
+        const terminal = useProjectsStore
+          .getState()
+          .projects.find((p) => p.id === project.id)
+          ?.terminals.find((term) => term.id === paneTerminalId)
+        const ptyIds = (terminal?.tabs ?? [])
+          .map((tab) => tab.ptyId)
+          .filter((id): id is string => Boolean(id))
+        await Promise.all(ptyIds.map((id) => killPtyTree(id).catch(() => [])))
+
+        try {
+          await worktreeRemove(repo, worktreeAgentId, true)
+        } catch (err) {
+          // "worktree_not_found" = já tinha sido removida, inofensivo. Falha
+          // real nunca pode sumir só num console.warn — vira órfã rastreada
+          // (mesma rede de segurança do abort()/Rejeitar), senão a pasta
+          // fica presa em disco pra sempre, sem nenhum rastro na interface.
+          if (!String(err).includes('worktree_not_found')) {
+            useProjectsStore.getState().addOrphanWorktree(project.id, {
+              path: terminal?.cwd ?? '',
+              mode: 'gitWorktree',
+            })
+          }
+          console.warn('[mergeStore] worktree já removida?', err)
+        }
         useProjectsStore.getState().deleteTerminal(project.id, paneTerminalId)
       }
       // Em conflito, o fluxo normal segue (agente efêmero + Finalizar); a
@@ -501,6 +553,7 @@ export const useMergeStore = create<MergeState>((set, get) => ({
         env: null,
         outcome: null,
         agentTerminalId: null,
+        worktreeAgentId: null,
         error: null,
         isFinalizing: false,
         retryCount: 0,
@@ -525,6 +578,7 @@ export const useMergeStore = create<MergeState>((set, get) => ({
       env: null,
       outcome: null,
       agentTerminalId: null,
+      worktreeAgentId: null,
       error: null,
       retryCount: 0,
       adminLockReason: null,
@@ -540,6 +594,7 @@ export const useMergeStore = create<MergeState>((set, get) => ({
       outcome: null,
       error: null,
       agentTerminalId: null,
+      worktreeAgentId: null,
       isFinalizing: false,
       retryCount: 0,
       adminLockReason: null,

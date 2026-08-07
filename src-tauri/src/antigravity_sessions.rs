@@ -1,9 +1,9 @@
 use chrono::DateTime;
 use serde::Serialize;
-use std::env;
 use std::fs;
 use std::path::PathBuf;
-use std::time::SystemTime;
+
+use crate::provider_common::{file_modified_ms, normalize_cwd, provider_home_dir};
 
 #[derive(Serialize, Debug, Clone)]
 pub struct AntigravitySessionSnapshot {
@@ -13,23 +13,7 @@ pub struct AntigravitySessionSnapshot {
 }
 
 pub(crate) fn antigravity_metadata_file() -> Option<PathBuf> {
-    let home = env::var_os("USERPROFILE")
-        .or_else(|| env::var_os("HOME"))
-        .map(PathBuf::from)?;
-    Some(
-        home.join(".gemini")
-            .join("antigravity-cli")
-            .join("cache")
-            .join("conversation_metadata.json"),
-    )
-}
-
-fn file_modified_ms(meta: &fs::Metadata) -> u128 {
-    meta.modified()
-        .ok()
-        .and_then(|m| m.duration_since(SystemTime::UNIX_EPOCH).ok())
-        .map(|d| d.as_millis())
-        .unwrap_or(0)
+    provider_home_dir(&[".gemini", "antigravity-cli", "cache", "conversation_metadata.json"])
 }
 
 /// Resolve o timestamp de uma conversa: prioriza `summary.UpdatedAt` (UTC),
@@ -76,15 +60,6 @@ fn normalize_uri_path(uri: &str) -> String {
     }
 }
 
-fn normalize_cwd(cwd: &str) -> String {
-    let trimmed = cwd.trim().trim_end_matches(|c: char| c == '\\' || c == '/');
-    if cfg!(windows) {
-        trimmed.replace('/', "\\").to_ascii_lowercase()
-    } else {
-        trimmed.to_string()
-    }
-}
-
 /// Compara dois paths já normalizados permitindo que um seja ancestral do
 /// outro (workspace root vs subpasta — o Antigravity registra `WorkspaceURIs`
 /// por workspace, que pode ser mais amplo que o cwd do pane), mas exige
@@ -109,8 +84,18 @@ fn cwd_matches(norm: &str, target_cwd: &str) -> bool {
     false
 }
 
+/// `async` + `spawn_blocking`: varre diretórios de sessão no disco, mesma
+/// classe de I/O bloqueante já corrigida em `cli_resolver.rs`; chamado a
+/// cada spawn/validação de resumo de terminal (`XTermView`), então travar a
+/// thread de despacho do Tauri aqui trava outros comandos IPC concorrentes.
 #[tauri::command]
-pub fn snapshot_antigravity_sessions(cwd: String) -> Result<Vec<AntigravitySessionSnapshot>, String> {
+pub async fn snapshot_antigravity_sessions(cwd: String) -> Result<Vec<AntigravitySessionSnapshot>, String> {
+    tokio::task::spawn_blocking(move || snapshot_antigravity_sessions_inner(cwd))
+        .await
+        .map_err(|error| format!("snapshot_antigravity_sessions: falha na task bloqueante: {error}"))?
+}
+
+fn snapshot_antigravity_sessions_inner(cwd: String) -> Result<Vec<AntigravitySessionSnapshot>, String> {
     let Some(meta_path) = antigravity_metadata_file() else {
         return Ok(Vec::new());
     };

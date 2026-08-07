@@ -347,7 +347,11 @@
   align-items: center;
   gap: 8px;
   width: auto;
-  max-width: min(460px, calc(100vw - 32px));
+  /* 460px cortava mensagens honestas de erro (ex.: "não é um repositório
+     Git detectável") no meio da palavra com "...", tornando o toast inútil
+     bem quando ele mais importa. 640px cobre título+corpo até ~90 chars em
+     uma linha só antes de precisar truncar. */
+  max-width: min(640px, calc(100vw - 32px));
   pointer-events: none;
 }
 

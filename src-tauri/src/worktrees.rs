@@ -16,7 +16,7 @@
 use serde::{Deserialize, Serialize};
 use std::path::{Path, PathBuf};
 
-use crate::git_control::{checked_output, git_command, repository_root, with_lock_awareness};
+use crate::git_control::{checked_output, git_command, main_repository_root, repository_root, with_lock_awareness};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -56,8 +56,14 @@ fn worktrees_base(root: &Path) -> PathBuf {
 
 /// Remove o prefixo verbatim `\\?\` do Windows. `repository_root` canonicaliza os
 /// caminhos, e o `git` rejeita esse prefixo quando ele chega como ARGUMENTO
-/// (ex.: destino de `worktree add`/`clone`) — como `current_dir` funciona normal.
-/// No-op para caminhos que não têm o prefixo (incl. fora do Windows).
+/// (ex.: destino de `worktree add`/`clone`) — como `current_dir` funciona normal
+/// pro próprio git. Também usado em `WorktreeInfo.path` antes de devolver pro
+/// frontend: esse valor vira `terminal.cwd` e, na sequência, o cwd real de
+/// `CreateProcess` ao spawnar o PTY do agente — e ali o prefixo NÃO é
+/// transparente pra todo processo (CLIs Node como o Antigravity podem se
+/// comportar mal com `\\?\` como diretório de trabalho, mesmo sem erro
+/// explícito). No-op para caminhos que não têm o prefixo (incl. fora do
+/// Windows).
 pub(crate) fn git_arg(path: &Path) -> String {
     let raw = path.to_string_lossy();
     let stripped = raw
@@ -89,13 +95,36 @@ fn current_branch(dir: &Path) -> String {
         .unwrap_or_default()
 }
 
+// Comandos deste arquivo rodam `git`/IO de verdade (subprocesso + filesystem)
+// — igual ao `openpty`/`spawn_command` do `pty.rs` (já corrigido), isso nunca
+// pode rodar direto na thread de despacho do Tauri: uma lentidão real
+// (repo grande, disco lento, lock do git) travaria TODO comando IPC atrás
+// dele, terminal nenhum responde. Lógica de cada comando fica numa função
+// `_inner` síncrona comum (testável direto, sem runtime async — os testes
+// deste módulo e `scheduler.rs` chamam essas direto), e o `#[tauri::command]`
+// exposto é só um wrapper fino em `tokio::task::spawn_blocking`.
 #[tauri::command]
-pub fn worktree_provision(
+pub async fn worktree_provision(
     repo: String,
     agent_id: String,
     mode: WorktreeMode,
 ) -> Result<WorktreeInfo, String> {
-    let root = repository_root(&repo)?;
+    tokio::task::spawn_blocking(move || worktree_provision_inner(repo, agent_id, mode))
+        .await
+        .map_err(|error| format!("worktree_provision: falha na task bloqueante: {error}"))?
+}
+
+pub(crate) fn worktree_provision_inner(
+    repo: String,
+    agent_id: String,
+    mode: WorktreeMode,
+) -> Result<WorktreeInfo, String> {
+    // main_repository_root (não repository_root) — `repo` pode já ser uma
+    // worktree isolada (ex.: projeto onde todos os terminais conhecidos já
+    // são isolados, sem nenhum "puro" sobrando pro frontend usar como base).
+    // Resolver pelo `.git` compartilhado evita criar uma worktree aninhada
+    // dentro da outra.
+    let root = main_repository_root(&repo)?;
     let id = sanitize_id(&agent_id)?;
     let base = worktrees_base(&root);
     std::fs::create_dir_all(&base).map_err(|error| format!("mkdir_failed:{error}"))?;
@@ -123,14 +152,20 @@ pub fn worktree_provision(
 
     Ok(WorktreeInfo {
         agent_id: id,
-        path: dest.to_string_lossy().into_owned(),
+        path: git_arg(&dest),
         branch,
         mode,
     })
 }
 
 #[tauri::command]
-pub fn worktree_list(repo: String) -> Result<Vec<WorktreeInfo>, String> {
+pub async fn worktree_list(repo: String) -> Result<Vec<WorktreeInfo>, String> {
+    tokio::task::spawn_blocking(move || worktree_list_inner(repo))
+        .await
+        .map_err(|error| format!("worktree_list: falha na task bloqueante: {error}"))?
+}
+
+pub(crate) fn worktree_list_inner(repo: String) -> Result<Vec<WorktreeInfo>, String> {
     let root = repository_root(&repo)?;
     let base = worktrees_base(&root);
     let mut result = Vec::new();
@@ -152,7 +187,7 @@ pub fn worktree_list(repo: String) -> Result<Vec<WorktreeInfo>, String> {
             .unwrap_or_default();
         result.push(WorktreeInfo {
             agent_id,
-            path: dir.to_string_lossy().into_owned(),
+            path: git_arg(&dir),
             branch: current_branch(&dir),
             mode,
         });
@@ -162,7 +197,13 @@ pub fn worktree_list(repo: String) -> Result<Vec<WorktreeInfo>, String> {
 }
 
 #[tauri::command]
-pub fn worktree_remove(repo: String, agent_id: String, force: bool) -> Result<(), String> {
+pub async fn worktree_remove(repo: String, agent_id: String, force: bool) -> Result<(), String> {
+    tokio::task::spawn_blocking(move || worktree_remove_inner(repo, agent_id, force))
+        .await
+        .map_err(|error| format!("worktree_remove: falha na task bloqueante: {error}"))?
+}
+
+pub(crate) fn worktree_remove_inner(repo: String, agent_id: String, force: bool) -> Result<(), String> {
     let root = repository_root(&repo)?;
     let id = sanitize_id(&agent_id)?;
     let base = worktrees_base(&root);
@@ -214,7 +255,13 @@ pub fn worktree_remove(repo: String, agent_id: String, force: bool) -> Result<()
 /// `admin_lock_reason` (git_control.rs) lê pra dar precedência absoluta sobre
 /// retries de `index.lock` transitório.
 #[tauri::command]
-pub fn worktree_lock(repo: String, agent_id: String, reason: Option<String>) -> Result<(), String> {
+pub async fn worktree_lock(repo: String, agent_id: String, reason: Option<String>) -> Result<(), String> {
+    tokio::task::spawn_blocking(move || worktree_lock_inner(repo, agent_id, reason))
+        .await
+        .map_err(|error| format!("worktree_lock: falha na task bloqueante: {error}"))?
+}
+
+pub(crate) fn worktree_lock_inner(repo: String, agent_id: String, reason: Option<String>) -> Result<(), String> {
     let root = repository_root(&repo)?;
     let id = sanitize_id(&agent_id)?;
     let dest = worktrees_base(&root).join(&id);
@@ -230,7 +277,13 @@ pub fn worktree_lock(repo: String, agent_id: String, reason: Option<String>) -> 
 }
 
 #[tauri::command]
-pub fn worktree_unlock(repo: String, agent_id: String) -> Result<(), String> {
+pub async fn worktree_unlock(repo: String, agent_id: String) -> Result<(), String> {
+    tokio::task::spawn_blocking(move || worktree_unlock_inner(repo, agent_id))
+        .await
+        .map_err(|error| format!("worktree_unlock: falha na task bloqueante: {error}"))?
+}
+
+pub(crate) fn worktree_unlock_inner(repo: String, agent_id: String) -> Result<(), String> {
     let root = repository_root(&repo)?;
     let id = sanitize_id(&agent_id)?;
     let dest = worktrees_base(&root).join(&id);
@@ -249,7 +302,13 @@ pub fn worktree_unlock(repo: String, agent_id: String) -> Result<(), String> {
 /// no `.git` principal — traz ele para o repo antes do ciclo de merge.
 /// No modo GitWorktree o branch já é visível e isso é um no-op ok.
 #[tauri::command]
-pub fn worktree_fetch_branch(repo: String, agent_id: String) -> Result<(), String> {
+pub async fn worktree_fetch_branch(repo: String, agent_id: String) -> Result<(), String> {
+    tokio::task::spawn_blocking(move || worktree_fetch_branch_inner(repo, agent_id))
+        .await
+        .map_err(|error| format!("worktree_fetch_branch: falha na task bloqueante: {error}"))?
+}
+
+pub(crate) fn worktree_fetch_branch_inner(repo: String, agent_id: String) -> Result<(), String> {
     let root = repository_root(&repo)?;
     let id = sanitize_id(&agent_id)?;
     let env = worktrees_base(&root).join(&id);
@@ -268,7 +327,13 @@ pub fn worktree_fetch_branch(repo: String, agent_id: String) -> Result<(), Strin
 }
 
 #[tauri::command]
-pub fn worktree_cleanup(repo: String) -> Result<(), String> {
+pub async fn worktree_cleanup(repo: String) -> Result<(), String> {
+    tokio::task::spawn_blocking(move || worktree_cleanup_inner(repo))
+        .await
+        .map_err(|error| format!("worktree_cleanup: falha na task bloqueante: {error}"))?
+}
+
+pub(crate) fn worktree_cleanup_inner(repo: String) -> Result<(), String> {
     let root = repository_root(&repo)?;
     checked_output(&root, &["worktree", "prune"])?;
     Ok(())
@@ -279,6 +344,17 @@ mod tests {
     use super::*;
     use std::fs;
     use std::time::{SystemTime, UNIX_EPOCH};
+
+    // Testes chamam a lógica síncrona direto, sem precisar de runtime async —
+    // os `#[tauri::command]` async acima são só wrappers finos em
+    // `spawn_blocking`. Shadowing explícito vence o `use super::*` acima sem
+    // conflito (regra padrão de resolução de nomes do Rust).
+    use super::worktree_cleanup_inner as worktree_cleanup;
+    use super::worktree_fetch_branch_inner as worktree_fetch_branch;
+    use super::worktree_list_inner as worktree_list;
+    use super::worktree_provision_inner as worktree_provision;
+    use super::worktree_remove_inner as worktree_remove;
+    use super::worktree_unlock_inner as worktree_unlock;
 
     fn temp_repo() -> PathBuf {
         let suffix = SystemTime::now()
@@ -410,7 +486,11 @@ mod tests {
     #[cfg(test)]
     mod opencode_e2e {
         use super::temp_repo;
-        use crate::worktrees::{worktree_list, worktree_provision, worktree_remove, WorktreeMode};
+        use crate::worktrees::WorktreeMode;
+        use crate::worktrees::{
+            worktree_list_inner as worktree_list, worktree_provision_inner as worktree_provision,
+            worktree_remove_inner as worktree_remove,
+        };
         use std::fs;
         use std::path::{Path, PathBuf};
         use std::process::{Command, Stdio};
@@ -557,7 +637,7 @@ mod tests {
                 let wt_path = PathBuf::from(&wt.path);
                 // Graphify por worktree — mesmo padrão real que o Alethe usa ao
                 // spawnar um terminal opencode num projeto com graphifyEnabled.
-                let _ = crate::graphify::graphify_opencode_config_write(
+                let _ = crate::graphify::graphify_opencode_config_write_inner(
                     wt_path.to_string_lossy().into_owned(),
                     None,
                 );

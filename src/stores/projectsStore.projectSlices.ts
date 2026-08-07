@@ -2,14 +2,24 @@
 
 import { nanoid } from 'nanoid'
 
-import { clearTerminalPtyIds, collectTerminalPtyIds } from '../lib/terminalFactory'
+import { getLocale, translate } from '../lib/i18n'
+import { clearTerminalPtyIds, collectTerminalPtyIds, getProjectRepoRoot } from '../lib/terminalFactory'
 import { cleanupPtys } from '../lib/terminalLifecycle'
 import { GROUP_COLORS } from '../lib/types'
 import type { Group, Project } from '../lib/types'
 import { sanitizeWorkspaceSnapshot } from '../lib/workspaceNavigation'
+import { useUiStore } from './uiStore'
 import { collectGroupProjectIds } from './projectsStore.migrations'
 import type { ProjectsState } from './projectsStore'
 import type { SliceCtx } from './projectsStore.slices'
+
+function t(key: Parameters<typeof translate>[1], params?: Record<string, string | number>) {
+  return translate(getLocale(), key, params)
+}
+
+/** Guarda de reentrância pra migrateProjectTerminalsToWorktrees — coordenação
+ *  efêmera entre chamadas, não faz sentido persistir no estado do Zustand. */
+const migratingWorktreeProjectIds = new Set<string>()
 
 type GroupsSlice = Pick<
   ProjectsState,
@@ -336,8 +346,13 @@ type ProjectsSlice = Pick<
   | 'setValidationCommands'
   | 'setGsdWatcherEnabled'
   | 'setConflictAgentProvider'
+  | 'setConflictAgentModel'
+  | 'setReviewAgentProvider'
+  | 'setReviewAgentModel'
   | 'setGraphifyEnabled'
   | 'setAutoWorktree'
+  | 'setMergePostAction'
+  | 'migrateProjectTerminalsToWorktrees'
   | 'addOrphanWorktree'
   | 'removeOrphanWorktree'
   | 'setCleaningOrphans'
@@ -347,7 +362,7 @@ type ProjectsSlice = Pick<
 
 export function createProjectsSlice({ set, get, update, updateProject }: SliceCtx): ProjectsSlice {
   return {
-    createProject: ({ name, color, iconUrl, groupId = null, defaultCwd }) => {
+    createProject: ({ name, color, iconUrl, groupId = null, defaultCwd, githubUrl, firstBootPending }) => {
       const project: Project = {
         id: nanoid(),
         name,
@@ -355,6 +370,8 @@ export function createProjectsSlice({ set, get, update, updateProject }: SliceCt
         iconUrl,
         groupId,
         ...(defaultCwd?.trim() ? { defaultCwd: defaultCwd.trim() } : {}),
+        githubUrl,
+        firstBootPending,
         terminals: [],
         layoutMode: 'auto',
         collapsed: false,
@@ -415,10 +432,145 @@ export function createProjectsSlice({ set, get, update, updateProject }: SliceCt
     setConflictAgentProvider: (id, conflictAgentProvider) =>
       updateProject(id, (p) => ({ ...p, conflictAgentProvider })),
 
+    setConflictAgentModel: (id, conflictAgentModel) =>
+      updateProject(id, (p) => ({ ...p, conflictAgentModel })),
+
+    setReviewAgentProvider: (id, reviewAgentProvider) =>
+      updateProject(id, (p) => ({ ...p, reviewAgentProvider })),
+
+    setReviewAgentModel: (id, reviewAgentModel) =>
+      updateProject(id, (p) => ({ ...p, reviewAgentModel })),
+
     setGraphifyEnabled: (id, graphifyEnabled) =>
       updateProject(id, (p) => ({ ...p, graphifyEnabled })),
 
+    // Só liga/desliga a flag. NÃO migra terminais existentes como efeito
+    // colateral — autoWorktree é sobre agentes NOVOS (ver createAgentTerminal,
+    // que já cria a worktree corretamente no nascimento). Migrar terminais já
+    // vivos é destrutivo (mata/suspende PTY, perde continuidade de sessão) e
+    // precisa ser uma ação explícita e separada — ver migrateProjectTerminalsToWorktrees,
+    // chamada só pelo botão dedicado no EditProjectModal.
     setAutoWorktree: (id, autoWorktree) => updateProject(id, (p) => ({ ...p, autoWorktree })),
+
+    setMergePostAction: (id, mergePostAction) => updateProject(id, (p) => ({ ...p, mergePostAction })),
+
+    migrateProjectTerminalsToWorktrees: async (projectId) => {
+      if (migratingWorktreeProjectIds.has(projectId)) return // já em andamento — ignora clique duplicado
+      const project = get().projects.find((p) => p.id === projectId)
+      if (!project) return
+      const repo = getProjectRepoRoot(project)
+      if (!repo) {
+        useUiStore.getState().pushToast({
+          title: t('multiAgent.migrateNoRepoTitle'),
+          body: t('multiAgent.migrateNoRepoBody'),
+        })
+        return
+      }
+
+      migratingWorktreeProjectIds.add(projectId)
+      try {
+        const { worktreeProvision, suspendPty, gitStatus } = await import('../lib/tauri')
+
+        // git worktree add faz checkout do HEAD — qualquer mudança não commitada
+        // no repo compartilhado não é copiada pra worktree nova. Preferimos
+        // adiar a migração inteira a arriscar perder trabalho em progresso.
+        // gitStatus também é a checagem de "isso é mesmo um repo git" — se
+        // falhar, NÃO dá pra assumir "não sujo" e seguir em frente (bug real:
+        // fazia isso antes, e cada worktreeProvision subsequente falhava com
+        // o erro cru not_a_git_repository vazando pro toast final).
+        let status: Awaited<ReturnType<typeof gitStatus>> | null = null
+        try {
+          status = await gitStatus(repo)
+        } catch {
+          useUiStore.getState().pushToast({
+            title: t('multiAgent.migrateNoRepoTitle'),
+            body: t('multiAgent.migrateNoRepoBody'),
+          })
+          return
+        }
+        const dirty = status.staged.length + status.changes.length + status.untracked.length > 0
+        if (dirty) {
+          useUiStore.getState().pushToast({
+            title: t('multiAgent.migrateDirtyTitle'),
+            body: t('multiAgent.migrateDirtyBody'),
+          })
+          return
+        }
+
+        const targets = project.terminals.filter(
+          (terminal) =>
+            !terminal.worktreeAgentId && terminal.kind !== 'web' && terminal.kind !== 'file',
+        )
+        const succeeded: string[] = []
+        const failed: { name: string; error: string }[] = []
+
+        for (const terminal of targets) {
+          try {
+            const agentId = `${terminal.name.toLowerCase().slice(0, 8)}-${nanoid(6)}`.replace(
+              /[^A-Za-z0-9_-]/g,
+              'x',
+            )
+            const info = await worktreeProvision(repo, agentId, project.worktreeMode ?? 'gitWorktree')
+
+            // Suspende (não mata) o PTY antigo: preserva scrollback/identidade
+            // em vez de apagar tudo — o novo PTY nasce na worktree isolada.
+            for (const tab of terminal.tabs) {
+              if (tab.ptyId) {
+                await suspendPty(tab.ptyId).catch(() => {})
+              }
+            }
+
+            updateProject(projectId, (p) => ({
+              ...p,
+              terminals: p.terminals.map((t) => {
+                if (t.id !== terminal.id) return t
+                return {
+                  ...t,
+                  cwd: info.path,
+                  worktreeAgentId: agentId,
+                  tabs: t.tabs.map((tab) => ({
+                    ...tab,
+                    cwd: info.path,
+                    ptyId: null, // força respawn no novo CWD da worktree
+                  })),
+                }
+              }),
+            }))
+            succeeded.push(terminal.name)
+          } catch (err) {
+            failed.push({ name: terminal.name, error: String(err) })
+          }
+        }
+
+        if (succeeded.length === 0 && failed.length === 0) {
+          useUiStore.getState().pushToast({
+            title: t('multiAgent.migrateEmptyTitle'),
+            body: t('multiAgent.migrateEmptyBody'),
+          })
+        } else if (failed.length === 0) {
+          useUiStore.getState().pushToast({
+            title: t('multiAgent.migrateDoneTitle'),
+            body: t('multiAgent.migrateDoneBody', { count: succeeded.length }),
+          })
+        } else if (succeeded.length === 0) {
+          useUiStore.getState().pushToast({
+            title: t('multiAgent.migrateFailedTitle'),
+            body: t('multiAgent.migrateFailedBody', { error: failed[0].error.slice(0, 200) }),
+          })
+        } else {
+          useUiStore.getState().pushToast({
+            title: t('multiAgent.migratePartialTitle'),
+            body: t('multiAgent.migratePartialBody', {
+              succeeded: succeeded.length,
+              failed: failed.length,
+              names: failed.map((f) => f.name).join(', '),
+            }),
+          })
+        }
+      } finally {
+        migratingWorktreeProjectIds.delete(projectId)
+      }
+    },
 
     addOrphanWorktree: (projectId, entry) =>
       updateProject(projectId, (p) => {

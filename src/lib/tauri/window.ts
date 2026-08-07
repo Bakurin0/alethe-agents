@@ -149,7 +149,7 @@ export function listenPtySuspended(
 }
 
 /** Estado da sessão anterior, se ela não saiu limpa (provável crash/OOM/kill). */
-export type CrashReport = {
+export type CrashSession = {
   started_at_ms: number
   clean_exit: boolean
   app_version: string
@@ -158,9 +158,26 @@ export type CrashReport = {
   ptys_mb: number
   webview_mb: number
   process_count: number
+  /** Se a rede de segurança contra terminais órfãos (Job Object) estava ativa
+   * naquela sessão. `false` também em plataformas não-Windows. */
+  job_guard_active: boolean
+}
+
+/** Relatório exposto no boot: sessão anterior (se saiu suja) + quantos
+ * processos órfãos foram varridos/mortos nesta inicialização (segunda
+ * camada de defesa, caso o Job Object tenha falhado silenciosamente). */
+export type CrashReport = {
+  session: CrashSession
+  orphans_reaped: number
 }
 
 /** null se a sessão anterior saiu limpa (ou é o primeiro boot). */
 export async function getLastCrashReport(): Promise<CrashReport | null> {
   return invoke<CrashReport | null>('get_last_crash_report')
+}
+
+/** Status da rede de segurança (Job Object, Windows) contra terminais órfãos
+ * NESTA sessão em execução agora. */
+export async function getJobGuardStatus(): Promise<boolean> {
+  return invoke<boolean>('get_job_guard_status')
 }

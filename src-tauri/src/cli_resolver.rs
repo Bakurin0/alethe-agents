@@ -117,9 +117,18 @@ pub fn command_builder_for_terminal(
 
 /// Tauri command — versão pública pro frontend pré-checar se um agent está
 /// resolvível antes de tentar spawnar. Retorna o path absoluto se achou.
+///
+/// `async` + `spawn_blocking`: a varredura faz várias checagens de
+/// filesystem (potencialmente lentas em disco de rede/antivírus) e, se
+/// rodasse como `fn` síncrona, travaria a thread de despacho de IPC do
+/// Tauri — mesmo bug já corrigido em `graphify.rs`/`opencode_gsd_plugin.rs`.
 #[tauri::command]
-pub fn find_cli_launcher(agent: String) -> Option<String> {
-    find_windows_cli_launcher(&agent).map(|p| p.to_string_lossy().to_string())
+pub async fn find_cli_launcher(agent: String) -> Option<String> {
+    tokio::task::spawn_blocking(move || {
+        find_windows_cli_launcher(&agent).map(|p| p.to_string_lossy().to_string())
+    })
+    .await
+    .unwrap_or(None)
 }
 
 pub fn find_windows_cli_launcher(command: &str) -> Option<PathBuf> {
@@ -438,4 +447,195 @@ fn dedupe_paths(paths: Vec<PathBuf>) -> Vec<PathBuf> {
     }
 
     result
+}
+
+#[derive(serde::Serialize, serde::Deserialize, Debug, Clone)]
+pub struct ModelOption {
+    pub id: String,
+    pub label: String,
+}
+
+fn is_valid_model_id(id: &str) -> bool {
+    let id_lower = id.to_lowercase();
+    if id.is_empty()
+        || id.starts_with('-')
+        || id.starts_with('#')
+        || id_lower.starts_with("usage")
+        || id_lower.starts_with("could")
+        || id_lower.starts_with("error")
+        || id_lower.starts_with("failed")
+        || id_lower.starts_with("let")
+        || id_lower.starts_with("flags")
+        || id_lower.starts_with("available")
+        || id.contains(' ')
+        || id.len() < 3
+    {
+        return false;
+    }
+    true
+}
+
+fn discover_provider_models_inner(provider: String) -> Result<Vec<ModelOption>, String> {
+    let mut models = Vec::new();
+    let provider_lower = provider.to_lowercase();
+
+    let cmd_name = match provider_lower.as_str() {
+        "antigravity" | "agy" => "agy",
+        other => other,
+    };
+
+    let bin_path = find_windows_cli_launcher(cmd_name)
+        .map(|p| p.to_string_lossy().to_string())
+        .unwrap_or_else(|| cmd_name.to_string());
+
+    match provider_lower.as_str() {
+        "antigravity" | "agy" => {
+            if let Ok(output) = std::process::Command::new(&bin_path)
+                .arg("models")
+                .output()
+            {
+                let stdout = String::from_utf8_lossy(&output.stdout);
+                for line in stdout.lines() {
+                    let trimmed = line.trim();
+                    let id = trimmed.split_whitespace().next().unwrap_or(trimmed).to_string();
+                    if is_valid_model_id(&id) {
+                        models.push(ModelOption {
+                            label: format!("{id} (Antigravity agy)"),
+                            id,
+                        });
+                    }
+                }
+            }
+            if models.is_empty() {
+                models.push(ModelOption { id: "gemini-2.5-pro".into(), label: "Gemini 2.5 Pro (Google DeepMind)".into() });
+                models.push(ModelOption { id: "gemini-2.5-flash".into(), label: "Gemini 2.5 Flash (Google DeepMind)".into() });
+                models.push(ModelOption { id: "claude-3.7-sonnet".into(), label: "Claude 3.7 Sonnet (Anthropic)".into() });
+                models.push(ModelOption { id: "deepseek-r1".into(), label: "DeepSeek R1 (Reasoning)".into() });
+            }
+        }
+        "opencode" => {
+            if let Ok(output) = std::process::Command::new(&bin_path)
+                .arg("models")
+                .output()
+            {
+                let stdout = String::from_utf8_lossy(&output.stdout);
+                for line in stdout.lines() {
+                    let trimmed = line.trim();
+                    let id = trimmed.split_whitespace().next().unwrap_or(trimmed).to_string();
+                    if is_valid_model_id(&id) {
+                        models.push(ModelOption {
+                            label: format!("{id} (OpenCode CLI)"),
+                            id,
+                        });
+                    }
+                }
+            }
+        }
+        "claude" => {
+            if let Ok(output) = std::process::Command::new(&bin_path)
+                .arg("models")
+                .output()
+            {
+                let stdout = String::from_utf8_lossy(&output.stdout);
+                for line in stdout.lines() {
+                    let trimmed = line.trim();
+                    let id = trimmed.split_whitespace().next().unwrap_or(trimmed).to_string();
+                    if is_valid_model_id(&id) {
+                        models.push(ModelOption {
+                            label: format!("{id} (Claude CLI)"),
+                            id,
+                        });
+                    }
+                }
+            }
+            if models.is_empty() {
+                models.push(ModelOption { id: "claude-3-7-sonnet".into(), label: "Claude 3.7 Sonnet (Anthropic)".into() });
+                models.push(ModelOption { id: "claude-3-5-sonnet".into(), label: "Claude 3.5 Sonnet (Anthropic)".into() });
+                models.push(ModelOption { id: "claude-3-5-haiku".into(), label: "Claude 3.5 Haiku (Anthropic)".into() });
+                models.push(ModelOption { id: "claude-3-opus".into(), label: "Claude 3 Opus (Anthropic)".into() });
+            }
+        }
+        "codex" => {
+            if let Ok(output) = std::process::Command::new(&bin_path)
+                .arg("models")
+                .output()
+            {
+                let stdout = String::from_utf8_lossy(&output.stdout);
+                for line in stdout.lines() {
+                    let trimmed = line.trim();
+                    let id = trimmed.split_whitespace().next().unwrap_or(trimmed).to_string();
+                    if is_valid_model_id(&id) {
+                        models.push(ModelOption {
+                            label: format!("{id} (Codex CLI)"),
+                            id,
+                        });
+                    }
+                }
+            }
+            if models.is_empty() {
+                models.push(ModelOption { id: "gpt-4o".into(), label: "GPT-4o (OpenAI)".into() });
+                models.push(ModelOption { id: "o3-mini".into(), label: "o3-mini (Raciocínio OpenAI)".into() });
+                models.push(ModelOption { id: "o1".into(), label: "o1 (OpenAI)".into() });
+                models.push(ModelOption { id: "gpt-4o-mini".into(), label: "GPT-4o mini (OpenAI)".into() });
+            }
+        }
+        "mimo" => {
+            if let Ok(output) = std::process::Command::new(&bin_path)
+                .arg("models")
+                .output()
+            {
+                let stdout = String::from_utf8_lossy(&output.stdout);
+                for line in stdout.lines() {
+                    let trimmed = line.trim();
+                    let id = trimmed.split_whitespace().next().unwrap_or(trimmed).to_string();
+                    if is_valid_model_id(&id) {
+                        models.push(ModelOption {
+                            label: format!("{id} (Mimo CLI)"),
+                            id,
+                        });
+                    }
+                }
+            }
+            if models.is_empty() {
+                models.push(ModelOption { id: "mimo-v1-pro".into(), label: "Mimo V1 Pro (Xiaomi AI)".into() });
+                models.push(ModelOption { id: "mimo-v1-flash".into(), label: "Mimo V1 Flash (Xiaomi AI)".into() });
+            }
+        }
+        "freebuff" => {
+            if let Ok(output) = std::process::Command::new(&bin_path)
+                .arg("models")
+                .output()
+            {
+                let stdout = String::from_utf8_lossy(&output.stdout);
+                for line in stdout.lines() {
+                    let trimmed = line.trim();
+                    let id = trimmed.split_whitespace().next().unwrap_or(trimmed).to_string();
+                    if is_valid_model_id(&id) {
+                        models.push(ModelOption {
+                            label: format!("{id} (Freebuff CLI)"),
+                            id,
+                        });
+                    }
+                }
+            }
+            if models.is_empty() {
+                models.push(ModelOption { id: "freebuff-auto".into(), label: "Freebuff Auto-Router".into() });
+                models.push(ModelOption { id: "freebuff-fast".into(), label: "Freebuff Fast".into() });
+            }
+        }
+        _ => {}
+    }
+
+    Ok(models)
+}
+
+/// `discover_provider_models_inner` roda `std::process::Command::output()`
+/// (subprocesso bloqueante) — precisa de `spawn_blocking` pra não travar a
+/// thread de despacho de IPC do Tauri, mesmo motivo do fix em
+/// `find_cli_launcher` acima.
+#[tauri::command]
+pub async fn discover_provider_models(provider: String) -> Result<Vec<ModelOption>, String> {
+    tokio::task::spawn_blocking(move || discover_provider_models_inner(provider))
+        .await
+        .map_err(|error| format!("discover_provider_models: falha na task bloqueante: {error}"))?
 }

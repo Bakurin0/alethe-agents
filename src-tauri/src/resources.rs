@@ -1,10 +1,11 @@
 use serde::{Deserialize, Serialize};
 use std::collections::{HashMap, HashSet};
 use std::sync::Mutex;
-use std::time::{Duration, SystemTime, UNIX_EPOCH};
+use std::time::Duration;
 use sysinfo::{Pid, System};
 use tauri::{AppHandle, Emitter, State};
 
+use crate::provider_common::now_ms;
 use crate::pty::{self, PtySessions};
 use crate::stats::MemoryStats;
 
@@ -158,13 +159,6 @@ impl Default for ResourceSupervisor {
             system: Mutex::new(System::new()),
         }
     }
-}
-
-fn now_ms() -> u64 {
-    SystemTime::now()
-        .duration_since(UNIX_EPOCH)
-        .map(|duration| duration.as_millis() as u64)
-        .unwrap_or(0)
 }
 
 fn process_private_commit_bytes(pid: u32, fallback: u64) -> u64 {

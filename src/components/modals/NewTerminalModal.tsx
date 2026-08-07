@@ -5,29 +5,25 @@ import { useUiStore } from '../../stores/uiStore'
 import { basename } from '../../lib/paths'
 import { getProjectDefaultCwd, useProjectsStore } from '../../stores/projectsStore'
 import { pickDirectory } from '../../lib/dialog'
-import { UNRESTRICTED_FLAG, type AgentRuntimeProfile, type AgentType } from '../../lib/types'
+import { AGENT_TYPE_LABELS, UNRESTRICTED_FLAG, type AgentRuntimeProfile, type AgentType } from '../../lib/types'
 import { AgentIcon } from '../icons/AgentIcons'
 import { useT } from '../../lib/i18n'
 import { Modal } from './Modal'
 import controls from './controls.module.css'
 import styles from './NewTerminalModal.module.css'
 
-const AGENTS: { type: AgentType; label: string }[] = [
-  { type: 'claude', label: 'Claude' },
-  { type: 'codex', label: 'Codex' },
-  { type: 'antigravity', label: 'Antigravity' },
-  { type: 'opencode', label: 'OpenCode' },
-  { type: 'shell', label: 'Shell' },
-  { type: 'mimo', label: 'Mimo' },
-  { type: 'freebuff', label: 'Freebuff' },
-]
+const AGENT_ORDER: AgentType[] = ['claude', 'codex', 'antigravity', 'opencode', 'shell', 'mimo', 'freebuff']
+const AGENTS: { type: AgentType; label: string }[] = AGENT_ORDER.map((type) => ({
+  type,
+  label: AGENT_TYPE_LABELS[type],
+}))
 
 export function NewTerminalModal() {
   const t = useT()
   const open = useUiStore((s) => s.openModal === 'newTerminal')
   const context = useUiStore((s) => s.modalContext) as { projectId?: string } | null
   const closeModal = useUiStore((s) => s.closeModal)
-  const createTerminal = useProjectsStore((s) => s.createTerminal)
+  const createAgentTerminal = useProjectsStore((s) => s.createAgentTerminal)
   const alwaysStartUnrestricted = useProjectsStore((s) => s.preferences.alwaysStartUnrestricted)
   const setPreferences = useProjectsStore((s) => s.setPreferences)
   const project = useProjectsStore((s) =>
@@ -109,13 +105,13 @@ export function NewTerminalModal() {
     })
   }
 
-  const submit = () => {
+  const submit = async () => {
     if (!context?.projectId) return
     const finalName = selectedAgent.label
     const finalCwd = cwd.trim() || inheritedCwd
     const flag = UNRESTRICTED_FLAG[type]
     const extraArgs = unrestricted[type] && flag ? [flag] : undefined
-    createTerminal(context.projectId, {
+    await createAgentTerminal(context.projectId, {
       name: finalName,
       cwd: finalCwd,
       firstTab: { type, cwd: finalCwd, extraArgs, runtimeProfile },
@@ -146,7 +142,7 @@ export function NewTerminalModal() {
           <button
             type="button"
             className={`${controls.btn} ${controls.btnPrimary}`}
-            onClick={submit}
+            onClick={() => void submit()}
             disabled={!context?.projectId}
           >
             {t('term.openAgent', { agent: selectedAgent.label })}

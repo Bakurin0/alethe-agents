@@ -16,6 +16,8 @@ type SessionTerminalDockProps = {
   onRestart: () => void
   hooksSettingsPath: string | null
   hooksEndpoint: string | null
+  hooksError: string | null
+  onRetryHooks: () => void
   coreAgentsReady: boolean
   terminalTheme: Theme
   budgetUsd: number | null
@@ -32,6 +34,8 @@ export function SessionTerminalDock({
   onRestart,
   hooksSettingsPath,
   hooksEndpoint,
+  hooksError,
+  onRetryHooks,
   coreAgentsReady,
   terminalTheme,
   budgetUsd,
@@ -92,6 +96,13 @@ export function SessionTerminalDock({
               onClaudeExit(code)
             }}
           />
+        ) : hooksError ? (
+          <div className={styles.empty}>
+            <span>{t('ws.hooksSettingsFailed', { message: hooksError })}</span>
+            <button type="button" className={styles.clearButton} onClick={onRetryHooks}>
+              {t('errorBoundary.retry')}
+            </button>
+          </div>
         ) : (
           <div className={styles.empty}>{t('ws.generatingHooksSettings')}</div>
         )}

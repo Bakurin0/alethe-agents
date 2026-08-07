@@ -1,10 +1,11 @@
 use serde::Serialize;
 use std::collections::HashMap;
-use std::env;
 use std::fs;
 use std::io::{BufRead, BufReader};
 use std::path::PathBuf;
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
+
+use crate::provider_common::{file_modified_ms, provider_home_dir};
 
 #[derive(Serialize)]
 pub struct ClaudeSessionMeta {
@@ -38,10 +39,7 @@ fn encode_cwd_for_claude(cwd: &str) -> String {
 }
 
 pub(crate) fn claude_projects_dir() -> Option<PathBuf> {
-    let home = env::var_os("USERPROFILE")
-        .or_else(|| env::var_os("HOME"))
-        .map(PathBuf::from)?;
-    Some(home.join(".claude").join("projects"))
+    provider_home_dir(&[".claude", "projects"])
 }
 
 fn truncate_chars(s: &str, max_chars: usize) -> String {
@@ -56,15 +54,6 @@ fn truncate_chars(s: &str, max_chars: usize) -> String {
         count += 1;
     }
     out
-}
-
-fn modified_ms(metadata: &fs::Metadata) -> u128 {
-    metadata
-        .modified()
-        .ok()
-        .and_then(|m| m.duration_since(SystemTime::UNIX_EPOCH).ok())
-        .map(|d| d.as_millis())
-        .unwrap_or(0)
 }
 
 fn parse_session_file(
@@ -124,7 +113,7 @@ fn parse_session_file(
         title,
         first_user_prompt,
         message_count,
-        modified_at_ms: modified_ms(metadata),
+        modified_at_ms: file_modified_ms(metadata),
         size_bytes: metadata.len(),
     })
 }
@@ -169,8 +158,18 @@ pub(crate) fn project_dirs_for_cwd(cwd: &str) -> Result<Vec<PathBuf>, String> {
     Ok(matching_project_dirs(&root, &encoded))
 }
 
+/// `async` + `spawn_blocking`: varre diretórios de sessão no disco, mesma
+/// classe de I/O bloqueante já corrigida em `cli_resolver.rs`; chamado a
+/// cada spawn/validação de resumo de terminal (`XTermView`), então travar a
+/// thread de despacho do Tauri aqui trava outros comandos IPC concorrentes.
 #[tauri::command]
-pub fn snapshot_claude_sessions(cwd: String) -> Result<Vec<ClaudeSessionSnapshot>, String> {
+pub async fn snapshot_claude_sessions(cwd: String) -> Result<Vec<ClaudeSessionSnapshot>, String> {
+    tokio::task::spawn_blocking(move || snapshot_claude_sessions_inner(cwd))
+        .await
+        .map_err(|error| format!("snapshot_claude_sessions: falha na task bloqueante: {error}"))?
+}
+
+fn snapshot_claude_sessions_inner(cwd: String) -> Result<Vec<ClaudeSessionSnapshot>, String> {
     let project_dirs = project_dirs_for_cwd(&cwd)?;
 
     let mut sessions: Vec<ClaudeSessionSnapshot> = Vec::new();
@@ -197,7 +196,7 @@ pub fn snapshot_claude_sessions(cwd: String) -> Result<Vec<ClaudeSessionSnapshot
             };
             sessions.push(ClaudeSessionSnapshot {
                 id,
-                modified_at_ms: modified_ms(&metadata),
+                modified_at_ms: file_modified_ms(&metadata),
                 size_bytes: metadata.len(),
             });
         }

@@ -41,6 +41,8 @@ mod event_bus;
 mod telemetry;
 mod validation;
 mod planning;
+mod planning_gate;
+mod opencode_gsd_plugin;
 mod scheduler;
 mod supervisor;
 mod merge_analyzer;
@@ -50,6 +52,10 @@ mod ai_memory;
 mod plugins;
 mod opencode_sessions;
 mod opencode_bridge;
+mod project_detector;
+mod contract_check;
+mod health_probe;
+mod provider_common;
 
 use crate::pty::{PtySession, PtySessions};
 use std::collections::HashMap;
@@ -155,6 +161,7 @@ pub fn run() {
             // `alethe <path>` com o app fechado: guarda o alvo agora, o
             // frontend consome no boot (a webview ainda não existe aqui).
             cli_launch::capture_cold_start(app.handle());
+            event_bus::set_app_handle(app.handle().clone());
             // Cantos arredondados no macOS (no-op nas outras plataformas). A
             // janela roda sem decorações nativas, então reaplicamos o
             // arredondamento no nível do AppKit.
@@ -213,6 +220,7 @@ pub fn run() {
             pty::suspend_pty,
             pty::get_pty_cwd,
             pty::set_pty_read_state,
+            pty::set_pty_visible,
             pty::set_pty_priority,
             ghostty_bridge::ghostty_spawn,
             ghostty_bridge::ghostty_sync_frame,
@@ -226,6 +234,8 @@ pub fn run() {
             process_tree::kill_pty_tree_cmd,
             projects::load_projects,
             projects::save_projects,
+            projects::clone_github_repo,
+            cli_resolver::discover_provider_models,
             profiles::list_profiles,
             profiles::list_profile_summaries,
             profiles::get_active_profile,
@@ -246,6 +256,7 @@ pub fn run() {
             github_sync::github_sync_logout,
             github_sync::github_sync_push,
             github_sync::github_sync_pull,
+            git_control::git_init,
             git_control::git_status,
             git_control::git_diff,
             git_control::git_stage,
@@ -255,6 +266,7 @@ pub fn run() {
             git_control::git_push,
             git_control::git_pull,
             git_control::git_list_branches,
+            git_control::git_diff_summary,
             diagnostics::open_data_folder,
             diagnostics::open_spawn_log,
             diagnostics::open_in_file_explorer,
@@ -291,6 +303,7 @@ pub fn run() {
             agent_cost::get_model_pricing,
             agent_cost::get_opencode_usage_summary,
             crash_watch::get_last_crash_report,
+            crash_watch::get_job_guard_status,
             set_window_opacity,
             quit_app,
             worktrees::worktree_provision,
@@ -310,6 +323,12 @@ pub fn run() {
             planning::planning_audit_history,
             planning::set_planning_autocommit,
             planning::get_planning_autocommit,
+            planning_gate::read_planning_status,
+            planning_gate::read_gsd_child_session,
+            planning_gate::read_gsd_child_busy,
+            planning_gate::read_gsd_child_error,
+            planning_gate::read_gsd_procedure,
+            opencode_gsd_plugin::gsd_opencode_plugin_write,
             scheduler::get_scheduler_tasks,
             scheduler::trigger_scheduler_tick,
             scheduler::cancel_task,
@@ -320,6 +339,9 @@ pub fn run() {
             conflict_resolution::merge_preflight_abort,
             conflict_resolution::merge_rebase_onto_target,
             conflict_resolution::merge_force_cleanup,
+            project_detector::detect_project_stack,
+            contract_check::contract_check,
+            health_probe::health_probe,
             graphify::graphify_ensure_graph,
             graphify::graphify_detect,
             graphify::graphify_mcp_config_path,

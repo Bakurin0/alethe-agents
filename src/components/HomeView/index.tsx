@@ -76,7 +76,7 @@ export function HomeView() {
   const containers = useProjectsStore((s) => s.workspace.containers)
   const openContainerWithAllPanes = useProjectsStore((s) => s.openContainerWithAllPanes)
   const setActiveProjectOnly = useProjectsStore((s) => s.setActiveProjectOnly)
-  const createTerminal = useProjectsStore((s) => s.createTerminal)
+  const createAgentTerminal = useProjectsStore((s) => s.createAgentTerminal)
   const openModal = useUiStore((s) => s.openModal_)
   const setActiveView = useUiStore((s) => s.setActiveView)
   const setActiveTerminal = useUiStore((s) => s.setActiveTerminal)
@@ -181,14 +181,14 @@ export function HomeView() {
     if (folder) setQuickCwd(folder)
   }
 
-  const submitQuickPrompt = (event: React.FormEvent) => {
+  const submitQuickPrompt = async (event: React.FormEvent) => {
     event.preventDefault()
     const prompt = quickPromptRef.current?.value.trim() ?? ''
     if (!quickTarget || !prompt) return
     const cwd = quickCwd.trim() || getProjectDefaultCwd(quickTarget, projects)
     const flag = quickUnrestricted ? UNRESTRICTED_FLAG[quickAgent] : null
     const label = QUICK_AGENTS.find((agent) => agent.type === quickAgent)?.label ?? quickAgent
-    const terminal = createTerminal(quickTarget.id, {
+    const terminal = await createAgentTerminal(quickTarget.id, {
       name: label,
       cwd,
       firstTab: {
@@ -272,7 +272,7 @@ export function HomeView() {
           </div>
         </div>
 
-        <form className={styles.quickLaunch} onSubmit={submitQuickPrompt}>
+        <form className={styles.quickLaunch} onSubmit={(e) => void submitQuickPrompt(e)}>
           <div className={styles.quickTerminalBar} aria-hidden="true">
             <span className={`${styles.quickTerminalDot} ${styles.quickTerminalClose}`} />
             <span className={`${styles.quickTerminalDot} ${styles.quickTerminalWait}`} />

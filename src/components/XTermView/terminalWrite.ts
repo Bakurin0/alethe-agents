@@ -7,7 +7,12 @@ export const PROMPT_HISTORY_KEY = (id: string) => `prompt-history:${id}`
 export const PASTE_CHUNK_SIZE = 1024
 export const PASTE_CHUNK_DELAY_MS = 8
 // Espalha rajadas grandes de saída por frames pra terminal.write não travar a WebView.
-export const TERMINAL_WRITE_FRAME_BUDGET = 64 * 1024
+// 16 KiB (não 64 KiB): redraws densos de TUI (ex. OpenCode em alternate buffer,
+// muita cor/movimento) custam bem mais tempo de parse+render por byte do que
+// texto plano — um terminal.write() de 64 KiB desse tipo de conteúdo já foi
+// grande o bastante pra travar o frame por si só. Mais frames pro replay
+// terminar > qualquer frame individual travando por muito tempo.
+export const TERMINAL_WRITE_FRAME_BUDGET = 16 * 1024
 
 export function loadPromptHistory(ptyId: string): string[] {
   const raw = readScopedStorage(PROMPT_HISTORY_KEY(ptyId), true)

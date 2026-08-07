@@ -228,6 +228,34 @@ pub(crate) fn repository_root(path: &str) -> Result<PathBuf, String> {
         .map_err(|_| "not_a_git_repository".to_string())
 }
 
+/// Como `repository_root`, mas resolve pro checkout PRINCIPAL compartilhado,
+/// não pro toplevel do checkout específico em `path`. Necessário porque
+/// `path` pode ser uma worktree já isolada: worktrees vinculadas não têm seu
+/// próprio `.git` real (é um arquivo apontando pro repo principal), mas
+/// `--show-toplevel` chamado nelas devolve a PRÓPRIA worktree, não o repo
+/// principal — usar isso como base pra criar uma worktree nova resultaria
+/// numa worktree aninhada dentro da outra. `--git-common-dir` sempre aponta
+/// pro `.git` do checkout principal, mesmo chamado de dentro de uma worktree
+/// vinculada; o pai desse diretório é a raiz principal real.
+pub(crate) fn main_repository_root(path: &str) -> Result<PathBuf, String> {
+    let cwd = resolve_input_directory(path)?;
+    let output = git_command(&cwd, &["rev-parse", "--path-format=absolute", "--git-common-dir"])?;
+    if !output.status.success() {
+        return Err("not_a_git_repository".to_string());
+    }
+    let common_dir = String::from_utf8_lossy(&output.stdout).trim().to_string();
+    if common_dir.is_empty() {
+        return Err("not_a_git_repository".to_string());
+    }
+    let common_dir = PathBuf::from(common_dir)
+        .canonicalize()
+        .map_err(|_| "not_a_git_repository".to_string())?;
+    common_dir
+        .parent()
+        .map(|p| p.to_path_buf())
+        .ok_or_else(|| "not_a_git_repository".to_string())
+}
+
 fn validated_root(path: &str) -> Result<PathBuf, String> {
     let requested = resolve_input_directory(path).map_err(|_| "not_a_git_repository".to_string())?;
     let actual = repository_root(path)?;
@@ -390,6 +418,73 @@ fn branch_info(root: &Path) -> Result<(String, bool, u32, u32), String> {
     Ok((branch, detached, ahead, behind))
 }
 
+/// Diretórios/arquivos pesados ou gerados que nunca deveriam entrar no
+/// primeiro commit de um `git init` automático — mesma lista de propósito
+/// (embora não o mesmo array em memória) de `contract_check::SKIP_DIRS`.
+/// Sem isso, `git add -A` num projeto real (ex.: um app com
+/// `node_modules` de dependências) trava a UI por minutos escaneando e
+/// hasheando dezenas de milhares de arquivos que ninguém quer versionados —
+/// foi exatamente o que aconteceu testando num monorepo com >20k arquivos só
+/// em `node_modules`. `.alethe/` entra porque é onde as PRÓPRIAS worktrees de
+/// agente vão morar a partir de agora (não faz sentido commitar um checkout
+/// git dentro de outro).
+const GITIGNORE_SEED: &str = "\
+node_modules/
+target/
+dist/
+build/
+.next/
+.venv/
+venv/
+__pycache__/
+.alethe/
+.env
+.env.local
+";
+
+/// Só escreve o `.gitignore` semente se a pasta ainda não tiver um — nunca
+/// sobrescreve um `.gitignore` que o usuário já mantém.
+fn seed_gitignore_if_missing(dir: &Path) {
+    let path = dir.join(".gitignore");
+    if path.exists() {
+        return;
+    }
+    let _ = std::fs::write(&path, GITIGNORE_SEED);
+}
+
+/// Inicializa um repositório Git na pasta, com um commit inicial — `git
+/// worktree add`/`git clone --local` (isolamento por agente) exigem um HEAD
+/// válido pra funcionar, então só rodar `git init` não basta. Usado pela
+/// oferta "Inicializar Git" quando o modal de projeto detecta que a pasta
+/// ainda não é um repositório. Identidade do commit é fixa via `-c` (não
+/// depende de `user.name`/`user.email` global do usuário estarem configurados).
+/// Idempotente: se já for um repo, só devolve a raiz existente sem tocar em nada.
+fn git_init_inner(path: String) -> Result<String, String> {
+    if let Ok(root) = repository_root(&path) {
+        return Ok(root.to_string_lossy().into_owned());
+    }
+    let dir = resolve_input_directory(&path)?;
+    checked_output(&dir, &["init", "-b", "main"])?;
+    seed_gitignore_if_missing(&dir);
+    checked_output(&dir, &["add", "-A"])?;
+    let identity = ["-c", "user.name=Alethe", "-c", "user.email=alethe@localhost"];
+    let mut commit_args: Vec<&str> = identity.to_vec();
+    commit_args.extend(["commit", "-m", "Commit inicial (Alethe)"]);
+    // Pasta vazia (nada pra adicionar) faz o commit normal falhar por "nothing
+    // to commit" — cai pro --allow-empty só nesse caso, só pra garantir HEAD.
+    if checked_output(&dir, &commit_args).is_err() {
+        let mut empty_args: Vec<&str> = identity.to_vec();
+        empty_args.extend(["commit", "--allow-empty", "-m", "Commit inicial (Alethe)"]);
+        checked_output(&dir, &empty_args)?;
+    }
+    repository_root(&path).map(|root| root.to_string_lossy().into_owned())
+}
+
+/// `async` + `spawn_blocking` pra todos os comandos deste módulo abaixo:
+/// cada um faz shell-out bloqueante de `git` direto no corpo, e como `fn`
+/// síncrona isso travaria a thread de despacho de IPC do Tauri — mesmo bug
+/// já corrigido em `cli_resolver.rs`/`graphify.rs`. `git_status` em
+/// particular é chamado a cada 3s pelo polling do `GitControl.tsx`.
 #[tauri::command]
 pub fn git_diff(repo_root: String, path: String, staged: bool) -> Result<String, String> {
     let mut args = vec!["diff"];
@@ -410,7 +505,13 @@ pub fn git_diff(repo_root: String, path: String, staged: bool) -> Result<String,
 }
 
 #[tauri::command]
-pub fn git_status(path: String) -> Result<GitRepositoryStatus, String> {
+pub async fn git_init(path: String) -> Result<String, String> {
+    tokio::task::spawn_blocking(move || git_init_inner(path))
+        .await
+        .map_err(|error| format!("git_init: falha na task bloqueante: {error}"))?
+}
+
+fn git_status_inner(path: String) -> Result<GitRepositoryStatus, String> {
     let root = repository_root(&path)?;
     let status = checked_output(
         &root,
@@ -432,13 +533,25 @@ pub fn git_status(path: String) -> Result<GitRepositoryStatus, String> {
 }
 
 #[tauri::command]
-pub fn git_stage(repo_root: String, paths: Vec<String>) -> Result<(), String> {
+pub async fn git_status(path: String) -> Result<GitRepositoryStatus, String> {
+    tokio::task::spawn_blocking(move || git_status_inner(path))
+        .await
+        .map_err(|error| format!("git_status: falha na task bloqueante: {error}"))?
+}
+
+fn git_stage_inner(repo_root: String, paths: Vec<String>) -> Result<(), String> {
     let root = validated_root(&repo_root)?;
     run_path_command(&root, &["add"], &paths)
 }
 
 #[tauri::command]
-pub fn git_unstage(repo_root: String, paths: Vec<String>) -> Result<(), String> {
+pub async fn git_stage(repo_root: String, paths: Vec<String>) -> Result<(), String> {
+    tokio::task::spawn_blocking(move || git_stage_inner(repo_root, paths))
+        .await
+        .map_err(|error| format!("git_stage: falha na task bloqueante: {error}"))?
+}
+
+fn git_unstage_inner(repo_root: String, paths: Vec<String>) -> Result<(), String> {
     let root = validated_root(&repo_root)?;
     let has_head = git_command(&root, &["rev-parse", "--verify", "HEAD"])
         .map(|output| output.status.success())
@@ -452,7 +565,13 @@ pub fn git_unstage(repo_root: String, paths: Vec<String>) -> Result<(), String> 
 }
 
 #[tauri::command]
-pub fn git_discard(repo_root: String, paths: Vec<String>, untracked: bool) -> Result<(), String> {
+pub async fn git_unstage(repo_root: String, paths: Vec<String>) -> Result<(), String> {
+    tokio::task::spawn_blocking(move || git_unstage_inner(repo_root, paths))
+        .await
+        .map_err(|error| format!("git_unstage: falha na task bloqueante: {error}"))?
+}
+
+fn git_discard_inner(repo_root: String, paths: Vec<String>, untracked: bool) -> Result<(), String> {
     let root = validated_root(&repo_root)?;
     if untracked {
         run_path_command(&root, &["clean", "-fd"], &paths)
@@ -462,7 +581,13 @@ pub fn git_discard(repo_root: String, paths: Vec<String>, untracked: bool) -> Re
 }
 
 #[tauri::command]
-pub fn git_commit(repo_root: String, message: String) -> Result<String, String> {
+pub async fn git_discard(repo_root: String, paths: Vec<String>, untracked: bool) -> Result<(), String> {
+    tokio::task::spawn_blocking(move || git_discard_inner(repo_root, paths, untracked))
+        .await
+        .map_err(|error| format!("git_discard: falha na task bloqueante: {error}"))?
+}
+
+fn git_commit_inner(repo_root: String, message: String) -> Result<String, String> {
     let root = validated_root(&repo_root)?;
     let trimmed = message.trim();
     if trimmed.is_empty() {
@@ -470,6 +595,13 @@ pub fn git_commit(repo_root: String, message: String) -> Result<String, String> 
     }
     let output = checked_output(&root, &["commit", "-m", trimmed])?;
     Ok(String::from_utf8_lossy(&output.stdout).trim().to_string())
+}
+
+#[tauri::command]
+pub async fn git_commit(repo_root: String, message: String) -> Result<String, String> {
+    tokio::task::spawn_blocking(move || git_commit_inner(repo_root, message))
+        .await
+        .map_err(|error| format!("git_commit: falha na task bloqueante: {error}"))?
 }
 
 /// Comando git que fala com o remoto (push/pull). `GIT_TERMINAL_PROMPT=0` faz o
@@ -503,8 +635,7 @@ fn remote_command(root: &Path, args: &[&str]) -> Result<String, String> {
     })
 }
 
-#[tauri::command]
-pub fn git_push(repo_root: String) -> Result<String, String> {
+fn git_push_inner(repo_root: String) -> Result<String, String> {
     let root = validated_root(&repo_root)?;
     match remote_command(&root, &["push"]) {
         // Branch sem upstream: publica em origin/<branch> (equivalente ao
@@ -516,10 +647,16 @@ pub fn git_push(repo_root: String) -> Result<String, String> {
     }
 }
 
+#[tauri::command]
+pub async fn git_push(repo_root: String) -> Result<String, String> {
+    tokio::task::spawn_blocking(move || git_push_inner(repo_root))
+        .await
+        .map_err(|error| format!("git_push: falha na task bloqueante: {error}"))?
+}
+
 /// Lista os branches locais (nome curto). Usado pelo ciclo de merge (RFC-006)
 /// para escolher source/target.
-#[tauri::command]
-pub fn git_list_branches(repo_root: String) -> Result<Vec<String>, String> {
+fn git_list_branches_inner(repo_root: String) -> Result<Vec<String>, String> {
     let root = repository_root(&repo_root)?;
     let output = checked_output(&root, &["branch", "--format=%(refname:short)"])?;
     Ok(String::from_utf8_lossy(&output.stdout)
@@ -530,16 +667,175 @@ pub fn git_list_branches(repo_root: String) -> Result<Vec<String>, String> {
 }
 
 #[tauri::command]
-pub fn git_pull(repo_root: String) -> Result<String, String> {
+pub async fn git_list_branches(repo_root: String) -> Result<Vec<String>, String> {
+    tokio::task::spawn_blocking(move || git_list_branches_inner(repo_root))
+        .await
+        .map_err(|error| format!("git_list_branches: falha na task bloqueante: {error}"))?
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct DiffSummaryEntry {
+    pub path: String,
+    /// Primeira letra do `--name-status` do git: A(dded)/M(odified)/D(eleted)/R(enamed)/...
+    pub status: String,
+}
+
+/// Um path é infraestrutura do próprio Alethe, não trabalho real do usuário,
+/// se estiver em `.planning/` (estado do plugin GSD Sync) ou `.opencode/`/
+/// `opencode.json` (MCP do Graphify + plugin GSD, escritos automaticamente a
+/// cada spawn). Mesma exclusão já aplicada em `getChangedFiles` do plugin
+/// GSD (`alethe-gsd-state.ts`) — sem ela, o Briefing de Testes listava
+/// `.opencode/alethe-gsd-config.json`, `.planning/goal.md` etc. como se
+/// fossem "alterações" feitas pelo agente, quando na verdade é o próprio
+/// Alethe escrevendo essa infraestrutura na worktree.
+fn is_alethe_infra_path(path: &str) -> bool {
+    path.starts_with(".planning/") || path.starts_with(".opencode/") || path == "opencode.json"
+}
+
+/// Lê o que ainda não foi commitado na PRÓPRIA worktree (`git status
+/// --porcelain`, working-tree aware — cobre staged/unstaged/untracked).
+/// Complementa o diff por range de commits abaixo: sem isso, um arquivo
+/// criado/editado na worktree e nunca commitado não aparece em nenhum commit
+/// de `source`, então some do resumo de alterações mesmo sendo trabalho real
+/// (foi exatamente o que o Gate de Verificação da Central de Merges reportava
+/// como "não há alterações de código" com um arquivo de verdade na worktree).
+fn uncommitted_entries(worktree_path: &Path) -> Vec<DiffSummaryEntry> {
+    if !worktree_path.is_dir() {
+        return Vec::new();
+    }
+    let Ok(output) = checked_output(
+        worktree_path,
+        &["status", "--porcelain=v1", "-z", "--untracked-files=all"],
+    ) else {
+        return Vec::new();
+    };
+    let fields: Vec<&[u8]> = output.stdout.split(|b| *b == 0).collect();
+    let mut entries = Vec::new();
+    let mut i = 0;
+    while i < fields.len() {
+        let field = fields[i];
+        i += 1;
+        if field.len() < 3 {
+            continue;
+        }
+        let x = field[0] as char;
+        let y = field[1] as char;
+        let path = String::from_utf8_lossy(&field[3..]).into_owned();
+        let renamed = matches!(x, 'R' | 'C') || matches!(y, 'R' | 'C');
+        if renamed && i < fields.len() {
+            i += 1; // pula o nome antigo — só o path atual importa aqui
+        }
+        // Reduz XY porcelain a uma letra representativa: prioriza o lado
+        // "working tree" (y); untracked ("??") vira "A" (adicionado).
+        let status = if x == '?' && y == '?' {
+            'A'
+        } else if y != ' ' {
+            y
+        } else {
+            x
+        };
+        entries.push(DiffSummaryEntry { path, status: status.to_string() });
+    }
+    entries
+}
+
+/// Resumo real (arquivos alterados, não-conflito) do que `source` mudou em
+/// relação a `target` — alimenta o "Briefing de Testes" da Central de Merges
+/// com dado de verdade em vez de texto fixo. Three-dot (`target...source`,
+/// mesmo espírito do `git diff` que o Revisor de Branch já roda no prompt),
+/// **unido** com o estado não commitado da worktree (`uncommitted_entries`
+/// acima) — só o range de commits ignora trabalho real ainda não commitado.
+fn git_diff_summary_inner(
+    repo_root: String,
+    source: String,
+    target: String,
+    worktree_path: Option<String>,
+) -> Result<Vec<DiffSummaryEntry>, String> {
+    let root = repository_root(&repo_root)?;
+    let range = format!("{target}...{source}");
+    let output = checked_output(&root, &["diff", "--name-status", "-z", &range])?;
+    let raw = String::from_utf8_lossy(&output.stdout);
+    // Saída "-z": campos separados por NUL. Cada entrada normal é
+    // "status\0path\0"; renomeações ("R100\0old\0new\0") têm um campo extra
+    // (o nome novo) que também vira `path` — o nome antigo é descartado.
+    let fields: Vec<&str> = raw.split('\0').filter(|s| !s.is_empty()).collect();
+    let mut entries = Vec::new();
+    let mut i = 0;
+    while i < fields.len() {
+        let status = fields[i].chars().next().unwrap_or('M').to_string();
+        i += 1;
+        if i >= fields.len() {
+            break;
+        }
+        let mut path = fields[i].to_string();
+        i += 1;
+        if status.starts_with('R') || status.starts_with('C') {
+            if i >= fields.len() {
+                break;
+            }
+            path = fields[i].to_string();
+            i += 1;
+        }
+        entries.push(DiffSummaryEntry { path, status });
+    }
+
+    if let Some(worktree) = worktree_path {
+        let mut seen: std::collections::HashSet<String> =
+            entries.iter().map(|e| e.path.clone()).collect();
+        for entry in uncommitted_entries(Path::new(&worktree)) {
+            if seen.insert(entry.path.clone()) {
+                entries.push(entry);
+            }
+        }
+    }
+
+    entries.retain(|entry| !is_alethe_infra_path(&entry.path));
+
+    Ok(entries)
+}
+
+#[tauri::command]
+pub async fn git_diff_summary(
+    repo_root: String,
+    source: String,
+    target: String,
+    worktree_path: Option<String>,
+) -> Result<Vec<DiffSummaryEntry>, String> {
+    tokio::task::spawn_blocking(move || {
+        git_diff_summary_inner(repo_root, source, target, worktree_path)
+    })
+    .await
+    .map_err(|error| format!("git_diff_summary: falha na task bloqueante: {error}"))?
+}
+
+fn git_pull_inner(repo_root: String) -> Result<String, String> {
     let root = validated_root(&repo_root)?;
     // --ff-only evita merge commit/conflito surpresa: se a branch divergiu, erra
     // limpo em vez de criar um merge automático.
     remote_command(&root, &["pull", "--ff-only"])
 }
 
+#[tauri::command]
+pub async fn git_pull(repo_root: String) -> Result<String, String> {
+    tokio::task::spawn_blocking(move || git_pull_inner(repo_root))
+        .await
+        .map_err(|error| format!("git_pull: falha na task bloqueante: {error}"))?
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+    // Testes chamam a lógica direto, fora de um runtime async — usam as
+    // versões `_inner` (síncronas) por trás dos wrappers `async fn` que os
+    // comandos IPC expõem, mesmo padrão de `worktrees.rs`/`graphify.rs`.
+    use super::git_commit_inner as git_commit;
+    use super::git_diff_summary_inner as git_diff_summary;
+    use super::git_discard_inner as git_discard;
+    use super::git_init_inner as git_init;
+    use super::git_stage_inner as git_stage;
+    use super::git_status_inner as git_status;
+    use super::git_unstage_inner as git_unstage;
     use std::fs;
     use std::time::{SystemTime, UNIX_EPOCH};
 
@@ -560,6 +856,36 @@ mod tests {
         let (staged, changes, _, _) = parse_porcelain(b"MM both.txt\0");
         assert_eq!(staged[0].path, "both.txt");
         assert_eq!(changes[0].path, "both.txt");
+    }
+
+    #[test]
+    fn main_repository_root_resolves_same_root_from_a_linked_worktree() {
+        let suffix = SystemTime::now().duration_since(UNIX_EPOCH).unwrap().as_nanos();
+        let root = std::env::temp_dir().join(format!("alethe-main-repo-root-{suffix}"));
+        fs::create_dir_all(&root).unwrap();
+        checked_output(&root, &["init", "-b", "main"]).unwrap();
+        checked_output(&root, &["config", "user.name", "Alethe Test"]).unwrap();
+        checked_output(&root, &["config", "user.email", "alethe@example.invalid"]).unwrap();
+        fs::write(root.join("a.txt"), "a\n").unwrap();
+        checked_output(&root, &["add", "-A"]).unwrap();
+        checked_output(&root, &["commit", "-m", "base"]).unwrap();
+
+        let worktree = root.join("wt");
+        checked_output(
+            &root,
+            &["worktree", "add", "-b", "agent-branch", worktree.to_str().unwrap(), "HEAD"],
+        )
+        .unwrap();
+
+        let from_main = main_repository_root(&root.to_string_lossy()).unwrap();
+        let from_worktree = main_repository_root(&worktree.to_string_lossy()).unwrap();
+        assert_eq!(from_main, from_worktree, "deve resolver a mesma raiz principal a partir de qualquer worktree");
+        // `repository_root` (--show-toplevel), em contraste, devolveria a
+        // PRÓPRIA worktree quando chamado de dentro dela — diferente da main.
+        let toplevel_from_worktree = repository_root(&worktree.to_string_lossy()).unwrap();
+        assert_ne!(from_worktree, toplevel_from_worktree);
+
+        fs::remove_dir_all(&root).unwrap();
     }
 
     #[test]
@@ -611,6 +937,151 @@ mod tests {
         fs::write(root.join("untracked.txt"), "remove me\n").unwrap();
         git_discard(root_string, vec!["untracked.txt".to_string()], true).unwrap();
         assert!(!root.join("untracked.txt").exists());
+        fs::remove_dir_all(root).unwrap();
+    }
+
+    #[test]
+    fn git_init_adopts_existing_files_into_a_first_commit() {
+        let root = temp_dir("init-adopt");
+        fs::write(root.join("existing.txt"), "already here\n").unwrap();
+        let root_string = root.to_string_lossy().into_owned();
+
+        let reported_root = git_init(root_string.clone()).unwrap();
+        assert_eq!(PathBuf::from(&reported_root), root.canonicalize().unwrap());
+
+        // O worktree/clone que consome isso precisa de um HEAD com os arquivos
+        // já commitados — não um repo vazio.
+        let status = git_status(root_string).unwrap();
+        assert!(status.staged.is_empty() && status.changes.is_empty() && status.untracked.is_empty());
+        let log = checked_output(&root, &["log", "--oneline"]).unwrap();
+        assert_eq!(String::from_utf8_lossy(&log.stdout).lines().count(), 1);
+
+        fs::remove_dir_all(root).unwrap();
+    }
+
+    #[test]
+    fn git_init_excludes_heavy_dirs_from_the_first_commit() {
+        let root = temp_dir("init-gitignore");
+        fs::write(root.join("src.txt"), "real code\n").unwrap();
+        fs::create_dir_all(root.join("node_modules").join("some-dep")).unwrap();
+        fs::write(root.join("node_modules").join("some-dep").join("index.js"), "// dep\n").unwrap();
+        let root_string = root.to_string_lossy().into_owned();
+
+        git_init(root_string.clone()).unwrap();
+
+        assert!(root.join(".gitignore").is_file());
+        let tracked = checked_output(&root, &["ls-tree", "-r", "--name-only", "HEAD"]).unwrap();
+        let tracked_names = String::from_utf8_lossy(&tracked.stdout);
+        assert!(tracked_names.contains("src.txt"));
+        assert!(!tracked_names.contains("node_modules"));
+
+        fs::remove_dir_all(root).unwrap();
+    }
+
+    #[test]
+    fn git_init_is_idempotent_on_an_existing_repo() {
+        let root = temp_dir("init-idempotent");
+        checked_output(&root, &["init"]).unwrap();
+        checked_output(&root, &["config", "user.name", "Alethe Test"]).unwrap();
+        checked_output(&root, &["config", "user.email", "alethe@example.invalid"]).unwrap();
+        fs::write(root.join("a.txt"), "a\n").unwrap();
+        checked_output(&root, &["add", "-A"]).unwrap();
+        checked_output(&root, &["commit", "-m", "first"]).unwrap();
+
+        let root_string = root.to_string_lossy().into_owned();
+        git_init(root_string.clone()).unwrap();
+
+        // Não deve ter criado um segundo commit nem tocado no repo existente.
+        let log = checked_output(&root, &["log", "--oneline"]).unwrap();
+        assert_eq!(String::from_utf8_lossy(&log.stdout).lines().count(), 1);
+
+        fs::remove_dir_all(root).unwrap();
+    }
+
+    #[test]
+    fn git_diff_summary_lists_added_modified_and_renamed_files_between_branches() {
+        let root = temp_dir("diff-summary");
+        checked_output(&root, &["init", "-b", "main"]).unwrap();
+        checked_output(&root, &["config", "user.name", "Alethe Test"]).unwrap();
+        checked_output(&root, &["config", "user.email", "alethe@example.invalid"]).unwrap();
+        fs::write(root.join("kept.txt"), "same on both\n").unwrap();
+        fs::write(root.join("old-name.txt"), "will be renamed\n").unwrap();
+        checked_output(&root, &["add", "-A"]).unwrap();
+        checked_output(&root, &["commit", "-m", "base"]).unwrap();
+
+        checked_output(&root, &["checkout", "-b", "feature"]).unwrap();
+        fs::write(root.join("kept.txt"), "changed on feature\n").unwrap();
+        fs::write(root.join("new.txt"), "brand new\n").unwrap();
+        checked_output(&root, &["add", "-A"]).unwrap();
+        checked_output(&root, &["mv", "old-name.txt", "new-name.txt"]).unwrap();
+        checked_output(&root, &["commit", "-m", "feature work"]).unwrap();
+
+        let root_string = root.to_string_lossy().into_owned();
+        let entries =
+            git_diff_summary(root_string, "feature".to_string(), "main".to_string(), None).unwrap();
+
+        let find = |path: &str| entries.iter().find(|e| e.path == path);
+        assert!(find("kept.txt").is_some_and(|e| e.status == "M"));
+        assert!(find("new.txt").is_some_and(|e| e.status == "A"));
+        assert!(find("new-name.txt").is_some(), "rename deveria aparecer com o nome novo: {entries:?}");
+        assert!(find("old-name.txt").is_none(), "rename não deveria duplicar o nome antigo: {entries:?}");
+
+        fs::remove_dir_all(root).unwrap();
+    }
+
+    #[test]
+    fn git_diff_summary_includes_uncommitted_worktree_changes() {
+        // Reproduz o bug: um arquivo criado na worktree e NUNCA commitado não
+        // aparece em nenhum commit de "feature", então o diff por range de
+        // commits sozinho devolve lista vazia mesmo com trabalho real feito —
+        // exatamente o "não há alterações de código" que o Gate de
+        // Verificação da Central de Merges reportava incorretamente.
+        let root = temp_dir("diff-summary-uncommitted");
+        checked_output(&root, &["init", "-b", "main"]).unwrap();
+        checked_output(&root, &["config", "user.name", "Alethe Test"]).unwrap();
+        checked_output(&root, &["config", "user.email", "alethe@example.invalid"]).unwrap();
+        fs::write(root.join("base.txt"), "base\n").unwrap();
+        checked_output(&root, &["add", "-A"]).unwrap();
+        checked_output(&root, &["commit", "-m", "base"]).unwrap();
+        checked_output(&root, &["checkout", "-b", "feature"]).unwrap();
+
+        // Sem worktree_path: comportamento antigo, cego a não commitado.
+        let root_string = root.to_string_lossy().into_owned();
+        let without_worktree = git_diff_summary(
+            root_string.clone(),
+            "feature".to_string(),
+            "main".to_string(),
+            None,
+        )
+        .unwrap();
+        assert!(without_worktree.is_empty(), "sem worktree_path, diff de commits deve ficar vazio");
+
+        fs::write(root.join("novo.txt"), "").unwrap();
+        // Infraestrutura escrita automaticamente pelo próprio Alethe (plugin
+        // GSD, MCP do Graphify) — nunca deve aparecer como "alteração" do
+        // agente, mesmo estando não commitada como qualquer outro arquivo.
+        fs::create_dir_all(root.join(".planning")).unwrap();
+        fs::write(root.join(".planning").join("goal.md"), "").unwrap();
+        fs::create_dir_all(root.join(".opencode").join("plugins")).unwrap();
+        fs::write(root.join(".opencode").join("plugins").join("alethe-gsd-state.ts"), "").unwrap();
+        fs::write(root.join("opencode.json"), "{}").unwrap();
+
+        let with_worktree = git_diff_summary(
+            root_string,
+            "feature".to_string(),
+            "main".to_string(),
+            Some(root.to_string_lossy().into_owned()),
+        )
+        .unwrap();
+        assert!(
+            with_worktree.iter().any(|e| e.path == "novo.txt"),
+            "com worktree_path, arquivo não commitado deve aparecer: {with_worktree:?}"
+        );
+        assert!(
+            with_worktree.iter().all(|e| !e.path.starts_with(".planning/") && !e.path.starts_with(".opencode/") && e.path != "opencode.json"),
+            "infraestrutura do Alethe (.planning/, .opencode/, opencode.json) nunca deve aparecer: {with_worktree:?}"
+        );
+
         fs::remove_dir_all(root).unwrap();
     }
 

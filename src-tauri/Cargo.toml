@@ -32,7 +32,7 @@ tauri-plugin-dialog = "2"
 tauri-plugin-notification = "2.3.3"
 tauri-plugin-process = "2"
 tauri-plugin-updater = "2"
-tokio = { version = "1", features = ["rt-multi-thread", "sync", "net", "time"] }
+tokio = { version = "1", features = ["rt-multi-thread", "sync", "net", "time", "process", "io-util", "macros"] }
 which = "6"
 zip = "0.6"
 sysinfo = "0.31"
@@ -51,6 +51,7 @@ dotenvy = "0.15"
 discord-rich-presence = "1.1.0"
 notify = "6"
 rusqlite = { version = "0.31", features = ["bundled"] }
+regex = "1"
 
 # Impede execuções paralelas do Alethe (pré-requisito da guarda de
 # monotonicidade de `save_projects` em projects.rs). Só compila em desktop —

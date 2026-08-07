@@ -1,6 +1,18 @@
 export type AgentType =
   'shell' | 'claude' | 'codex' | 'opencode' | 'freebuff' | 'mimo' | 'antigravity'
 
+/** Rótulo de exibição de cada agente — fonte única, evita listas paralelas
+ * divergentes por componente (ex.: "Claude" vs "Claude Code" pro mesmo tipo). */
+export const AGENT_TYPE_LABELS: Record<AgentType, string> = {
+  claude: 'Claude Code',
+  codex: 'Codex',
+  antigravity: 'Antigravity',
+  opencode: 'OpenCode',
+  mimo: 'Mimo',
+  freebuff: 'Freebuff',
+  shell: 'Shell',
+}
+
 /** Executável real de cada agente. O Antigravity desktop usa `antigravity`,
  * enquanto o agente de terminal oficial usa `agy`. */
 export function agentCliCommand(agent: AgentType): string | undefined {
@@ -124,13 +136,22 @@ export type Terminal = {
   worktreeAgentId?: string
   /** Argumento específico para diff viewer, true se staged. */
   staged?: boolean
+  /**
+   * Marca este terminal como o "viewer" (só leitura) de uma sessão-filha GSD
+   * Sync (criado por `useGsdSyncSessionsWatcher`). Nunca deve ser inserido
+   * em `paneIds` — o único jeito de abrir é pela gaveta GSD Sync, que usa o
+   * fullscreen de container isolando essa pane (`isolatedPaneId`), nunca a
+   * grade normal do projeto. Também escondido da árvore de terminais da
+   * Sidebar de Projetos (esquerda) — sem como digitar nela, não faz sentido
+   * misturada com terminais interativos normais.
+   */
+  gsdSyncViewer?: boolean
 }
 
 /** Bloco visual persistente que reúne panes independentes dentro de um projeto. */
 export type PaneGroup = {
   id: string
   paneIds: string[]
-}
 
 /**
  * Registro de worktree "órfã" — uma pasta/registro que sobrou de uma limpeza
@@ -179,10 +200,22 @@ export type Project = {
   gsdWatcherEnabled?: boolean
   /** RFC-007 — CLI que resolve conflitos de merge (provider-agnóstico). Default 'claude'. */
   conflictAgentProvider?: AgentType
+  /** Modelo específico do provedor para resolução de conflitos. */
+  conflictAgentModel?: string
+  /** CLI que revisa a branch antes do merge (botão "Revisar" da Central de Merges). Default 'claude'. */
+  reviewAgentProvider?: AgentType
+  /** Modelo específico do provedor para revisão de branch. */
+  reviewAgentModel?: string
   /** RFC-004 — injeta o MCP do Graphify (--mcp-config) nos agentes deste projeto. */
   graphifyEnabled?: boolean
   /** RFC-003 — todo terminal de agente novo nasce numa worktree própria. */
   autoWorktree?: boolean
+  /** URL do repositório de origem no GitHub. */
+  githubUrl?: string
+  /** Indica se a workspace precisa disparar a injeção inicial de contexto pós-clone. */
+  firstBootPending?: boolean
+  /** Comportamento do terminal após aceitar o merge (relocalizar em nova branch ou fechar). */
+  mergePostAction?: 'relocateToNewBranch' | 'closeTerminal'
   /** Worktrees com limpeza inacabada (deleção física ou `prune` falhados). */
   orphanWorktrees?: OrphanWorktree[]
 }
@@ -288,6 +321,16 @@ export type Preferences = {
   workspaceFlat: boolean
   /** v2 — projeto-container que está em fullscreen na workspace. */
   fullscreenContainerId: string | null
+  /**
+   * Isola UM terminal específico dentro do fullscreen de container acima —
+   * `ProjectContainer` mostra só essa pane em vez da grade inteira, mas
+   * continua sendo o MESMO fullscreen de sempre (Sidebar de Projetos e
+   * gaveta GSD Sync continuam visíveis). Só faz sentido junto de
+   * `fullscreenContainerId` setado; sempre limpo junto dele. Acionado pela
+   * gaveta GSD Sync (o único jeito de ver a pane "GSD Sync" — ela nunca
+   * entra na grade normal do projeto).
+   */
+  isolatedPaneId: string | null
   /** Timestamp da primeira abertura do app (pra contagem de dias no welcome). */
   firstLaunchAt: number | null
   /** Nome exibido no welcome modal. */
@@ -347,6 +390,14 @@ export type Preferences = {
    * Injeta --max-old-space-size e UV_THREADPOOL_SIZE no ambiente do PTY.
    */
   nodeHeapProfile?: 'conservative' | 'balanced' | 'performance'
+  /**
+   * Cadeia de fallback de modelos (ids do provider `opencode`) pra sessão-
+   * filha do GSD Sync — tentados em ordem, automaticamente, APÓS o modelo
+   * que a sessão principal acabou de usar (sempre tentado primeiro,
+   * implícito, nunca precisa estar nesta lista). Vazio (default) = sem rede
+   * de segurança configurada.
+   */
+  gsdSyncModelChain?: string[]
 }
 
 export type ResourcePolicyMode = 'smart-lru' | 'manual'
@@ -411,6 +462,7 @@ export const DEFAULT_PREFERENCES: Preferences = {
   onboardingDone: false,
   workspaceFlat: false,
   fullscreenContainerId: null,
+  isolatedPaneId: null,
   firstLaunchAt: null,
   displayName: '',
   profileImageUrl: '',
@@ -487,3 +539,41 @@ export const GROUP_COLORS = [
   '#ec4899',
   '#10b981',
 ] as const
+
+/** Catálogo de modelos suportados por provedor/CLI. */
+export const PROVIDER_MODELS: Record<AgentType, { id: string; label: string }[]> = {
+  claude: [
+    { id: 'claude-3-7-sonnet', label: 'Claude 3.7 Sonnet (Padrão)' },
+    { id: 'claude-3-5-sonnet', label: 'Claude 3.5 Sonnet' },
+    { id: 'claude-3-5-haiku', label: 'Claude 3.5 Haiku' },
+    { id: 'claude-3-opus', label: 'Claude 3 Opus' },
+  ],
+  codex: [
+    { id: 'gpt-4o', label: 'GPT-4o (Padrão)' },
+    { id: 'o3-mini', label: 'o3-mini (Raciocínio)' },
+    { id: 'o1', label: 'o1 (Avançado)' },
+    { id: 'gpt-4o-mini', label: 'GPT-4o mini' },
+  ],
+  opencode: [
+    { id: 'deepseek/deepseek-r1', label: 'DeepSeek R1 (Raciocínio)' },
+    { id: 'deepseek/deepseek-chat', label: 'DeepSeek V3' },
+    { id: 'qwen/qwen-2.5-coder-32b', label: 'Qwen 2.5 Coder 32B' },
+    { id: 'meta-llama/llama-3.3-70b', label: 'Llama 3.3 70B' },
+  ],
+  antigravity: [
+    { id: 'gemini-2.5-pro', label: 'Gemini 2.5 Pro (Padrão)' },
+    { id: 'gemini-2.5-flash', label: 'Gemini 2.5 Flash' },
+    { id: 'claude-3.7-sonnet', label: 'Claude 3.7 Sonnet' },
+  ],
+  mimo: [
+    { id: 'mimo-pro', label: 'Mimo Pro' },
+    { id: 'mimo-flash', label: 'Mimo Flash' },
+  ],
+  freebuff: [
+    { id: 'freebuff-auto', label: 'Freebuff Auto' },
+  ],
+  shell: [
+    { id: 'default', label: 'Shell Padrão' },
+  ],
+}
+

@@ -249,7 +249,8 @@ export function WorkspaceView() {
     )
   }
 
-  // fullscreen: só o container escolhido
+  // fullscreen: só o container escolhido (a gaveta GSD Sync usa o mesmo
+  // caminho, via `isolatedPaneId` — ver ProjectContainer.tsx)
   if (fullscreenId) {
     const c = containers.find((x) => x.projectId === fullscreenId)
     const project = c ? projectsById.get(c.projectId) : null

@@ -245,11 +245,11 @@ export default function App() {
   }, [hydrated, leftPanelRef, leftSidebarVisible])
 
   useEffect(() => {
-    if (!hydrated || !todoEnabled) return
+    if (!hydrated) return
     const element = rightPanelElementRef.current
     if (element) element.style.transition = 'flex-grow 180ms ease, flex-basis 180ms ease'
     const frame = window.requestAnimationFrame(() => {
-      if (rightSidebarVisible) rightPanelRef.current?.expand()
+      if (todoEnabled && rightSidebarVisible) rightPanelRef.current?.expand()
       else rightPanelRef.current?.collapse()
     })
     const timer = window.setTimeout(() => {
@@ -296,7 +296,13 @@ export default function App() {
       .then((info) => {
         if (!cancelled) useUiStore.getState().setUpdateInfo(info)
       })
-      .catch(() => {})
+      .catch((error) => {
+        // Checagem de fundo no boot — silenciosa de propósito (não vale
+        // interromper o usuário por causa de uma falha de rede aqui; a tela
+        // "Sobre & Atualizações" já oferece checagem sob demanda com erro
+        // visível). Só loga pra não ficar indistinguível de "sem update".
+        console.error('[update] checagem de fundo falhou:', error)
+      })
     return () => {
       cancelled = true
     }
@@ -307,14 +313,17 @@ export default function App() {
     void getLastCrashReport()
       .then((report) => {
         if (!report) return
+        const { session, orphans_reaped: orphansReaped } = report
         const lang = useProjectsStore.getState().preferences.language
-        const when = new Date(report.last_heartbeat_ms || report.started_at_ms)
+        const when = new Date(session.last_heartbeat_ms || session.started_at_ms)
+        const bodyKey = orphansReaped > 0 ? 'crash.uncleanBodyWithOrphans' : 'crash.uncleanBody'
         useUiStore.getState().pushToast({
           title: translate(lang, 'crash.uncleanTitle'),
-          body: translate(lang, 'crash.uncleanBody', {
-            total: Math.round(report.total_mb),
-            procs: report.process_count,
+          body: translate(lang, bodyKey, {
+            total: Math.round(session.total_mb),
+            procs: session.process_count,
             time: when.toLocaleTimeString(intlLocale(lang)),
+            orphans: orphansReaped,
           }),
         })
       })

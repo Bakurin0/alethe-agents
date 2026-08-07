@@ -66,6 +66,7 @@ export function makeDefaultTerminal(args: {
     runtimeProfile?: AgentRuntimeProfile
   }
   worktreeAgentId?: string
+  gsdSyncViewer?: boolean
 }): Terminal {
   const tabId = nanoid()
   const now = Date.now()
@@ -78,6 +79,7 @@ export function makeDefaultTerminal(args: {
     laneVisible: null,
     lastUsedAt: now,
     worktreeAgentId: args.worktreeAgentId,
+    gsdSyncViewer: args.gsdSyncViewer,
     tabs: [
       {
         id: tabId,
@@ -239,6 +241,55 @@ export function getProjectDefaultCwd(
       const cwd = resolveTerminalCwd(terminal)
       if (cwd) return cwd
     }
+  }
+  return ''
+}
+
+/** Casa o segmento `.alethe/worktrees/` (Windows ou POSIX) em qualquer ponto
+ *  do caminho — inclusive worktrees aninhadas, onde o match mais à esquerda
+ *  ainda aponta pro segmento mais externo (a raiz real). */
+const ALETHE_WORKTREES_SEGMENT = /[\\/]\.alethe[\\/]worktrees[\\/]/i
+
+/** Deriva a raiz do repo a partir do cwd de uma worktree isolada, sem git:
+ *  o próprio Alethe sempre cria worktrees em `<raiz>/.alethe/worktrees/<id>`
+ *  (ver `worktrees_base` em `worktrees.rs`) — cortar nesse ponto devolve a
+ *  raiz original, mesmo que o cwd seja de uma worktree aninhada. */
+function deriveRepoRootFromWorktreeCwd(cwd: string): string {
+  const match = cwd.match(ALETHE_WORKTREES_SEGMENT)
+  if (!match || match.index === undefined) return ''
+  return cwd.slice(0, match.index)
+}
+
+/**
+ * Como getProjectDefaultCwd, mas nunca devolve o cwd de um terminal já
+ * migrado pra worktree — operações de merge/migração precisam da raiz real
+ * do repositório, não de um subdiretório de worktree isolada.
+ */
+export function getProjectRepoRoot(project: Project | null | undefined): string {
+  if (!project) return ''
+  const sorted = [...project.terminals].sort((a, b) => (b.lastUsedAt ?? 0) - (a.lastUsedAt ?? 0))
+
+  // `gsdSyncViewer` nunca conta como "puro": o cwd dele É a worktree (só não
+  // tem `worktreeAgentId` porque não é o agente isolado em si, é só um
+  // viewer secundário) — sem essa exclusão ele era escolhido como referência
+  // de raiz, devolvendo o path da worktree em vez do repo de verdade, e
+  // quebrava a descoberta de sessões GSD Sync do próprio projeto (a raiz
+  // "descoberta" batia com o cwd do terminal isolado, então o filtro de
+  // `watched` nunca via nenhum terminal de worktree pra vigiar).
+  const pure = sorted.filter((terminal) => !terminal.worktreeAgentId && !terminal.gsdSyncViewer)
+  for (const terminal of pure) {
+    const cwd = resolveTerminalCwd(terminal)
+    if (cwd) return cwd
+  }
+
+  // Nenhum terminal "puro" sobrou (todos já isolados, ex.: projeto que só
+  // teve agentes isolados desde o início, ou cujo terminal original foi
+  // removido) — deriva a raiz a partir do padrão de path conhecido, sem
+  // precisar de nenhum terminal de referência "limpo".
+  for (const terminal of sorted) {
+    const cwd = resolveTerminalCwd(terminal)
+    const derived = cwd && deriveRepoRootFromWorktreeCwd(cwd)
+    if (derived) return derived
   }
   return ''
 }

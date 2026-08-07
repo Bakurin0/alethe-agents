@@ -11,7 +11,7 @@ import {
 import { useEffect, useState } from 'react'
 
 import { intlLocale, useT, type Locale, type TFunction } from '../../lib/i18n'
-import { getLastCrashReport, openLogsFolder, type CrashReport } from '../../lib/tauri'
+import { getJobGuardStatus, getLastCrashReport, openLogsFolder, type CrashReport } from '../../lib/tauri'
 import { useProjectsStore } from '../../stores/projectsStore'
 import type { MemorySample } from '../../stores/uiStore'
 import { useUiStore } from '../../stores/uiStore'
@@ -272,6 +272,16 @@ export function MemoryAnalyticsModal() {
       .catch(() => {})
   }, [])
 
+  // Rede de segurança contra terminais órfãos (Job Object, Windows) da
+  // sessão ATUAL — null enquanto carrega, pra não afirmar "inativa" antes de
+  // saber de verdade.
+  const [jobGuardActive, setJobGuardActive] = useState<boolean | null>(null)
+  useEffect(() => {
+    void getJobGuardStatus()
+      .then(setJobGuardActive)
+      .catch(() => setJobGuardActive(false))
+  }, [])
+
   const latest = history[history.length - 1] ?? null
   const peak = history.reduce<MemorySample | null>(
     (current, sample) => (!current || sample.total_mb > current.total_mb ? sample : current),
@@ -314,12 +324,15 @@ export function MemoryAnalyticsModal() {
                 <h3>{t('mod.lastSessionCrashTitle')}</h3>
                 <p>
                   {t('mod.lastSessionCrashSubtitle', {
-                    total: Math.round(crash.total_mb),
-                    ptys: Math.round(crash.ptys_mb),
-                    procs: crash.process_count,
-                    time: formatTime(crash.last_heartbeat_ms || crash.started_at_ms, language),
+                    total: Math.round(crash.session.total_mb),
+                    ptys: Math.round(crash.session.ptys_mb),
+                    procs: crash.session.process_count,
+                    time: formatTime(crash.session.last_heartbeat_ms || crash.session.started_at_ms, language),
                   })}
                 </p>
+                {crash.orphans_reaped > 0 ? (
+                  <p>{t('mod.orphansReapedAtBoot', { count: crash.orphans_reaped })}</p>
+                ) : null}
               </div>
               <AlertTriangle size={16} />
             </div>
@@ -334,6 +347,12 @@ export function MemoryAnalyticsModal() {
               </button>
             </div>
           </section>
+        ) : null}
+
+        {jobGuardActive !== null ? (
+          <p className={styles.jobGuardStatus}>
+            {jobGuardActive ? t('mod.jobGuardActive') : t('mod.jobGuardInactive')}
+          </p>
         ) : null}
 
         <section className={styles.summaryGrid}>

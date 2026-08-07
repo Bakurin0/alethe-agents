@@ -95,6 +95,8 @@ export type ProjectsState = ProjectsFile & {
     iconUrl?: string
     groupId?: string | null
     defaultCwd?: string
+    githubUrl?: string
+    firstBootPending?: boolean
   }) => Project
   renameProject: (id: string, name: string) => void
   archiveProject: (id: string) => void
@@ -107,8 +109,16 @@ export type ProjectsState = ProjectsFile & {
   setValidationCommands: (id: string, commands: string[]) => void
   setGsdWatcherEnabled: (id: string, enabled: boolean) => void
   setConflictAgentProvider: (id: string, provider: AgentType) => void
+  setConflictAgentModel: (id: string, model: string) => void
+  setReviewAgentProvider: (id: string, provider: AgentType) => void
+  setReviewAgentModel: (id: string, model: string) => void
   setGraphifyEnabled: (id: string, enabled: boolean) => void
   setAutoWorktree: (id: string, enabled: boolean) => void
+  setMergePostAction: (id: string, action: 'relocateToNewBranch' | 'closeTerminal') => void
+  /** Migra terminais existentes (sem `worktreeAgentId`) do projeto pra worktrees
+   *  isoladas — ação explícita via botão dedicado, nunca automática (ver
+   *  `setAutoWorktree`). Suspende os PTYs antigos em vez de matar. */
+  migrateProjectTerminalsToWorktrees: (projectId: string) => Promise<void>
   /** Upsert por `path` — sobrescreve a entrada existente (limpando `adminLockReason`
    * obsoleto se a nova falha não for lock administrativo) ou adiciona uma nova. */
   addOrphanWorktree: (projectId: string, entry: OrphanWorktree) => void
@@ -175,6 +185,7 @@ export type ProjectsState = ProjectsFile & {
         runtimeProfile?: AgentRuntimeProfile
       }
       worktreeAgentId?: string
+      gsdSyncViewer?: boolean
     },
   ) => Terminal
   /**
@@ -207,7 +218,15 @@ export type ProjectsState = ProjectsFile & {
   createWebPane: (projectId: string, args: { url: string; name?: string }) => Terminal
   createGraphifyPane: (projectId: string, cwd: string) => Terminal
   renameTerminal: (projectId: string, terminalId: string, name: string) => void
+  /** Backfill: liga `Terminal.gsdSyncViewer` num terminal já existente (criado
+   *  antes desse campo existir) sem precisar de migração manual de dado. */
+  markGsdSyncViewer: (projectId: string, terminalId: string) => void
   deleteTerminal: (projectId: string, terminalId: string) => void
+  /** Mesmo teardown de `deleteTerminal`, mas para terminais de agente isolado
+   *  (`worktreeAgentId`): mata a árvore de processo e remove a worktree em
+   *  disco ANTES de apagar a entrada do terminal. Terminais sem
+   *  `worktreeAgentId` caem direto no `deleteTerminal` normal. */
+  deleteTerminalWithWorktreeCleanup: (projectId: string, terminalId: string) => Promise<void>
   /** Mata a árvore de processos do terminal + fecha o pane, mas MANTÉM o atalho na
    *  sidebar (descarta sessão/scrollback). O atalho reabre do zero ao ser clicado. */
   killTerminal: (projectId: string, terminalId: string) => void
@@ -239,6 +258,7 @@ export type ProjectsState = ProjectsFile & {
   setContainerCollapsed: (projectId: string, collapsed: boolean) => void
   setContainerInternalLayout: (projectId: string, layout: LayoutMode) => void
   setFullscreenContainer: (projectId: string | null) => void
+  setFullscreenPane: (terminalId: string | null) => void
   setWorkspaceFlat: (flat: boolean) => void
 
   // sub-tabs

@@ -760,3 +760,74 @@
   --shadow-md: 0 4px 12px rgba(0, 0, 0, 0.58);
   --shadow-lg: 0 12px 32px rgba(0, 0, 0, 0.68);
 }
+
+/* ==========================================================================
+   Arco-Íris Infinito (Infinite Rainbow RGB) & Borda Infinita de Container
+   ========================================================================== */
+@keyframes rainbowInfinite {
+  0% {
+    filter: hue-rotate(0deg);
+    background-position: 0% 50%;
+  }
+  50% {
+    background-position: 100% 50%;
+  }
+  100% {
+    filter: hue-rotate(360deg);
+    background-position: 0% 50%;
+  }
+}
+
+.swatch-rgb-rainbow,
+.project-theme-rainbow {
+  background: linear-gradient(
+    135deg,
+    #ff0055,
+    #ff8800,
+    #ffeb3b,
+    #00e676,
+    #00b0ff,
+    #651fff,
+    #d500f9,
+    #ff0055
+  ) !important;
+  background-size: 300% 300% !important;
+  animation: rainbowInfinite 6s linear infinite !important;
+  box-shadow: 0 0 10px rgba(255, 0, 128, 0.35);
+}
+
+.rainbow-container-border {
+  position: relative;
+  border-radius: 12px;
+}
+
+.rainbow-container-border::before {
+  content: '';
+  position: absolute;
+  /* `inset: 0` (não -2px) + `border-radius: inherit`: o anel precisa nascer
+     DENTRO da caixa real (que tem `overflow: hidden` e cantos quadrados via
+     ProjectContainer.module.css), senão fica todo cortado nas bordas retas
+     e só a curva de um raio hardcoded aparece nos cantos. */
+  inset: 0;
+  border-radius: inherit;
+  padding: 2px;
+  background: linear-gradient(
+    135deg,
+    #ff0055,
+    #ff8800,
+    #ffeb3b,
+    #00e676,
+    #00b0ff,
+    #651fff,
+    #d500f9,
+    #ff0055
+  );
+  background-size: 300% 300%;
+  animation: rainbowInfinite 6s linear infinite;
+  -webkit-mask: linear-gradient(#fff 0 0) content-box, linear-gradient(#fff 0 0);
+  -webkit-mask-composite: xor;
+  mask-composite: exclude;
+  pointer-events: none;
+  z-index: 2;
+}
+

@@ -19,6 +19,7 @@ import {
   getPtyCwd,
   gitCommit,
   gitDiscard,
+  gitInit,
   gitPull,
   gitPush,
   gitStage,
@@ -167,6 +168,20 @@ export function GitControl({ projectId, cwd, ptyId, terminalName }: GitControlPr
     }, t('git.sync.done'))
   }
 
+  const handleInitGit = async () => {
+    if (!liveCwd || busy) return
+    setBusy(true)
+    try {
+      await gitInit(liveCwd)
+      pushToast({ title: t('git.initOffer.successTitle'), body: t('git.initOffer.successBody') })
+      await refresh()
+    } catch (cause) {
+      pushToast({ title: t('git.error.action'), body: readableError(cause) })
+    } finally {
+      setBusy(false)
+    }
+  }
+
   if (!liveCwd) {
     return <GitMessage title={t('git.empty.noFolder')} description={t('git.empty.noFolderDesc')} />
   }
@@ -176,17 +191,30 @@ export function GitControl({ projectId, cwd, ptyId, terminalName }: GitControlPr
   }
 
   if (error && !status) {
+    const isNotRepo = error === 'not_a_git_repository'
     return (
       <GitMessage
         title={t(ERROR_KEYS[error] ?? 'git.error.generic')}
-        description={
-          error.startsWith('git_command_failed:') ? error.slice(error.indexOf(':') + 1) : undefined
-        }
+        description={isNotRepo ? t('git.initOffer.body') : (error.startsWith('git_command_failed:') ? error.slice(error.indexOf(':') + 1) : undefined)}
         action={
-          <button type="button" className={styles.retry} onClick={() => void refresh()}>
-            <RefreshCw size={13} />
-            {t('git.refresh')}
-          </button>
+          <div style={{ display: 'flex', gap: 6, alignItems: 'center', flexWrap: 'wrap' }}>
+            {isNotRepo ? (
+              <button
+                type="button"
+                className={styles.retry}
+                style={{ background: 'var(--accent)', color: '#fff', borderColor: 'var(--accent)', fontWeight: 600 }}
+                disabled={busy}
+                onClick={() => void handleInitGit()}
+              >
+                <GitBranch size={13} />
+                {busy ? t('git.initOffer.busy') : t('git.initOffer.button')}
+              </button>
+            ) : null}
+            <button type="button" className={styles.retry} onClick={() => void refresh()}>
+              <RefreshCw size={13} />
+              {t('git.refresh')}
+            </button>
+          </div>
         }
       />
     )

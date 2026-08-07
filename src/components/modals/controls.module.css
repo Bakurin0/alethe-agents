@@ -230,3 +230,164 @@ select.input {
   font-size: 11px;
   line-height: 1.35;
 }
+
+/* --- Abas de Navegação em Modais --- */
+.tabRow {
+  display: flex;
+  gap: 6px;
+  border-bottom: 1px solid var(--border);
+  margin-bottom: 16px;
+  padding-bottom: 8px;
+  overflow-x: auto;
+}
+
+.tabBtn {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 12px;
+  border-radius: var(--radius-md);
+  background: transparent;
+  border: 1px solid transparent;
+  color: var(--fg-muted);
+  font-size: 12px;
+  font-weight: 500;
+  cursor: pointer;
+  white-space: nowrap;
+  transition: all 120ms ease;
+}
+.tabBtn:hover {
+  color: var(--fg);
+  background: var(--panel-hover);
+}
+.tabBtnActive {
+  color: var(--fg);
+  background: var(--accent-faint);
+  border-color: var(--accent-border);
+  font-weight: 600;
+}
+
+/* --- Checkbox Inline (Corrigido para alinhamento horizontal) --- */
+.checkboxRow {
+  display: flex !important;
+  flex-direction: row !important;
+  align-items: center !important;
+  gap: 10px !important;
+  margin-bottom: 12px;
+  cursor: pointer;
+}
+.checkboxRow input[type='checkbox'] {
+  width: 16px;
+  height: 16px;
+  accent-color: var(--accent);
+  cursor: pointer;
+  flex-shrink: 0;
+}
+.checkboxLabel {
+  font-size: 12px;
+  color: var(--fg);
+  font-weight: 400;
+  text-transform: none;
+  letter-spacing: normal;
+  cursor: pointer;
+}
+
+/* --- Grid de Cards de Agentes (Estilo NewTerminalModal) --- */
+.agentGrid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(130px, 1fr));
+  gap: 8px;
+  margin-top: 6px;
+}
+
+.agentCard {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 12px;
+  background: var(--bg-sunken);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  color: var(--fg);
+  cursor: pointer;
+  transition: all 120ms ease;
+  position: relative;
+  text-align: left;
+}
+.agentCard:hover {
+  border-color: var(--border-strong);
+  background: var(--panel-hover);
+}
+.agentCardActive {
+  border-color: var(--accent);
+  background: var(--accent-faint);
+  box-shadow: 0 0 10px var(--accent-ring);
+}
+.agentIcon {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+}
+.agentLabel {
+  font-size: 13px;
+  font-weight: 500;
+  flex: 1;
+}
+.selectedIcon {
+  color: var(--accent);
+  flex-shrink: 0;
+}
+
+/* --- Aviso "pasta ainda não é um repositório Git" (EditProjectModal) --- */
+.gitInitBanner {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 12px;
+  margin-bottom: 14px;
+  border: 1px solid color-mix(in srgb, var(--status-waiting) 35%, var(--border));
+  border-radius: var(--radius-md);
+  background: var(--status-waiting-soft);
+}
+.gitInitBannerIcon {
+  display: grid;
+  place-items: center;
+  flex-shrink: 0;
+  color: var(--status-waiting);
+}
+.gitInitBannerText {
+  flex: 1;
+  min-width: 0;
+}
+.gitInitBannerText strong {
+  display: block;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--fg);
+}
+.gitInitBannerText span {
+  display: block;
+  font-size: 11px;
+  color: var(--fg-muted);
+  margin-top: 2px;
+}
+.gitInitBannerBtn {
+  flex-shrink: 0;
+  font-size: 11px;
+  padding: 6px 10px;
+  border-radius: var(--radius-sm);
+  border: 1px solid color-mix(in srgb, var(--status-waiting) 45%, var(--border));
+  background: var(--surface-modal);
+  color: var(--fg);
+  cursor: pointer;
+  white-space: nowrap;
+}
+.gitInitBannerBtn:hover {
+  background: var(--panel-hover);
+}
+.gitInitBannerBtn:disabled {
+  cursor: default;
+  opacity: 0.6;
+}
+

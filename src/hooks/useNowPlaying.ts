@@ -6,7 +6,7 @@ import {
   spotifyLogout,
   spotifyStatus,
   type NowPlaying,
-} from '../lib/spotify'
+} from '../lib/tauri'
 import { readScopedStorage, writeScopedStorage } from '../lib/storageNamespace'
 import { useProjectsStore } from '../stores/projectsStore'
 

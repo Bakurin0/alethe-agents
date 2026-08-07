@@ -57,6 +57,16 @@ describe('normalizeCwd', () => {
     expect(normalizeCwd('/home/user/Project')).toBe('/home/user/Project')
     expect(normalizeCwd('/home/user/project')).toBe('/home/user/project')
   })
+
+  it('remove o prefixo verbatim \\\\?\\ antes de comparar, senão worktrees nunca batem com o path real', () => {
+    expect(normalizeCwd('\\\\?\\D:\\Projetos\\PICLESV2\\.alethe\\worktrees\\opencode-x')).toBe(
+      normalizeCwd('D:\\Projetos\\PICLESV2\\.alethe\\worktrees\\opencode-x'),
+    )
+  })
+
+  it('remove o prefixo verbatim UNC \\\\?\\UNC\\', () => {
+    expect(normalizeCwd('\\\\?\\UNC\\server\\share\\project')).toBe('\\\\server\\share\\project')
+  })
 })
 
 describe('formatShortcut', () => {
