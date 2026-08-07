@@ -459,6 +459,7 @@ export const ptBR: Record<MessageKey, string> = {
   'whatsNew.v140.note10': 'Tarefas do Todo agora podem ser vinculadas a um projeto.',
   'whatsNew.v140.note11': 'Modal de novo terminal: seleção de agente em cards, pastas recentes e ação rápida por agente.',
   'whatsNew.v140.note12': 'Performance: redimensionamento de sidebar em lote, bibliotecas de diagrama e Markdown carregadas sob demanda, e bundle inicial menor.',
+  'whatsNew.v140.note13': 'O tema do terminal foi para perto do tema da interface, em Preferências > Appearance.',
   'whatsNew.v130.note1': 'Sidebar direita redesenhada com tabs de Todo, Markdown e Git Control, além de comentários inline no Markdown.',
   'whatsNew.v130.note2': 'Projetos arquivados: oculte um projeto da sidebar sem perder os terminais, restaure quando quiser em Preferências.',
   'whatsNew.v130.note3': 'Links Markdown agora sempre abrem no browser externo, em vez de navegar dentro do app.',

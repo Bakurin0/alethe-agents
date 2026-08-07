@@ -197,7 +197,7 @@ export function PreferencesModal() {
         keywords: 'features recursos modules módulos todo task tarefa git source control sidebar',
       },
       {
-        category: 'terminal',
+        category: 'appearance',
         target: 'terminal-theme',
         label: t('prefs.terminalTheme'),
         description: t('prefs.terminalThemeDesc'),

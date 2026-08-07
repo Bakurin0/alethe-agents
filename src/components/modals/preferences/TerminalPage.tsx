@@ -4,7 +4,6 @@ import { useState } from 'react'
 import { useT } from '../../../lib/i18n'
 import { isMacOS } from '../../../lib/platform'
 import { countLiveResumablePanes, resetLastSession } from '../../../lib/resetLastSession'
-import { THEME_OPTIONS, themeLabel } from '../../../lib/themes'
 import type { AgentType } from '../../../lib/types'
 import { SPAWN_CONCURRENCY_LIMITS, useProjectsStore } from '../../../stores/projectsStore'
 import { useUiStore } from '../../../stores/uiStore'
@@ -25,7 +24,6 @@ const AGENTS: { id: AgentType; label: string }[] = [
 export function TerminalPage({ enabledCount }: { enabledCount: number }) {
   const t = useT()
   const preferences = useProjectsStore((state) => state.preferences)
-  const setTerminalTheme = useProjectsStore((state) => state.setTerminalTheme)
   const setAgentEnabled = useProjectsStore((state) => state.setAgentEnabled)
   const setPreferences = useProjectsStore((state) => state.setPreferences)
   const pushToast = useUiStore((state) => state.pushToast)
@@ -225,29 +223,6 @@ export function TerminalPage({ enabledCount }: { enabledCount: number }) {
             <RotateCcw size={15} />
           </button>
         </div>
-      </SettingsSection>
-
-      <SettingsSection
-        id="terminal-theme"
-        title={t('prefs.terminalTheme')}
-        description={t('prefs.terminalThemeDesc')}
-      >
-        <select
-          className={styles.select}
-          value={preferences.terminalTheme ?? ''}
-          onChange={(event) =>
-            setTerminalTheme(
-              event.target.value ? (event.target.value as typeof preferences.uiTheme) : null,
-            )
-          }
-        >
-          <option value="">{t('common.followUi')}</option>
-          {THEME_OPTIONS.map((theme) => (
-            <option key={theme.id} value={theme.id}>
-              {themeLabel(t, theme.id)}
-            </option>
-          ))}
-        </select>
       </SettingsSection>
 
       <SettingsSection

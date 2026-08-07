@@ -456,6 +456,7 @@ export const en = {
   'whatsNew.v140.note10': 'Todo tasks can now be linked to a project.',
   'whatsNew.v140.note11': 'New terminal modal: card-based agent selection, recent folders, and per-agent quick actions.',
   'whatsNew.v140.note12': 'Performance: batched sidebar resizing, lazy-loaded diagram and Markdown libraries, and a smaller initial bundle.',
+  'whatsNew.v140.note13': 'Terminal theme moved next to the UI theme, under Preferences > Appearance.',
   'whatsNew.v130.note1': 'Right sidebar redesigned with Todo, Markdown and Git Control tabs, plus inline Markdown comments.',
   'whatsNew.v130.note2': 'Archived projects: hide a project from the sidebar without losing its terminals, restore it anytime from Preferences.',
   'whatsNew.v130.note3': 'Markdown links now always open in the external browser instead of navigating the app.',

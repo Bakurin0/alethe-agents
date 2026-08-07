@@ -23,6 +23,7 @@ export const CHANGELOG_RELEASES: ChangelogRelease[] = [
       'whatsNew.v140.note10',
       'whatsNew.v140.note11',
       'whatsNew.v140.note12',
+      'whatsNew.v140.note13',
     ],
   },
   {

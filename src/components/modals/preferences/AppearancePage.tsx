@@ -10,6 +10,7 @@ export function AppearancePage() {
   const t = useT()
   const preferences = useProjectsStore((state) => state.preferences)
   const setUiTheme = useProjectsStore((state) => state.setUiTheme)
+  const setTerminalTheme = useProjectsStore((state) => state.setTerminalTheme)
   const setUiZoom = useProjectsStore((state) => state.setUiZoom)
   const setPreferences = useProjectsStore((state) => state.setPreferences)
   return (
@@ -43,6 +44,29 @@ export function AppearancePage() {
             )
           })}
         </div>
+      </SettingsSection>
+
+      <SettingsSection
+        id="terminal-theme"
+        title={t('prefs.terminalTheme')}
+        description={t('prefs.terminalThemeDesc')}
+      >
+        <select
+          className={styles.select}
+          value={preferences.terminalTheme ?? ''}
+          onChange={(event) =>
+            setTerminalTheme(
+              event.target.value ? (event.target.value as typeof preferences.uiTheme) : null,
+            )
+          }
+        >
+          <option value="">{t('common.followUi')}</option>
+          {THEME_OPTIONS.map((theme) => (
+            <option key={theme.id} value={theme.id}>
+              {themeLabel(t, theme.id)}
+            </option>
+          ))}
+        </select>
       </SettingsSection>
 
       <SettingsSection id="ui-zoom" title={t('prefs.uiZoom')} description={t('prefs.uiZoomDesc')}>
