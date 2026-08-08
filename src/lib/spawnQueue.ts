@@ -141,8 +141,10 @@ export function ensureSpawnQueueProgress(
  */
 export function acquireSpawnSlot(signal?: AbortSignal): Promise<boolean> {
   if (signal?.aborted) return Promise.resolve(false)
-  const limit = pressureBlocked ? pressureConcurrentLimit() : maxConcurrentSpawns
-  if (active < limit) {
+  // Under pressure, brand-new requests always queue — pressureConcurrentLimit only
+  // governs how many *already-waiting* callers get drained through (see drain() calls
+  // in setSpawnPressureBlocked/releaseSpawnSlot/ensureSpawnQueueProgress).
+  if (!pressureBlocked && active < maxConcurrentSpawns) {
     active++
     notify()
     return Promise.resolve(true)

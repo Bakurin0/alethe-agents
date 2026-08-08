@@ -1237,6 +1237,10 @@ export function useXtermSession(params: {
         if (!(await registerPtyStreamListeners(response.id))) return
 
         const exitUnlisten = await listenPtyExit(response.id, (payload) => {
+          // unlistenExit só roda na cleanup do effect, depois de dispose() — um exit
+          // que chega no meio dessa janela ainda dispara este callback contra um
+          // terminal já disposed (renderer removido), daí o guard antes de qualquer write.
+          if (disposed) return
           console.info(
             `[pty-launch] ${command ?? 'shell'} EXIT id=${response.id} code=${payload.code ?? '—'} reason=${payload.reason ?? '—'}`,
           )
@@ -1330,7 +1334,7 @@ export function useXtermSession(params: {
         if (!disposed) setBootPhase('ready')
       } catch (err) {
         console.error(`[pty-launch] ${command ?? 'shell'} FALHOU ao iniciar PTY:`, err)
-        terminal.writeln(`Failed to start PTY: ${String(err)}`)
+        if (!disposed) terminal.writeln(`Failed to start PTY: ${String(err)}`)
         if (!disposed) setBootPhase('ready')
       }
     }
