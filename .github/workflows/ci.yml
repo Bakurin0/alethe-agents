@@ -34,7 +34,7 @@ jobs:
       - name: Check formatting
         run: npm run format:check
 
-      # vitest run sobre tests/**/*.test.ts (test:node, via node --test, roda à parte).
+      # vitest run — suíte única, todo teste vive colocado como src/**/*.test.ts.
       - name: Run unit tests
         run: npm test
 

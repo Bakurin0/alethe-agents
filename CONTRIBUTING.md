@@ -128,6 +128,23 @@ Linux, and macOS. If those four commands pass locally, CI will almost certainly 
 > `npm run build` also **validates translations** — see [House rules](#house-rules). A missing
 > `pt-BR` key is a type error, not a runtime surprise.
 
+### Writing tests
+
+There is exactly **one** test runner: Vitest, via `npm test`. Every test file is **colocated**
+next to the module it covers — `src/lib/foo.ts` → `src/lib/foo.test.ts`,
+`src/components/Bar/baz.ts` → `src/components/Bar/baz.test.ts`. There is no separate `tests/`
+directory and no second runner. `vitest.config.ts` picks up any `src/**/*.{test,spec}.{ts,tsx}`
+automatically — no per-file registration needed.
+
+This used to be two parallel suites: colocated `src/**/*.test.ts` (Vitest) and a `tests/` directory
+run separately via `node --test` (`npm run test:node`). CI only ever wired up `npm test`, so the
+`tests/` suite silently stopped being checked on every push/PR. Two files ended up duplicated in
+both places and drifted apart — one pair (`spawnQueue`, `sessionDiscovery`) had the `tests/`
+version asserting behavior the source no longer had, and nobody noticed because CI was green
+regardless. The suites were merged back into one in August 2026; when adding a test for pure logic
+(no DOM), just colocate it like everything else — Vitest handles logic-only tests fine without extra
+setup.
+
 ## How the project is laid out
 
 ```text
@@ -147,7 +164,6 @@ src-tauri/src/        Rust + Tauri backend
   projects.rs         Atomic load/save of projects.json
   cli_resolver.rs     Discovers installed CLIs (shells, Node managers, editors)
 
-tests/                Frontend tests (colocated *.test.ts under src/lib/ also exist)
 docs/                 Feature docs, changelog, brand
 ```
 
