@@ -764,16 +764,23 @@
 /* ==========================================================================
    Arco-Íris Infinito (Infinite Rainbow RGB) & Borda Infinita de Container
    ========================================================================== */
+/* `filter: hue-rotate()` foi removido de propósito: era redundante com o
+   `background-position` (o próprio gradiente já contém todas as cores, o
+   hue-rotate só duplicava o efeito de "cor girando" por cima) e é a
+   propriedade mais cara das duas — `filter` força repaint pixel a pixel do
+   elemento inteiro a cada frame, sem poder ficar só no compositor como
+   `transform`/`opacity`. Combinado com `background-position` num gradiente
+   de 300%x300%, isso travava a animação (renderiza parcial/incompleta) no
+   compositor de software do WebKitGTK no Linux — sem o `filter`, sobra só
+   o slide do gradiente, bem mais barato de manter fluido. */
 @keyframes rainbowInfinite {
   0% {
-    filter: hue-rotate(0deg);
     background-position: 0% 50%;
   }
   50% {
     background-position: 100% 50%;
   }
   100% {
-    filter: hue-rotate(360deg);
     background-position: 0% 50%;
   }
 }
@@ -801,7 +808,13 @@
   border-radius: 12px;
 }
 
-.rainbow-container-border::before {
+/* Indicador de foco universal: a classe é aplicada em TODO container da
+   workspace (não só nos que têm a cor "arco-íris" escolhida no projeto) —
+   o anel só existe no DOM (`::before`) quando o container tem foco real
+   (`:focus-within`, que sobe naturalmente de qualquer terminal focado lá
+   dentro, sem precisar de estado próprio em JS). Sem foco, o container volta
+   a mostrar só a borda normal por cor de projeto (--container-accent). */
+.rainbow-container-border:focus-within::before {
   content: '';
   position: absolute;
   /* `inset: 0` (não -2px) + `border-radius: inherit`: o anel precisa nascer

@@ -36,7 +36,7 @@ npm install
 npm run app      # = tauri dev — roda o app completo com hot reload (FORMA RECOMENDADA)
 npm run dev      # só o frontend Vite em http://localhost:1422 (strictPort)
 npm run build    # tsc + vite build — o tsc faz typecheck e VALIDA o i18n (ver §5)
-npm test         # node --test sobre tests/**/*.test.ts
+npm test         # vitest run sobre tests/**/*.test.ts (test:node roda via node --test, à parte)
 ```
 
 **Build do instalador Windows (MSI/NSIS)** precisa do ambiente MSVC (`vcvars64`):

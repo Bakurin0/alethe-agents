@@ -437,6 +437,7 @@ export const TerminalPane = memo(function TerminalPane({
                   graphifyRepo={graphifyRepo}
                   gsdWatcherEnabled={gsdWatcherEnabled}
                   trustSessionId={terminal.gsdSyncViewer}
+                  readOnly={terminal.gsdSyncViewer}
                   terminalTheme={terminalTheme}
                   onSpawned={(id) => {
                     if (activeTab.ptyId !== id) {

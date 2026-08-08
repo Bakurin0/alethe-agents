@@ -1,25 +1,18 @@
-import { CircleCheck } from 'lucide-react'
+import { AlertTriangle, CircleCheck, GitBranch } from 'lucide-react'
 import { useEffect, useState } from 'react'
 
+import { readableError } from '../../lib/errors'
 import { useT } from '../../lib/i18n'
-import { discoverProviderModels } from '../../lib/tauri'
-import { AGENT_TYPE_LABELS, PROVIDER_MODELS, type AgentType } from '../../lib/types'
+import { discoverProviderModels, gitInit, gitStatus } from '../../lib/tauri'
+import { AGENT_TYPE_LABELS, ALL_AGENT_TYPES, PROVIDER_MODELS, type AgentType } from '../../lib/types'
 import { useProjectsStore } from '../../stores/projectsStore'
+import { useUiStore } from '../../stores/uiStore'
 import { AgentIcon } from '../icons/AgentIcons'
 import { ModelSearchablePicker, type ModelOption } from './ModelSearchablePicker'
 import controls from './controls.module.css'
 import styles from './EditProjectModal.module.css'
 
-const ALL_AGENTS_ORDER: AgentType[] = [
-  'claude',
-  'codex',
-  'antigravity',
-  'opencode',
-  'mimo',
-  'freebuff',
-  'shell',
-]
-const ALL_AGENTS: { type: AgentType; label: string }[] = ALL_AGENTS_ORDER.map((type) => ({
+const ALL_AGENTS: { type: AgentType; label: string }[] = ALL_AGENT_TYPES.map((type) => ({
   type,
   label: AGENT_TYPE_LABELS[type],
 }))
@@ -38,6 +31,7 @@ const globalModelsCache: Record<string, ModelOption[]> = {}
  */
 export function EditProjectAgentSettings({
   projectId,
+  cwd,
   worktreeMode,
   onWorktreeModeChange,
   validationCommandsStr,
@@ -54,6 +48,7 @@ export function EditProjectAgentSettings({
   onGsdWatcherEnabledChange,
 }: {
   projectId: string
+  cwd: string
   worktreeMode: 'gitWorktree' | 'localCopy'
   onWorktreeModeChange: (mode: 'gitWorktree' | 'localCopy') => void
   validationCommandsStr: string
@@ -70,6 +65,7 @@ export function EditProjectAgentSettings({
   onGsdWatcherEnabledChange: (enabled: boolean) => void
 }) {
   const t = useT()
+  const pushToast = useUiStore((s) => s.pushToast)
   const enabledAgents = useProjectsStore((s) => s.preferences.enabledAgents)
   const terminalTheme = useProjectsStore((s) => s.preferences.terminalTheme ?? s.preferences.uiTheme)
   const migrateProjectTerminalsToWorktrees = useProjectsStore(
@@ -82,6 +78,49 @@ export function EditProjectAgentSettings({
   const [discoveredModels, setDiscoveredModels] = useState<ModelOption[]>([])
   const [loadingModels, setLoadingModels] = useState(false)
   const [migratingWorktrees, setMigratingWorktrees] = useState(false)
+
+  // Todas as opções desta aba (isolamento, worktrees, agente de conflito,
+  // GSD/.planning) exigem que `cwd` seja um repositório Git — nada aqui
+  // bloqueava isso antes, o único aviso era um toast reativo disparado só ao
+  // clicar em "Migrar terminais existentes". `null` = ainda checando/sem cwd.
+  const [hasGit, setHasGit] = useState<boolean | null>(null)
+  const [gitInitBusy, setGitInitBusy] = useState(false)
+
+  useEffect(() => {
+    let active = true
+    if (!cwd) {
+      setHasGit(null)
+      return
+    }
+    gitStatus(cwd)
+      .then(() => {
+        if (active) setHasGit(true)
+      })
+      .catch((cause) => {
+        if (active) setHasGit(!String(cause).includes('not_a_git_repository'))
+      })
+    return () => {
+      active = false
+    }
+  }, [cwd])
+
+  const handleInitGit = async () => {
+    if (!cwd || gitInitBusy) return
+    if (!confirm(t('git.initOffer.confirm'))) return
+    setGitInitBusy(true)
+    try {
+      await gitInit(cwd)
+      pushToast({ title: t('git.initOffer.successTitle'), body: t('git.initOffer.successBody') })
+      setHasGit(true)
+    } catch (cause) {
+      pushToast({
+        title: t('git.initOffer.failedTitle'),
+        body: t('git.initOffer.failedBody', { error: readableError(cause) }),
+      })
+    } finally {
+      setGitInitBusy(false)
+    }
+  }
 
   useEffect(() => {
     let active = true
@@ -122,6 +161,27 @@ export function EditProjectAgentSettings({
         <h3>{t('crud.editProjectAgentSettings')}</h3>
         <p>{t('crud.editProjectAgentSettingsDesc')}</p>
       </div>
+
+      {hasGit === false ? (
+        <div className={controls.gitInitBanner}>
+          <span className={controls.gitInitBannerIcon}>
+            <AlertTriangle size={16} />
+          </span>
+          <div className={controls.gitInitBannerText}>
+            <strong>{t('git.initOffer.title')}</strong>
+            <span>{t('git.initOffer.body')}</span>
+          </div>
+          <button
+            type="button"
+            className={controls.gitInitBannerBtn}
+            disabled={gitInitBusy}
+            onClick={() => void handleInitGit()}
+          >
+            <GitBranch size={13} />
+            {gitInitBusy ? t('git.initOffer.busy') : t('git.initOffer.button')}
+          </button>
+        </div>
+      ) : null}
 
       <div className={controls.field}>
         <label className={controls.label}>{t('crud.editProjectWorktreeMode')}</label>

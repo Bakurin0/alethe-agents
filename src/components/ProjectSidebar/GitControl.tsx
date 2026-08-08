@@ -197,12 +197,12 @@ export function GitControl({ projectId, cwd, ptyId, terminalName }: GitControlPr
         title={t(ERROR_KEYS[error] ?? 'git.error.generic')}
         description={isNotRepo ? t('git.initOffer.body') : (error.startsWith('git_command_failed:') ? error.slice(error.indexOf(':') + 1) : undefined)}
         action={
-          <div style={{ display: 'flex', gap: 6, alignItems: 'center', flexWrap: 'wrap' }}>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 6, width: '100%' }}>
             {isNotRepo ? (
               <button
                 type="button"
                 className={styles.retry}
-                style={{ background: 'var(--accent)', color: '#fff', borderColor: 'var(--accent)', fontWeight: 600 }}
+                style={{ width: '100%', background: 'var(--accent)', color: '#fff', borderColor: 'var(--accent)', fontWeight: 600 }}
                 disabled={busy}
                 onClick={() => void handleInitGit()}
               >
@@ -210,7 +210,7 @@ export function GitControl({ projectId, cwd, ptyId, terminalName }: GitControlPr
                 {busy ? t('git.initOffer.busy') : t('git.initOffer.button')}
               </button>
             ) : null}
-            <button type="button" className={styles.retry} onClick={() => void refresh()}>
+            <button type="button" className={styles.retry} style={{ width: '100%' }} onClick={() => void refresh()}>
               <RefreshCw size={13} />
               {t('git.refresh')}
             </button>

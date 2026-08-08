@@ -1,5 +1,5 @@
 import { Palette } from 'lucide-react'
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 
 import { GROUP_COLORS, type AgentType } from '../../lib/types'
 import { useT } from '../../lib/i18n'
@@ -80,39 +80,57 @@ export function EditProjectModal() {
     }
   }
 
+  // `project` vem de um seletor Zustand (`s.projects.find(...)`) — troca de
+  // referência sempre que QUALQUER campo deste projeto muda no store, o que
+  // inclui atualizações de fundo alheias à edição (ex: atividade de agente,
+  // troca de ptyId, timestamps) enquanto o modal está aberto. Sem o guard
+  // abaixo, esse efeito reexecutava a cada uma dessas mutações e sobrescrevia
+  // o estado local com o valor ainda salvo em disco — apagando em silêncio
+  // qualquer edição pendente (ex: modelo do agente de conflito escolhido na
+  // busca) antes mesmo do clique em "Salvar", porque o guard de "mudou?" do
+  // `submit()` comparava contra um `conflictModel` que já tinha sido
+  // resetado de volta ao valor antigo. `seededForRef` faz a semeadura valer
+  // só uma vez por "sessão de abertura" deste projeto (reseta ao fechar),
+  // não a cada troca de referência do objeto.
+  const seededForRef = useRef<string | null>(null)
   useEffect(() => {
-    if (open && project) {
-      setName(project.name)
-      setColor(project.color || GROUP_COLORS[0])
-      setIconUrl(project.iconUrl ?? '')
-      setWorktreeModeState(project.worktreeMode ?? 'gitWorktree')
-      setValidationCommandsStr((project.validationCommands ?? []).join('\n'))
-      setGsdWatcherEnabledState(project.gsdWatcherEnabled ?? false)
+    if (!open || !project) {
+      seededForRef.current = null
+      return
+    }
+    if (seededForRef.current === project.id) return
+    seededForRef.current = project.id
 
-      setConflictProviderState(project.conflictAgentProvider ?? 'claude')
-      setConflictModelState(project.conflictAgentModel ?? '')
-      setGraphifyEnabledState(project.graphifyEnabled ?? false)
-      setAutoWorktreeState(project.autoWorktree ?? false)
-      setMergePostActionState(project.mergePostAction ?? 'relocateToNewBranch')
-      setActiveTab('focus')
-      setIsColorPopoverOpen(false)
+    setName(project.name)
+    setColor(project.color || GROUP_COLORS[0])
+    setIconUrl(project.iconUrl ?? '')
+    setWorktreeModeState(project.worktreeMode ?? 'gitWorktree')
+    setValidationCommandsStr((project.validationCommands ?? []).join('\n'))
+    setGsdWatcherEnabledState(project.gsdWatcherEnabled ?? false)
 
-      const repoPath = project.terminals[0]?.cwd
-      if (repoPath) {
-        void loadWorktrees(repoPath)
-        gitListBranches(repoPath)
-          .then((list) => {
-            setBranches(list)
-            // Defaults sensatos: target = branch "principal" se existir.
-            const main = list.find((b) => b === 'main' || b === 'master') ?? list[0] ?? ''
-            setMergeTarget((prev) => prev || main)
-            setMergeSource((prev) => prev || (list.find((b) => b !== main) ?? ''))
-          })
-          .catch(() => setBranches([]))
-      } else {
-        setWorktrees([])
-        setBranches([])
-      }
+    setConflictProviderState(project.conflictAgentProvider ?? 'claude')
+    setConflictModelState(project.conflictAgentModel ?? '')
+    setGraphifyEnabledState(project.graphifyEnabled ?? false)
+    setAutoWorktreeState(project.autoWorktree ?? false)
+    setMergePostActionState(project.mergePostAction ?? 'relocateToNewBranch')
+    setActiveTab('focus')
+    setIsColorPopoverOpen(false)
+
+    const repoPath = project.terminals[0]?.cwd
+    if (repoPath) {
+      void loadWorktrees(repoPath)
+      gitListBranches(repoPath)
+        .then((list) => {
+          setBranches(list)
+          // Defaults sensatos: target = branch "principal" se existir.
+          const main = list.find((b) => b === 'main' || b === 'master') ?? list[0] ?? ''
+          setMergeTarget((prev) => prev || main)
+          setMergeSource((prev) => prev || (list.find((b) => b !== main) ?? ''))
+        })
+        .catch(() => setBranches([]))
+    } else {
+      setWorktrees([])
+      setBranches([])
     }
   }, [open, project])
 
@@ -410,6 +428,7 @@ export function EditProjectModal() {
 
       {activeTab === 'agents' ? <div className={styles.panel}><EditProjectAgentSettings
         projectId={project.id}
+        cwd={project.terminals[0]?.cwd ?? project.defaultCwd ?? ''}
         worktreeMode={worktreeMode}
         onWorktreeModeChange={setWorktreeModeState}
         validationCommandsStr={validationCommandsStr}

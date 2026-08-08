@@ -62,7 +62,7 @@ export function UpdateModal() {
       {info.notes ? <div className={styles.notes}>{info.notes}</div> : null}
       {installing ? (
         <div className={styles.progressTrack} aria-hidden>
-          <div className={styles.progressBar} style={{ width: `${percent}%` }} />
+          <div className={styles.progressBar} style={{ transform: `scaleX(${percent / 100})` }} />
         </div>
       ) : null}
       {phase === 'error' ? <p className={styles.error}>{t('update.error', { error })}</p> : null}

@@ -94,6 +94,17 @@ use tauri::Manager;
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
+    // Precisa ser setado ANTES da webview ser criada (mais abaixo, via
+    // Tauri Builder). WebKitGTK, no caminho de composição via DMA-BUF, tem
+    // bugs conhecidos no Wayland — escala fracionada quebrando layout,
+    // animações CSS travando/renderizando parcial, e um crash silencioso
+    // ("Error 71") em alguns drivers de GPU — documentados oficialmente em
+    // https://v2.tauri.app/develop/debug/linux-graphics/. Desligar o
+    // renderer DMA-BUF custa o caminho de rendering mais rápido, mas evita
+    // essa classe inteira de bug; não mexe em nada no Windows/macOS.
+    #[cfg(target_os = "linux")]
+    std::env::set_var("WEBKIT_DISABLE_DMABUF_RENDERER", "1");
+
     let _ = dotenvy::dotenv();
     // `npm run app` (dev) injeta EDITOR=vi e GIT_EDITOR=true no ambiente do
     // processo. Shells spawnados pelos terminais herdariam isso e o zsh ligaria

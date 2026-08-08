@@ -254,7 +254,7 @@ select.input {
   font-weight: 500;
   cursor: pointer;
   white-space: nowrap;
-  transition: all 120ms ease;
+  transition: color 120ms ease, background-color 120ms ease, border-color 120ms ease;
 }
 .tabBtn:hover {
   color: var(--fg);
@@ -310,7 +310,7 @@ select.input {
   border-radius: var(--radius-md);
   color: var(--fg);
   cursor: pointer;
-  transition: all 120ms ease;
+  transition: border-color 120ms ease, background-color 120ms ease, box-shadow 120ms ease;
   position: relative;
   text-align: left;
 }

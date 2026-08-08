@@ -12,6 +12,7 @@ import { recordAgentActivityInput } from '../../lib/activityTracker'
 import { AgentCompletionMonitor } from '../../lib/agentCompletionMonitor'
 import { preparePtyRuntimeLaunch } from '../../lib/agentRuntimeAdapter'
 import { getLocale, translate } from '../../lib/i18n'
+import { isWindows } from '../../lib/platform'
 import { usePtyPanelVisible } from '../../lib/ptyVisibility'
 import {
   claimDiscoveredSession,
@@ -136,6 +137,14 @@ export function useXtermSession(params: {
    * era a causa real do "resume abre em branco".
    */
   trustSessionId?: boolean
+  /**
+   * Sessão-filha do GSD Sync: é a visão de subagente do próprio OpenCode,
+   * não um terminal independente — nunca deve aceitar entrada (digitar,
+   * colar, atalhos de force-kill/histórico), só leitura. Sem isso, a
+   * sessão-filha nascia indistinguível de um terminal principal de verdade,
+   * e dava pra digitar/corromper o subagente sem querer.
+   */
+  readOnly?: boolean
   runtimeProfile: AgentRuntimeProfile
   terminalTheme: Theme
   cliPathOverride: string | null
@@ -175,6 +184,7 @@ export function useXtermSession(params: {
     graphifyRepo,
     gsdWatcherEnabled,
     trustSessionId,
+    readOnly,
     runtimeProfile,
     terminalTheme,
     cliPathOverride,
@@ -255,14 +265,26 @@ export function useXtermSession(params: {
 
     const resourcePolicy = useProjectsStore.getState().preferences.resourcePolicy
     const terminal = new Terminal({
-      cursorBlink: true,
+      cursorBlink: !readOnly,
+      // Bloqueia o pipeline interno de teclado→onData do xterm.js pra
+      // sessões-filha do GSD Sync — visão de subagente, nunca um terminal
+      // digitável. `onData` e os atalhos custom (Ctrl+V, histórico,
+      // force-kill) abaixo também são gateados por segurança extra, já que
+      // `disableStdin` sozinho não cobre `attachCustomKeyEventHandler`.
+      disableStdin: Boolean(readOnly),
       convertEol: false,
       allowProposedApi: true,
       scrollback: getTerminalScrollbackRows({
         agent: command != null && command !== 'shell',
         memoryBudgetMb: resourcePolicy.memoryBudgetMb,
       }),
-      windowsPty: { backend: 'conpty', buildNumber: 22000 },
+      // Só faz sentido com o backend ConPTY real do Windows. Aplicado sem
+      // checagem, muda a semântica interna de reflow/resize do buffer do
+      // xterm.js mesmo sobre um PTY Unix de verdade (Linux/macOS) — o
+      // xterm.js passa a assumir que o backend redesenha a tela sozinho
+      // (como o ConPTY faz), o que corrompe o repaint de TUIs densas que
+      // não se redesenham por conta própria (ex: OpenCode).
+      ...(isWindows() ? { windowsPty: { backend: 'conpty' as const, buildNumber: 22000 } } : {}),
       fontFamily: 'Cascadia Mono, Consolas, "Courier New", monospace',
       fontSize: 14,
       theme: getXtermTheme(terminalTheme),
@@ -552,7 +574,7 @@ export function useXtermSession(params: {
           return false
         }
       }
-      if (key === 'c') {
+      if (key === 'c' && !readOnly) {
         const now = Date.now()
         const id = ptyIdRef.current
         if (id && now - lastCtrlCRef.current < 1500) {
@@ -564,7 +586,7 @@ export function useXtermSession(params: {
         lastCtrlCRef.current = now
       }
 
-      if (key === 'v') {
+      if (key === 'v' && !readOnly) {
         event.preventDefault()
         void resolveClipboardPaste()
           .catch(() => navigator.clipboard?.readText() ?? '')
@@ -575,7 +597,7 @@ export function useXtermSession(params: {
         return false
       }
 
-      if (event.key === 'ArrowUp' || event.key === 'ArrowDown') {
+      if (!readOnly && (event.key === 'ArrowUp' || event.key === 'ArrowDown')) {
         navigateHistory(event.key === 'ArrowUp' ? 'up' : 'down')
         return false
       }
@@ -808,6 +830,7 @@ export function useXtermSession(params: {
     }
 
     terminal.onData((data) => {
+      if (readOnly) return
       const id = ptyIdRef.current
       if (!id) return
       useTerminalsStore.getState().recordIo(id)

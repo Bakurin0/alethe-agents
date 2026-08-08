@@ -14,6 +14,19 @@ export function isMacOS(): boolean {
 }
 
 /**
+ * Detecta Windows pelo user-agent, mesmo princípio de `isMacOS()`. Usado para
+ * gatear opções do xterm.js que só fazem sentido com o backend ConPTY do
+ * Windows (ex: `windowsPty`) — aplicadas sem checagem, essas opções mudam a
+ * semântica interna de reflow/resize do buffer do xterm.js mesmo rodando
+ * sobre um PTY Unix real (Linux/macOS), corrompendo o redesenho de TUIs
+ * densas (ex: OpenCode) que não repintam a tela sozinhas como o ConPTY faz.
+ */
+export function isWindows(): boolean {
+  if (typeof navigator === 'undefined') return false
+  return /Windows/i.test(navigator.userAgent)
+}
+
+/**
  * Decide se um terminal deve usar o backend nativo (Ghostty) em vez do
  * xterm.js. Regra única, testável: só no macOS E com a flag opt-in ligada.
  * `macOverride` permite testar a lógica sem depender do user-agent real.

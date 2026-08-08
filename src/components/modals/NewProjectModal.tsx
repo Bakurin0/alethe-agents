@@ -1,5 +1,5 @@
 import { Folder, GitBranch, Palette } from 'lucide-react'
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 
 import { useUiStore } from '../../stores/uiStore'
 import { useProjectsStore } from '../../stores/projectsStore'
@@ -15,7 +15,10 @@ import controls from './controls.module.css'
 export function NewProjectModal() {
   const t = useT()
   const open = useUiStore((s) => s.openModal === 'newProject')
-  const context = useUiStore((s) => s.modalContext) as { groupId?: string | null } | null
+  const context = useUiStore((s) => s.modalContext) as {
+    groupId?: string | null
+    defaultCwd?: string
+  } | null
   const closeModal = useUiStore((s) => s.closeModal)
   const createProject = useProjectsStore((s) => s.createProject)
   const openModal = useUiStore((s) => s.openModal_)
@@ -29,6 +32,13 @@ export function NewProjectModal() {
   const [githubUrl, setGithubUrl] = useState('')
   const [groupId, setGroupId] = useState<string | null>(context?.groupId ?? null)
   const [isColorPopoverOpen, setIsColorPopoverOpen] = useState(false)
+
+  // Herda a pasta já escolhida na tela "Nenhum projeto aberto" quando o
+  // usuário troca pro formulário completo em vez de perder a seleção e
+  // obrigar a escolher a pasta de novo.
+  useEffect(() => {
+    if (open && context?.defaultCwd) setDefaultCwd(context.defaultCwd)
+  }, [open, context?.defaultCwd])
 
   const reset = () => {
     setName('')

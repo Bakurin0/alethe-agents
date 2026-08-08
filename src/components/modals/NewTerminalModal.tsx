@@ -5,15 +5,14 @@ import { useUiStore } from '../../stores/uiStore'
 import { basename } from '../../lib/paths'
 import { getProjectDefaultCwd, useProjectsStore } from '../../stores/projectsStore'
 import { pickDirectory } from '../../lib/dialog'
-import { AGENT_TYPE_LABELS, UNRESTRICTED_FLAG, type AgentRuntimeProfile, type AgentType } from '../../lib/types'
+import { AGENT_TYPE_LABELS, ALL_AGENT_TYPES, UNRESTRICTED_FLAG, type AgentRuntimeProfile, type AgentType } from '../../lib/types'
 import { AgentIcon } from '../icons/AgentIcons'
 import { useT } from '../../lib/i18n'
 import { Modal } from './Modal'
 import controls from './controls.module.css'
 import styles from './NewTerminalModal.module.css'
 
-const AGENT_ORDER: AgentType[] = ['claude', 'codex', 'antigravity', 'opencode', 'shell', 'mimo', 'freebuff']
-const AGENTS: { type: AgentType; label: string }[] = AGENT_ORDER.map((type) => ({
+const AGENTS: { type: AgentType; label: string }[] = ALL_AGENT_TYPES.map((type) => ({
   type,
   label: AGENT_TYPE_LABELS[type],
 }))

@@ -119,6 +119,21 @@ fn valid_utf8_prefix_len(buf: &[u8]) -> usize {
     }
 }
 
+/// Avança `start` até o próximo byte que inicia um caractere UTF-8 (ou até o
+/// fim do slice), evitando cortar no meio de uma sequência multibyte quando
+/// `start` foi escolhido só por contagem de bytes (ex.: truncar scrollback
+/// pelos últimos N bytes em `attach_pty`). Bytes de continuação UTF-8 sempre
+/// têm os dois bits mais altos como `10`; sem isso, um corte no meio de um
+/// acento (ex.: "ã" = 2 bytes) sobra um byte órfão que vira `U+FFFD` no
+/// `from_utf8_lossy` seguinte.
+fn align_to_char_boundary(slice: &[u8], start: usize) -> usize {
+    let mut start = start.min(slice.len());
+    while start < slice.len() && (slice[start] & 0xC0) == 0x80 {
+        start += 1;
+    }
+    start
+}
+
 /// Decide se o canal `pty://activity/{id}` (painel invisível) já pode emitir
 /// de novo. `None` = nunca emitiu ainda (primeiro lote invisível passa na
 /// hora, sem esperar o intervalo).
@@ -761,7 +776,7 @@ pub async fn attach_pty(
                 if !buffer.data.is_empty() {
                 // make_contiguous + slice evita a cópia extra do iter().skip().collect().
                 let slice = buffer.data.make_contiguous();
-                let start = slice.len().saturating_sub(max_bytes);
+                let start = align_to_char_boundary(slice, slice.len().saturating_sub(max_bytes));
                     return Ok(String::from_utf8_lossy(&slice[start..]).into_owned());
                 }
             }
@@ -771,7 +786,7 @@ pub async fn attach_pty(
         // liberado. Em ambos os casos o disco tem a verdade (vazio ou o scrollback final).
         let disk = load_scrollback(&app, &id)?;
         let bytes: Vec<u8> = disk.into_iter().collect();
-        let start = bytes.len().saturating_sub(max_bytes);
+        let start = align_to_char_boundary(&bytes, bytes.len().saturating_sub(max_bytes));
         Ok(String::from_utf8_lossy(&bytes[start..]).into_owned())
     })
     .await
@@ -857,7 +872,23 @@ pub async fn resize_pty(
         // OpenCode no Windows/Linux/macOS nem sempre redesenha a TUI após
         // resize — a tela fica truncada até a próxima tecla. Ctrl+L (Form
         // Feed) força o redraw em todas as plataformas.
+        //
+        // `master.resize()` acima só ajusta o winsize do PTY e dispara
+        // SIGWINCH pro processo filho — não há garantia de ordem entre a
+        // entrega/tratamento desse sinal e o Ctrl+L chegando no stdin logo
+        // em seguida. O próprio framework de TUI do OpenCode já reage ao
+        // SIGWINCH com seu próprio redraw assíncrono; mandar o Ctrl+L sem
+        // nenhuma folga faz os dois redraws (um calculado pra geometria
+        // antiga, outro pra nova) correrem em paralelo e se sobrescreverem
+        // no meio — a tela sai com blocos de glifo corrompidos em vez de
+        // conteúdo real, sobretudo durante um arraste contínuo de divisor
+        // (vários resizes seguidos). Uma folga curta aqui não é uma garantia
+        // de sincronização de verdade (não há como saber quando o redraw do
+        // processo filho termina de fato), mas reduz bastante a janela da
+        // corrida — já estamos numa `spawn_blocking`, então dormir aqui não
+        // trava nenhum outro comando.
         if is_opencode {
+            std::thread::sleep(std::time::Duration::from_millis(50));
             if let Ok(mut writer) = writer.lock() {
                 let _ = writer.write_all(&[12]);
                 let _ = writer.flush();

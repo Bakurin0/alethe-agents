@@ -239,10 +239,10 @@ export function WorkspaceView() {
     return shell(
       <NoWorkspace
         project={activeProject}
-        onAddTerminal={() =>
+        onAddTerminal={(defaultCwd) =>
           activeProject
             ? openModal('newTerminal', { projectId: activeProject.id })
-            : openModal('newProject')
+            : openModal('newProject', defaultCwd ? { defaultCwd } : undefined)
         }
       />,
       false,
@@ -554,7 +554,7 @@ function NoWorkspace({
   onAddTerminal,
 }: {
   project: Project | null
-  onAddTerminal: () => void
+  onAddTerminal: (defaultCwd?: string) => void
 }) {
   const t = useT()
   const openContainerWithAllPanes = useProjectsStore((s) => s.openContainerWithAllPanes)
@@ -631,7 +631,7 @@ function NoWorkspace({
               onClick={() => void browseFolder()}
             >
               <FolderOpen size={14} />
-              <span>{folder || t('ws.emptyFolderPlaceholder')}</span>
+              <span title={folder || undefined}>{folder || t('ws.emptyFolderPlaceholder')}</span>
             </button>
             <button
               type="button"
@@ -650,7 +650,11 @@ function NoWorkspace({
             />
             <span>{t('project.graphifyEnabled')}</span>
           </label>
-          <button type="button" className={styles.emptySecondaryAction} onClick={onAddTerminal}>
+          <button
+            type="button"
+            className={styles.emptySecondaryAction}
+            onClick={() => onAddTerminal(folder.trim() || undefined)}
+          >
             {t('ws.emptyModalAction')}
           </button>
         </div>

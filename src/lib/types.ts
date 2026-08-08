@@ -13,6 +13,19 @@ export const AGENT_TYPE_LABELS: Record<AgentType, string> = {
   shell: 'Shell',
 }
 
+/** Ordem canônica de exibição dos tipos de agente — fonte única, evita duas
+ * listas paralelas divergindo (ex.: posição do Shell diferente entre o
+ * seletor de novo terminal e o de agente de conflito). */
+export const ALL_AGENT_TYPES: AgentType[] = [
+  'claude',
+  'codex',
+  'antigravity',
+  'opencode',
+  'mimo',
+  'freebuff',
+  'shell',
+]
+
 /** Executável real de cada agente. O Antigravity desktop usa `antigravity`,
  * enquanto o agente de terminal oficial usa `agy`. */
 export function agentCliCommand(agent: AgentType): string | undefined {

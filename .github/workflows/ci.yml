@@ -34,7 +34,7 @@ jobs:
       - name: Check formatting
         run: npm run format:check
 
-      # node --test sobre tests/**/*.test.ts (strip-types nativo do Node).
+      # vitest run sobre tests/**/*.test.ts (test:node, via node --test, roda à parte).
       - name: Run unit tests
         run: npm test
 
@@ -66,6 +66,8 @@ jobs:
 
       - name: Install Rust
         uses: dtolnay/rust-toolchain@stable
+        with:
+          components: clippy
 
       - name: Rust cache
         uses: swatinem/rust-cache@v2
@@ -75,6 +77,14 @@ jobs:
       - name: cargo check
         working-directory: src-tauri
         run: cargo check
+
+      # Não-bloqueante por enquanto: já há ~37 warnings pré-existentes no
+      # código atual (nenhum deles deste PR). Endurecer pra `-D warnings`
+      # depois de uma limpeza dedicada, não junto de outra tarefa.
+      - name: cargo clippy
+        working-directory: src-tauri
+        run: cargo clippy --all-targets
+        continue-on-error: true
 
       - name: cargo test
         working-directory: src-tauri

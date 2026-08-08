@@ -51,6 +51,9 @@ export type XTermViewProps = {
    * era a causa real do "resume abre em branco".
    */
   trustSessionId?: boolean
+  /** Sessão-filha do GSD Sync: visão de subagente, só leitura — nunca deve
+   * aceitar digitação/colar/atalhos que escrevem na PTY. */
+  readOnly?: boolean
   runtimeProfile?: AgentRuntimeProfile
   terminalTheme?: Theme
   onSpawned?: (id: string) => void
@@ -78,6 +81,7 @@ export function XTermView({
   graphifyRepo,
   gsdWatcherEnabled,
   trustSessionId,
+  readOnly,
   // Terminais antigos sem perfil persistido entram no modo lean para não
   // iniciar Claude com concorrência/MCP ilimitados por acidente. `full` segue
   // disponível quando o usuário escolhe explicitamente no modal.
@@ -300,6 +304,7 @@ export function XTermView({
     graphifyRepo,
     gsdWatcherEnabled,
     trustSessionId,
+    readOnly,
     runtimeProfile,
     terminalTheme,
     cliPathOverride,
