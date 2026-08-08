@@ -1,4 +1,4 @@
-// alethe-managed: v11
+// alethe-managed: v12
 // Gerado automaticamente pelo Alethe. Seguro editar — se você mudar este
 // arquivo, remova ou altere a linha acima ("alethe-managed: vN") para
 // impedir que o Alethe sobrescreva suas mudanças em versões futuras.
@@ -224,6 +224,18 @@ export const AletheGsdStatePlugin: Plugin = async ({ directory, worktree, client
   let activePromptText = ''
   let attemptFailed = false
   let lastAttemptErrorMessage = ''
+
+  // Reconciliação de boot: `.gsd-child-busy` só é limpo por `setChildBusy(false)`,
+  // chamado quando ESTE processo detecta `session.idle`/`session.error` da
+  // sessão-filha. Se o processo morrer no meio de um ciclo (pane fechado, app
+  // reiniciado, travamento do modelo) sem passar por ali, o sentinel fica
+  // órfão em disco pra sempre — a UI (que só lê o arquivo, nunca reconstrói
+  // estado do processo antigo) mostra "Sincronizando" eternamente mesmo sem
+  // nada rodando de verdade. Uma instância do plugin que está subindo agora
+  // não tem `activeChain` nenhuma ainda (linha acima, sempre vazia no boot),
+  // então qualquer sentinel pré-existente é necessariamente órfão de um
+  // processo anterior — nunca do próprio.
+  void rm(join(planningDir, CHILD_BUSY_SENTINEL), { force: true }).catch(() => {})
 
   async function syncStructure(todos: Todo[]) {
     if (!Array.isArray(todos) || todos.length === 0) return // nunca inventa progresso sem nenhum todo real

@@ -165,6 +165,32 @@ pub fn run() {
             if let Some(window) = app.get_webview_window("main") {
                 let _ = window.set_title("(DEV) Alethe");
             }
+            // `tauri dev` no Linux não instala `.desktop` file nenhum (só um
+            // build empacotado via .deb/AppImage faz isso), então KWin/GNOME
+            // Shell não têm de onde puxar o ícone pro Alt+Tab/task switcher e
+            // caem num genérico — a config em `tauri.conf.json` (`bundle.icon`)
+            // só é consumida no empacotamento, não em dev. `set_icon` seta
+            // `_NET_WM_ICON` diretamente na janela em runtime, sem depender de
+            // `.desktop` — não é garantia de funcionar em todo compositor
+            // (alguns preferem lookup por tema/`.desktop` mesmo com o hint
+            // presente), mas não tem custo nenhum tentar.
+            #[cfg(target_os = "linux")]
+            if let Some(window) = app.get_webview_window("main") {
+                // `tauri::image::Image` não decodifica PNG diretamente nesta
+                // versão (só aceita pixels RGBA crus + dimensões) — decodifica
+                // com a crate `image` (já dependência direta) antes.
+                match image::load_from_memory(include_bytes!("../icons/128x128.png")) {
+                    Ok(decoded) => {
+                        let rgba = decoded.to_rgba8();
+                        let (width, height) = rgba.dimensions();
+                        let icon = tauri::image::Image::new_owned(rgba.into_raw(), width, height);
+                        if let Err(error) = window.set_icon(icon) {
+                            eprintln!("[icon] falha ao aplicar ícone da janela: {error}");
+                        }
+                    }
+                    Err(error) => eprintln!("[icon] falha ao decodificar ícone embutido: {error}"),
+                }
+            }
             logging::set_logs_dir(app.handle());
             // Keep the terminal launcher available after installation.
             #[cfg(not(debug_assertions))]

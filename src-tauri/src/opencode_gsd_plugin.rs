@@ -20,7 +20,7 @@ const PLUGIN_TS: &str = include_str!("../assets/opencode-plugins/alethe-gsd-stat
 const PLUGIN_REL_PATH: &str = ".opencode/plugins/alethe-gsd-state.ts";
 const PLUGIN_CONFIG_ENTRY: &str = "./.opencode/plugins/alethe-gsd-state.ts";
 const MANAGED_MARKER_PREFIX: &str = "// alethe-managed: v";
-const CURRENT_PLUGIN_VERSION: u32 = 11;
+const CURRENT_PLUGIN_VERSION: u32 = 12;
 
 /// `None` (sem marker) = usuário editou/removeu a linha — nunca sobrescreve.
 /// `Some(v)` com `v` maior que a versão atual = marker de uma versão futura
@@ -159,7 +159,7 @@ mod tests {
         let plugin_path = root.join(PLUGIN_REL_PATH);
         let content = fs::read_to_string(&plugin_path).unwrap();
         assert_eq!(content, PLUGIN_TS);
-        assert!(content.starts_with("// alethe-managed: v11"));
+        assert!(content.starts_with("// alethe-managed: v12"));
         fs::remove_dir_all(root).unwrap();
     }
 

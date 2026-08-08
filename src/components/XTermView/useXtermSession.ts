@@ -702,7 +702,21 @@ export function useXtermSession(params: {
     }
     const ro = new ResizeObserver(scheduleObservedResize)
     ro.observe(container)
-    window.addEventListener('alethe:zoom-changed', scheduleObservedResize)
+    const onZoomChanged = () => {
+      // `fitAddon.fit()` (dentro de runResize) só LÊ o cache interno de
+      // dimensões de célula do xterm.js — não força remedição. O xterm.js
+      // remede sozinho quando detecta mudança de devicePixelRatio via
+      // media query, mas o WebKitGTK nem sempre dispara essa mudança de
+      // forma confiável após `setZoom()` do webview. Sem remedir, o cache
+      // fica desatualizado e toda detecção de hover/link/clique dentro do
+      // terminal aponta pra célula errada (mouse "desalinhado") até o
+      // próximo resize real do container. Reatribuir `fontSize` pro mesmo
+      // valor é o truque conhecido pra forçar o xterm.js a limpar esse
+      // cache e remedir, sem mudar nada visualmente.
+      terminal.options.fontSize = terminal.options.fontSize
+      scheduleResize(true)
+    }
+    window.addEventListener('alethe:zoom-changed', onZoomChanged)
     window.addEventListener('alethe:terminal-resize-request', onResizeRequest)
 
     // Fit adicional com delay pra garantir que o layout estabilizou
@@ -972,9 +986,16 @@ export function useXtermSession(params: {
             // procurando quem tem esse sessionId, ele então tratava o
             // terminal normal como se fosse o viewer da sessão-filha,
             // escondendo/fechando a pane dele.
-            const gsdChildId = gsdWatcherEnabled
-              ? await readGsdChildSession(cwd).catch(() => null)
-              : null
+            // Gateado só em `gsdWatcherEnabled` (o toggle atual da UI) e não
+            // na existência real do sentinel: se o plugin já escreveu
+            // `.gsd-child-session` em algum momento (spawn anterior com o
+            // toggle ligado, worktree que herdou o arquivo do commit-base) e
+            // depois o toggle foi desligado, esse trecho passava a tratar a
+            // sessão-filha como candidata válida de novo — um terminal
+            // normal sem sessionId salvo podia reivindicá-la mesmo com o
+            // watcher desligado. A exclusão agora depende só do sentinel
+            // existir em disco, não do estado atual do toggle.
+            const gsdChildId = await readGsdChildSession(cwd).catch(() => null)
             const candidates = gsdChildId ? sessions.filter((s) => s.id !== gsdChildId) : sessions
             const claimed = claimMostRecentSession('opencode', cwd, candidates)
             if (claimed) resumeId = claimed.id
@@ -1191,8 +1212,11 @@ export function useXtermSession(params: {
                 // verdade (sem parentID, de propósito) — sem excluir, ela
                 // podia ser confundida com a sessão real recém-criada deste
                 // terminal se surgisse na mesma janela de detecção.
+                // Exclusão depende só do sentinel existir em disco, não do
+                // toggle atual de `gsdWatcherEnabled` — ver comentário
+                // equivalente no bloco de resume acima.
                 let filteredSessions = sessions
-                if (command === 'opencode' && gsdWatcherEnabled) {
+                if (command === 'opencode') {
                   const gsdChildId = await readGsdChildSession(cwd).catch(() => null)
                   if (gsdChildId) filteredSessions = sessions.filter((s) => s.id !== gsdChildId)
                 }
@@ -1356,7 +1380,7 @@ export function useXtermSession(params: {
       container.removeEventListener('paste', onPaste)
       window.removeEventListener('focus', restoreHoveredFocus)
       document.removeEventListener('visibilitychange', restoreHoveredFocus)
-      window.removeEventListener('alethe:zoom-changed', scheduleObservedResize)
+      window.removeEventListener('alethe:zoom-changed', onZoomChanged)
       window.removeEventListener('alethe:terminal-resize-request', onResizeRequest)
       ro.disconnect()
       if (resizeTimer !== null) window.clearTimeout(resizeTimer)
