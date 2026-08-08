@@ -77,6 +77,27 @@ It is built for developers who use Claude Code, Codex, OpenCode, and local termi
 
 Built with Tauri, Rust, React, TypeScript, Vite, `portable-pty`, and `xterm.js`.
 
+## Product Philosophy
+
+Alethe is intentionally not a maximalist desktop suite. Its purpose is to provide a calm,
+reliable workspace for coding agents, terminals, and project context — then let each user decide
+which additional capabilities belong in that workspace.
+
+The product follows a principle similar to Obsidian: a focused core, a durable local foundation,
+and optional capabilities that can be brought in when they are useful. Alethe should grow with the
+user's workflow rather than forcing every workflow to carry the same interface, controls, and
+background services.
+
+For that reason, new capabilities should be introduced behind explicit feature flags or opt-in
+settings whenever they are not essential to the core workspace. Optional features must be possible
+to discover, enable, disable, and maintain without making the default environment feel crowded or
+unfinished. A clean installation should remain a first-class experience as the product evolves.
+
+This is a deliberate response to a common failure mode in developer tools: accumulating every
+possible feature until the product becomes harder to understand, harder to configure, and noisier
+to operate than the problem it was meant to solve. Alethe values coherence over volume, and user
+choice over forced completeness.
+
 ## What It Gives You
 
 - Keep coding agents, shells, and project context in one durable workspace.

@@ -14,6 +14,7 @@ import { getLocale, translate } from '../../lib/i18n'
 import {
   claimDiscoveredSession,
   claimMostRecentSession,
+  isSessionClaimed,
   registerSessionClaim,
 } from '../../lib/sessionDiscovery'
 import { buildAgentLaunch } from '../../lib/sessionLaunch'
@@ -188,6 +189,7 @@ export function useXtermSession(params: {
     let writeFrame: number | null = null
     let pendingWrites: string[] = []
     let pendingWriteLength = 0
+    let resumeErrorBuffer = ''
     let lastCols = 0
     let lastRows = 0
     let forceNextResize = false
@@ -725,6 +727,18 @@ export function useXtermSession(params: {
           console.warn(`[pty-launch] ${command} reabrindo SEM resume (fallback de early-exit)`)
           resumeId = undefined
         }
+        if (resumeId && cwd && command && isSessionClaimed(command, cwd, resumeId, sessionPersistenceKey)) {
+          console.warn(`[pty-launch] ${command} session ${resumeId} is already claimed; starting a fresh writer`)
+          resumeId = undefined
+          removeSession(sessionPersistenceKey)
+          onSessionIdRef.current?.(undefined)
+        }
+        // Reserve the resume ID before creating the PTY. Without this early
+        // claim, two panes can pass the check above at the same time and both
+        // launch `codex resume`, which makes Codex reject one writer.
+        if (resumeId && cwd && command) {
+          registerSessionClaim(command, cwd, resumeId, sessionPersistenceKey)
+        }
         // Valida a conversa antes de passar o argumento de resume. IDs persistidos
         // podem ficar órfãos após limpeza de histórico ou sincronização entre PCs;
         // nesse caso removemos o vínculo e iniciamos uma conversa limpa.
@@ -976,6 +990,23 @@ export function useXtermSession(params: {
 
         const replay = await attachPty(response.id)
         if (disposed) return
+        let resumeConflictHandled = false
+        if (
+          replay &&
+          command === 'codex' &&
+          usedResumeRef.current &&
+          /already has an active writer|thread\/resume failed/i.test(replay)
+        ) {
+          resumeConflictHandled = true
+          earlyExitRetriedRef.current = true
+          forceFreshRef.current = true
+          removeSession(sessionPersistenceKey)
+          onSessionIdRef.current?.(undefined)
+          terminal.write('\r\n\x1b[33m[alethe] Codex session is busy — opening a fresh session…\x1b[0m\r\n')
+          void killPty(response.id).catch(() => {})
+          setRetryKey((value) => value + 1)
+          return
+        }
         if (replay) queueTerminalWrite(replay)
 
         // Race fix: se o componente desmontar entre o await e a atribuição,
@@ -985,6 +1016,26 @@ export function useXtermSession(params: {
           useTerminalsStore.getState().recordIo(response.id)
           queueTerminalWrite(chunk)
           completionMonitor?.handleOutput(chunk)
+          if (command === 'codex' && usedResumeRef.current && !resumeConflictHandled) {
+            // PTY events can split the bootstrap error between chunks, so keep
+            // a bounded rolling buffer instead of matching each chunk alone.
+            resumeErrorBuffer = `${resumeErrorBuffer}${chunk}`.slice(-8192)
+          }
+          if (
+            command === 'codex' &&
+            usedResumeRef.current &&
+            !resumeConflictHandled &&
+            /already has an active writer|thread\/resume failed/i.test(resumeErrorBuffer)
+          ) {
+            resumeConflictHandled = true
+            earlyExitRetriedRef.current = true
+            forceFreshRef.current = true
+            removeSession(sessionPersistenceKey)
+            onSessionIdRef.current?.(undefined)
+            terminal.write('\r\n\x1b[33m[alethe] Codex session is busy — opening a fresh session…\x1b[0m\r\n')
+            void killPty(response.id).catch(() => {})
+            setRetryKey((value) => value + 1)
+          }
         })
         if (disposed) {
           dataUnlisten()
@@ -1029,6 +1080,7 @@ export function useXtermSession(params: {
             completionMonitor?.dispose()
             completionMonitor = null
             removeSession(sessionPersistenceKey)
+            onSessionIdRef.current?.(undefined)
             terminal.write(
               '\r\n\x1b[33m[alethe] sessão anterior indisponível — reabrindo sessão nova…\x1b[0m\r\n',
             )
@@ -1063,17 +1115,24 @@ export function useXtermSession(params: {
         if (prompt) {
           const sendInitialInput = async () => {
             const earliestSendAt = Date.now() + 1_500
-            const deadline = Date.now() + 15_000
+            const timedSendAt = Date.now() + 4_000
+            const deadline = Date.now() + 10_000
             while (!disposed && Date.now() < deadline) {
               await new Promise((resolve) => window.setTimeout(resolve, 250))
               const runtime = useTerminalsStore.getState().byPtyId[response.id]
               const quietFor = runtime ? Date.now() - runtime.lastIoAt : 0
-              if (Date.now() >= earliestSendAt && runtime?.alive && quietFor >= 700) break
+              if (
+                Date.now() >= earliestSendAt &&
+                runtime?.alive &&
+                (quietFor >= 700 || Date.now() >= timedSendAt)
+              ) break
             }
             if (disposed) return
             try {
               await writePtyChunked(response.id, prompt, true)
+              await new Promise((resolve) => window.setTimeout(resolve, 150))
               await writePty(response.id, '\r')
+              window.setTimeout(() => void writePty(response.id, '\r').catch(() => {}), 1_200)
               onInitialInputSentRef.current?.()
             } catch (error) {
               console.warn('[pty-launch] não foi possível enviar o prompt inicial:', error)

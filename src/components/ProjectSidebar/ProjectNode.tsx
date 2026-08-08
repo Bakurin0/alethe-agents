@@ -1,5 +1,5 @@
 import { useDraggable, useDroppable } from '@dnd-kit/core'
-import { FolderOpen, MoreHorizontal, Pause, Plus } from 'lucide-react'
+import { FolderOpen, MoreHorizontal, Network, Pause, Plus } from 'lucide-react'
 
 import { useT } from '../../lib/i18n'
 import { type Project, type Terminal } from '../../lib/types'
@@ -53,6 +53,7 @@ export function ProjectNode({
   const t = useT()
   const { setNodeRef: dropRef, isOver } = useDroppable({ id: `proj:${project.id}` })
   const draggable = useDraggable({ id: `proj:${project.id}` })
+  const isDragging = draggable.isDragging
   const setRefs = (node: HTMLDivElement | null) => {
     dropRef(node)
     draggable.setNodeRef(node)
@@ -82,7 +83,7 @@ export function ProjectNode({
     return (
       <div
         ref={setRefs}
-        className={`${styles.activeCard} ${isOver ? styles.projectDropTarget : ''} ${
+        className={`${styles.activeCard} ${isOver ? styles.projectDropTarget : ''} ${isDragging ? styles.dragSource : ''} ${
           allDisabled ? styles.projectDisabled : ''
         }`}
         onContextMenu={(e) => {
@@ -95,6 +96,7 @@ export function ProjectNode({
       >
         <div className={styles.activeCardHeader} onClick={onToggleCollapsed}>
           <Monogram name={project.name} iconUrl={project.iconUrl} color={project.color} size={20} />
+          {project.mode === 'agentSandbox' ? <Network size={13} className={styles.agentProjectIcon} /> : null}
           <span className={styles.activeCardTitle} title={project.name}>
             {project.name}
           </span>
@@ -158,7 +160,7 @@ export function ProjectNode({
   return (
     <div
       ref={setRefs}
-      className={`${styles.inactiveProjectNode} ${allDisabled ? styles.projectDisabled : ''} ${
+      className={`${styles.inactiveProjectNode} ${isDragging ? styles.dragSource : ''} ${allDisabled ? styles.projectDisabled : ''} ${
         isOver ? styles.projectDropTarget : ''
       }`}
       onClick={onActivate}
@@ -198,6 +200,7 @@ export function ProjectNode({
         <span className={styles.projectName} title={project.name}>
           {project.name}
         </span>
+        {project.mode === 'agentSandbox' ? <span className={styles.agentProjectLabel}>Agent Sandbox</span> : null}
         {branch ? (
           <span className={styles.inactiveBranch} title={branch}>
             {branch}

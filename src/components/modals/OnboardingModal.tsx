@@ -3,6 +3,7 @@ import { BrainCircuit, Check, GitBranch, Globe, ListTodo, Network } from 'lucide
 import { useEffect, useRef, useState } from 'react'
 
 import aletheLogo from '../../assets/alethe-logo.png'
+import defaultProfileImage from '../../assets/default-profile.png'
 import { FEATURES } from '../../lib/features'
 import { LOCALES, useT } from '../../lib/i18n'
 import { getProfileInitial } from '../../lib/profile'
@@ -61,6 +62,7 @@ export function OnboardingModal() {
   const trimmedName = name.trim()
   const trimmedPhotoUrl = photoUrl.trim()
   const initial = getProfileInitial(trimmedName)
+  const previewAvatarUrl = trimmedPhotoUrl || defaultProfileImage
   const isLast = step === STEP_COUNT - 1
 
   useEffect(() => {
@@ -201,10 +203,10 @@ export function OnboardingModal() {
                         <div className={styles.previewCard}>
                           <div className={styles.avatarShell}>
                             <div className={styles.avatarFrame}>
-                              {trimmedPhotoUrl && !imgFailed ? (
+                              {!imgFailed ? (
                                 <img
                                   className={styles.avatarImg}
-                                  src={trimmedPhotoUrl}
+                                  src={previewAvatarUrl}
                                   alt=""
                                   draggable={false}
                                   onError={() => setImgFailed(true)}

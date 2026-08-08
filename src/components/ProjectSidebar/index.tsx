@@ -1,11 +1,12 @@
 import {
   DndContext,
+  DragOverlay,
   PointerSensor,
+  useDndContext,
   useDroppable,
   useSensor,
   useSensors,
   type DragEndEvent,
-  type DragStartEvent,
 } from '@dnd-kit/core'
 import {
   Folder,
@@ -236,7 +237,15 @@ export function ProjectSidebar() {
     }
   }
 
-  const onDragStart = (event: DragStartEvent) => setDraggingId(String(event.active.id))
+  const draggingLabel = draggingId
+    ? draggingId.startsWith('proj:')
+      ? projectsById.get(draggingId.slice('proj:'.length))?.name
+      : draggingId.startsWith('grp:')
+        ? groups.find((group) => `grp:${group.id}` === draggingId)?.name
+        : draggingId.startsWith('term:')
+          ? 'Terminal'
+          : null
+    : null
 
   const { projectMenu, groupMenu, terminalMenu } = createSidebarMenus({
     t,
@@ -255,7 +264,7 @@ export function ProjectSidebar() {
   const activateProject = (project: Project, mode: 'open' | 'focus' = 'focus') => {
     void mode
     actions.openProjectWorkspace(project.id)
-    setActiveView('workspace')
+    setActiveView(project.mode === 'agentSandbox' ? 'agentSandbox' : 'workspace')
   }
 
   const renderProject = (p: Project) => (
@@ -276,13 +285,13 @@ export function ProjectSidebar() {
           actions.setSubTabCompletionUnread(p.id, t.id, activeTab.id, false)
         }
         requestPaneFocus(t.id)
-        setActiveView('workspace')
+        setActiveView(p.mode === 'agentSandbox' ? 'agentSandbox' : 'workspace')
       }}
       onTerminalDoubleClick={(t) => {
         actions.openTerminalWorkspace(p.id, t.id)
         setActiveTerminal(p.id, t.id)
         requestPaneFocus(t.id)
-        setActiveView('workspace')
+        setActiveView(p.mode === 'agentSandbox' ? 'agentSandbox' : 'workspace')
       }}
       onProjectMenu={(e) => setMenu({ x: e.clientX, y: e.clientY, items: projectMenu(p) })}
       onTerminalMenu={(t, e) =>
@@ -513,10 +522,10 @@ export function ProjectSidebar() {
       {sidebarTab === 'projects' ? (
         <DndContext
           sensors={sensors}
-          onDragStart={onDragStart}
           onDragCancel={() => setDraggingId(null)}
           onDragEnd={onDragEnd}
         >
+          <DragStateSync onActiveIdChange={setDraggingId} />
           <div className={styles.list}>
             {projects.length === 0 && groups.length === 0 ? (
               <div className={styles.emptyWrap}>
@@ -543,6 +552,14 @@ export function ProjectSidebar() {
               </>
             )}
           </div>
+          <DragOverlay dropAnimation={null}>
+            {draggingId && draggingLabel ? (
+              <div className={styles.dragOverlay}>
+                <Folder size={14} />
+                <span>{draggingLabel}</span>
+              </div>
+            ) : null}
+          </DragOverlay>
         </DndContext>
       ) : null}
 
@@ -586,6 +603,17 @@ export function ProjectSidebar() {
     </aside>
   )
 }
+function DragStateSync({ onActiveIdChange }: { onActiveIdChange: (id: string | null) => void }) {
+  const { active } = useDndContext()
+  const activeId = active ? String(active.id) : null
+
+  useEffect(() => {
+    onActiveIdChange(activeId)
+  }, [activeId, onActiveIdChange])
+
+  return null
+}
+
 function UngroupedSection({
   projects,
   renderProject,

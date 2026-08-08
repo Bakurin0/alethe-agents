@@ -1,5 +1,6 @@
 import {
   Download,
+  Network,
   FileArchive,
   FileText,
   FolderOpen,
@@ -36,6 +37,7 @@ export function MainMenu() {
   const t = useT()
   const open = useUiStore((s) => s.showMainMenu)
   const closeMainMenu = useUiStore((s) => s.closeMainMenu)
+  const setActiveView = useUiStore((s) => s.setActiveView)
   const openModal = useUiStore((s) => s.openModal_)
   const flat = useProjectsStore((s) => s.preferences.workspaceFlat)
   const setFlat = useProjectsStore((s) => s.setWorkspaceFlat)
@@ -79,23 +81,57 @@ export function MainMenu() {
         type="button"
         className={styles.item}
         onClick={() => {
-          openModal('welcome')
+          setActiveView('agentSandbox')
           closeMainMenu()
         }}
       >
-        <Sparkles size={14} /> <span>{t('menu.welcome')}</span>
+        <Network size={14} /> <span>{t('menu.agentSandbox')}</span>
       </button>
       <button
         type="button"
         className={styles.item}
         onClick={() => {
-          openModal('themePicker')
+          openModal('remoteControl')
           closeMainMenu()
         }}
       >
-        <Sun size={14} />
-        <span>{t('menu.pickTheme')}</span>
+        <Network size={14} /> <span>{t('menu.remoteControl')}</span>
       </button>
+      {import.meta.env.DEV ? (
+        <>
+          <button
+            type="button"
+            className={styles.item}
+            onClick={() => {
+              openModal('welcome')
+              closeMainMenu()
+            }}
+          >
+            <Sparkles size={14} /> <span>{t('menu.welcome')}</span>
+          </button>
+          <button
+            type="button"
+            className={styles.item}
+            onClick={() => {
+              openModal('themePicker')
+              closeMainMenu()
+            }}
+          >
+            <Sun size={14} />
+            <span>{t('menu.pickTheme')}</span>
+          </button>
+          <button
+            type="button"
+            className={styles.item}
+            onClick={() => {
+              useProjectsStore.getState().setOnboardingDone(false)
+              closeMainMenu()
+            }}
+          >
+            <RefreshCw size={14} /> <span>{t('menu.redoOnboarding')}</span>
+          </button>
+        </>
+      ) : null}
       <button type="button" className={styles.item} onClick={() => setFlat(!flat)}>
         <Layers size={14} />
         <span>{flat ? t('menu.groupByProject') : t('menu.flatMode')}</span>
@@ -162,16 +198,6 @@ export function MainMenu() {
         <Upload size={14} /> <span>{t('menu.importBackup')}</span>
       </button>
       <div className={styles.separator} />
-      <button
-        type="button"
-        className={styles.item}
-        onClick={() => {
-          useProjectsStore.getState().setOnboardingDone(false)
-          closeMainMenu()
-        }}
-      >
-        <RefreshCw size={14} /> <span>{t('menu.redoOnboarding')}</span>
-      </button>
       <button
         type="button"
         className={`${styles.item} ${styles.danger}`}

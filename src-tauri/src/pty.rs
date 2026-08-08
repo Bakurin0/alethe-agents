@@ -170,6 +170,7 @@ pub fn pty_exists(sessions: State<'_, PtySessions>, id: String) -> Result<bool, 
 pub fn spawn_pty(
     app: AppHandle,
     sessions: State<'_, PtySessions>,
+    remote: State<'_, Arc<crate::remote::RemoteHub>>,
     cols: u16,
     rows: u16,
     id: Option<String>,
@@ -297,6 +298,7 @@ pub fn spawn_pty(
     let initial_warning = cwd_warning.clone();
     let read_active = Arc::new((std::sync::Mutex::new(true), std::sync::Condvar::new()));
     let thread_read_active = Arc::clone(&read_active);
+    let remote_hub = Arc::clone(remote.inner());
 
     // Reader síncrono na thread-pool bloqueante do Tokio manda chunks por um
     // canal MPSC; o batcher async coalesce por até 16ms (60 FPS) ou 64 KB antes
@@ -383,6 +385,7 @@ pub fn spawn_pty(
                     // SAFETY: batch[..valid] é UTF-8 válido por construção.
                     let text = unsafe { std::str::from_utf8_unchecked(&batch[..valid]) };
                     let _ = event_app.emit(&event_name, text);
+                    remote_hub.publish(serde_json::json!({ "type": "pty_output", "ptyId": &scrollback_id, "text": text }));
                 }
                 if valid < count {
                     carry.extend_from_slice(&batch[valid..]);
@@ -394,6 +397,7 @@ pub fn spawn_pty(
                     // SAFETY: carry[..valid] é UTF-8 válido por construção.
                     let text = unsafe { std::str::from_utf8_unchecked(&carry[..valid]) };
                     let _ = event_app.emit(&event_name, text);
+                    remote_hub.publish(serde_json::json!({ "type": "pty_output", "ptyId": &scrollback_id, "text": text }));
                     carry.drain(..valid);
                 }
             }
@@ -404,6 +408,7 @@ pub fn spawn_pty(
             if carry.len() > 3 {
                 let lossy = String::from_utf8_lossy(&carry).into_owned();
                 let _ = event_app.emit(&event_name, lossy.as_str());
+                remote_hub.publish(serde_json::json!({ "type": "pty_output", "ptyId": &scrollback_id, "text": lossy }));
                 carry.clear();
             }
 
@@ -417,6 +422,7 @@ pub fn spawn_pty(
         if !carry.is_empty() {
             let lossy = String::from_utf8_lossy(&carry).into_owned();
             let _ = event_app.emit(&event_name, lossy.as_str());
+            remote_hub.publish(serde_json::json!({ "type": "pty_output", "ptyId": &scrollback_id, "text": lossy }));
         }
 
         // PTY morreu: garante o scrollback no disco e LIBERA o buffer em RAM (até
@@ -474,6 +480,7 @@ pub fn spawn_pty(
             _ => "exited",
         };
         let _ = event_app.emit(&exit_event_name, PtyExitPayload { code, reason });
+        remote_hub.publish(serde_json::json!({ "type": "pty_exit", "ptyId": &scrollback_id, "reason": reason }));
 
         if let Some(pid) = child_pid {
             if let Ok(mut sessions) = thread_sessions.lock() {
@@ -541,6 +548,7 @@ fn kill_process_tree(_pid: u32) {}
 pub fn restart_pty(
     app: AppHandle,
     sessions: State<'_, PtySessions>,
+    remote: State<'_, Arc<crate::remote::RemoteHub>>,
     id: String,
     command: Option<String>,
     cwd: Option<String>,
@@ -572,6 +580,7 @@ pub fn restart_pty(
     spawn_pty(
         app,
         sessions,
+        remote,
         80,
         24,
         Some(id),
