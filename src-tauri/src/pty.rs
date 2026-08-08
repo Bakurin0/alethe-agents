@@ -4,7 +4,7 @@ use std::collections::{HashMap, HashSet, VecDeque};
 use std::fs;
 use std::io::{Read, Write};
 use std::path::{Path, PathBuf};
-use std::sync::atomic::{AtomicBool, AtomicU8, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicU64, AtomicU8, Ordering};
 use std::sync::{Arc, Condvar, Mutex, OnceLock};
 use std::thread;
 use std::time::{Duration, Instant};
@@ -14,6 +14,7 @@ use crate::cli_resolver::{command_builder_for_terminal, find_windows_cli_launche
 use crate::diagnostics::append_spawn_log;
 use crate::paths::{scrollback_dir, scrollback_path};
 use crate::process_tree;
+use crate::provider_common::now_ms;
 
 pub const SCROLLBACK_CAP_BYTES: usize = 4 * 1024 * 1024;
 pub const SCROLLBACK_FLUSH_INTERVAL_MS: u128 = 250;
@@ -171,6 +172,31 @@ pub struct PtySession {
     /// agente) — só decide se o coalescer manda o lote pro canal `data`
     /// (render caro) ou pro `activity` (throttlado, só recordIo/completion).
     pub visible: Arc<AtomicBool>,
+    /// Timestamp (ms) do último nudge de redesenho (Ctrl+L) mandado pro
+    /// OpenCode, disparado tanto no boot (primeiro output real do processo)
+    /// quanto em `resize_pty`. Os dois gatilhos podem cair quase juntos —
+    /// sem coordenação, dois redesenhos concorrentes do OpenCode se
+    /// sobrepunham na tela em vez de um substituir o outro (texto/blocos de
+    /// um redraw colidindo com o outro), confirmado analisando os bytes
+    /// crus do scrollback. `try_claim_opencode_nudge` garante só um disparo
+    /// por janela curta, não importa qual dos dois gatilhos chegou primeiro.
+    pub opencode_nudge_lock: Arc<AtomicU64>,
+}
+
+const OPENCODE_NUDGE_COOLDOWN_MS: u64 = 400;
+
+/// CAS simples: só concede o nudge se a última tentativa (de QUALQUER
+/// gatilho) foi há mais de `OPENCODE_NUDGE_COOLDOWN_MS`. `Ordering::SeqCst`
+/// por segurança — não é um caminho quente o suficiente pra valer a pena
+/// relaxar.
+fn try_claim_opencode_nudge(lock: &AtomicU64) -> bool {
+    let now = now_ms();
+    let last = lock.load(Ordering::SeqCst);
+    if now.saturating_sub(last) < OPENCODE_NUDGE_COOLDOWN_MS {
+        return false;
+    }
+    lock.compare_exchange(last, now, Ordering::SeqCst, Ordering::SeqCst)
+        .is_ok()
 }
 
 pub type PtySessions = Arc<Mutex<HashMap<String, PtySession>>>;
@@ -403,6 +429,20 @@ pub async fn spawn_pty(
                 .take_writer()
                 .map_err(|error| error.to_string())?,
         ));
+        let opencode_nudge_lock = Arc::new(AtomicU64::new(0));
+        // Nudge de boot (ver uso mais abaixo, no loop de batches): o Ctrl+L
+        // que já mandamos em `resize_pty` pro OpenCode não cobre o caso de
+        // um terminal recém-criado que nunca é redimensionado — o "kick"
+        // daquele fix é disparado pelo spawn da promise no frontend, não por
+        // sinal nenhum do processo filho, então quase sempre chega ANTES do
+        // OpenCode terminar de subir e trocar o TTY pro modo raw/alt-screen
+        // da TUI (aterrissa em stdin ainda em modo cooked/pré-boot). Sem
+        // nenhum retry, essa única tentativa mal-cronometrada é a única
+        // chance que o OpenCode tem — daí a tela ficar em branco/com blocos
+        // de glifo soltos mesmo num terminal novo, sem nenhum resize.
+        let is_opencode = requested_command.as_deref() == Some("opencode");
+        let boot_nudge_writer = Arc::clone(&writer);
+        let boot_nudge_lock = Arc::clone(&opencode_nudge_lock);
         let event_name = format!("pty://data/{id}");
         let activity_event_name = format!("pty://activity/{id}");
         let exit_event_name = format!("pty://exit/{id}");
@@ -488,11 +528,38 @@ pub async fn spawn_pty(
             );
         }
 
+        let mut sent_boot_nudge = false;
+
         loop {
             // Bloqueia até o primeiro chunk — zero wakeups quando o terminal
             // está ocioso. None = reader terminou (EOF/erro) e canal fechou.
             let Some(first) = rx.recv().await else { break };
             batch.extend_from_slice(&first);
+
+            // Primeiro lote real de saída do processo filho = prova de que
+            // ele está vivo e já produzindo output — sinal muito mais
+            // confiável de "hora certa" do que o momento em que o frontend
+            // terminou de esperar o spawn. Kick único, numa task separada
+            // pra não atrasar o desenho deste primeiro lote em si.
+            if is_opencode && !sent_boot_nudge {
+                sent_boot_nudge = true;
+                let nudge_writer = Arc::clone(&boot_nudge_writer);
+                let nudge_lock = Arc::clone(&boot_nudge_lock);
+                tauri::async_runtime::spawn(async move {
+                    tokio::time::sleep(Duration::from_millis(150)).await;
+                    // Reclama o direito de nudge só na hora de escrever, não
+                    // no agendamento — um resize_pty pode ter disparado o
+                    // dele durante essa espera; se já ganhou, não manda o
+                    // nosso por cima (dois redesenhos concorrentes é o que
+                    // causava a corrupção em primeiro lugar).
+                    if try_claim_opencode_nudge(&nudge_lock) {
+                        if let Ok(mut writer) = nudge_writer.lock() {
+                            let _ = writer.write_all(&[12]);
+                            let _ = writer.flush();
+                        }
+                    }
+                });
+            }
 
             // Coalesce o que chegar em até 16ms ou até encher 64 KB.
             let batch_started = Instant::now();
@@ -654,6 +721,7 @@ pub async fn spawn_pty(
             cwd,
             read_active,
             visible,
+            opencode_nudge_lock,
         };
 
         sessions
@@ -841,7 +909,7 @@ pub async fn resize_pty(
     // lock antes, isso prendia kill/write/attach de TODOS os outros terminais.
     let sessions: PtySessions = Arc::clone(sessions.inner());
     tokio::task::spawn_blocking(move || {
-        let (master, writer, is_opencode) = {
+        let (master, writer, is_opencode, nudge_lock) = {
             let sessions = sessions
                 .lock()
                 .map_err(|_| "PTY sessions lock poisoned".to_string())?;
@@ -852,6 +920,7 @@ pub async fn resize_pty(
                 Arc::clone(&session.master),
                 Arc::clone(&session.writer),
                 session.command.as_deref() == Some("opencode"),
+                Arc::clone(&session.opencode_nudge_lock),
             )
         };
 
@@ -887,11 +956,21 @@ pub async fn resize_pty(
         // processo filho termina de fato), mas reduz bastante a janela da
         // corrida — já estamos numa `spawn_blocking`, então dormir aqui não
         // trava nenhum outro comando.
+        //
+        // `try_claim_opencode_nudge` coordena com o nudge de boot (primeiro
+        // output do processo, em `spawn_pty`) — os dois podem disparar quase
+        // juntos num terminal recém-criado que já é redimensionado logo
+        // depois do spawn; sem essa trava, os DOIS nudges mandavam Ctrl+L
+        // e o OpenCode fazia dois redesenhos concorrentes que se
+        // sobrepunham na tela (confirmado analisando os bytes crus do
+        // scrollback — texto de um redraw colidindo com blocos do outro).
         if is_opencode {
             std::thread::sleep(std::time::Duration::from_millis(50));
-            if let Ok(mut writer) = writer.lock() {
-                let _ = writer.write_all(&[12]);
-                let _ = writer.flush();
+            if try_claim_opencode_nudge(&nudge_lock) {
+                if let Ok(mut writer) = writer.lock() {
+                    let _ = writer.write_all(&[12]);
+                    let _ = writer.flush();
+                }
             }
         }
 
