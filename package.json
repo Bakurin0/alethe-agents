@@ -13,7 +13,7 @@
     "format:check": "prettier --check .",
     "test:node": "node --test --experimental-strip-types \"tests/**/*.test.ts\"",
     "tauri": "tauri",
-    "app": "tauri dev",
+    "app": "tauri dev --config src-tauri/tauri.dev.json",
     "smoke:ghostty": "bash scripts/smoke-ghostty.sh",
     "capture:window": "bash scripts/capture-window.sh",
     "test:rust": "cd src-tauri && cargo test --lib",

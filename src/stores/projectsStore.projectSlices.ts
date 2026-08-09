@@ -347,10 +347,11 @@ type ProjectsSlice = Pick<
 
 export function createProjectsSlice({ set, get, update, updateProject }: SliceCtx): ProjectsSlice {
   return {
-    createProject: ({ name, color, iconUrl, groupId = null, defaultCwd }) => {
+    createProject: ({ name, mode = 'standard', color, iconUrl, groupId = null, defaultCwd }) => {
       const project: Project = {
         id: nanoid(),
         name,
+        mode,
         color,
         iconUrl,
         groupId,
