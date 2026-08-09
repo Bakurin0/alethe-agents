@@ -3,6 +3,7 @@ import { useState } from 'react'
 
 import { useUiStore } from '../../stores/uiStore'
 import { useProjectsStore } from '../../stores/projectsStore'
+import { AGENT_SANDBOX_ENABLED } from '../../lib/featureFlags'
 import { GROUP_COLORS } from '../../lib/types'
 import { useT } from '../../lib/i18n'
 import { pickDirectory } from '../../lib/dialog'
@@ -100,42 +101,44 @@ export function NewProjectModal() {
         />
       </div>
 
-      <div className={controls.field}>
-        <label className={controls.label}>{t('crud.projectModeLabel')}</label>
-        <div className={controls.modeChoices} role="radiogroup" aria-label={t('crud.projectModeLabel')}>
-          <button
-            type="button"
-            role="radio"
-            aria-checked={mode === 'standard'}
-            className={`${controls.modeChoice} ${mode === 'standard' ? controls.modeChoiceActive : ''}`}
-            onClick={() => setMode('standard')}
-          >
-            <Terminal size={16} aria-hidden="true" />
-            <span className={controls.modeChoiceBody}>
-              <strong>{t('crud.projectModeStandard')}</strong>
-              <small>{t('crud.projectModeStandardHint')}</small>
-            </span>
-            <span className={controls.modeChoiceIndicator} aria-hidden="true" />
-          </button>
-          <button
-            type="button"
-            role="radio"
-            aria-checked={mode === 'agentSandbox'}
-            className={`${controls.modeChoice} ${mode === 'agentSandbox' ? controls.modeChoiceActive : ''}`}
-            onClick={() => setMode('agentSandbox')}
-          >
-            <Network size={16} aria-hidden="true" />
-            <span className={controls.modeChoiceBody}>
-              <strong>{t('crud.projectModeSandbox')}</strong>
-              <small>{t('crud.projectModeSandboxHint')}</small>
-            </span>
-            <span className={controls.modeChoiceIndicator} aria-hidden="true" />
-          </button>
+      {AGENT_SANDBOX_ENABLED ? (
+        <div className={controls.field}>
+          <label className={controls.label}>{t('crud.projectModeLabel')}</label>
+          <div className={controls.modeChoices} role="radiogroup" aria-label={t('crud.projectModeLabel')}>
+            <button
+              type="button"
+              role="radio"
+              aria-checked={mode === 'standard'}
+              className={`${controls.modeChoice} ${mode === 'standard' ? controls.modeChoiceActive : ''}`}
+              onClick={() => setMode('standard')}
+            >
+              <Terminal size={16} aria-hidden="true" />
+              <span className={controls.modeChoiceBody}>
+                <strong>{t('crud.projectModeStandard')}</strong>
+                <small>{t('crud.projectModeStandardHint')}</small>
+              </span>
+              <span className={controls.modeChoiceIndicator} aria-hidden="true" />
+            </button>
+            <button
+              type="button"
+              role="radio"
+              aria-checked={mode === 'agentSandbox'}
+              className={`${controls.modeChoice} ${mode === 'agentSandbox' ? controls.modeChoiceActive : ''}`}
+              onClick={() => setMode('agentSandbox')}
+            >
+              <Network size={16} aria-hidden="true" />
+              <span className={controls.modeChoiceBody}>
+                <strong>{t('crud.projectModeSandbox')}</strong>
+                <small>{t('crud.projectModeSandboxHint')}</small>
+              </span>
+              <span className={controls.modeChoiceIndicator} aria-hidden="true" />
+            </button>
+          </div>
+          <span className={controls.hint}>
+            {t('crud.projectModeSelectionHint')}
+          </span>
         </div>
-        <span className={controls.hint}>
-          {t('crud.projectModeSelectionHint')}
-        </span>
-      </div>
+      ) : null}
 
       {groups.length > 0 ? (
         <div className={controls.field}>

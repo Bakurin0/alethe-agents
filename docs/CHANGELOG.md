@@ -10,6 +10,14 @@ Mudanças relevantes do **Alethe** para quem usa o app. Formato inspirado em
 
 ## [Não lançado]
 
+- Fixed onboarding hanging forever on "Detecting installed CLIs…": CLI detection is now time-boxed per agent, so a slow or unreachable PATH entry can no longer freeze the flow.
+- Fixed creating a new account/profile getting stuck on a long, broken loading state — the fresh profile now reaches its onboarding cleanly, and parking the previous profile's terminals no longer blocks the switch.
+- The default profile picture now uses the current dark app icon.
+- Archived the Agent Sandbox project mode behind a build flag: its entry points (New Project mode picker and the main menu shortcut) are hidden, so no new sandbox projects can be created.
+- Reworked the startup loading screen to share the Home view's background and ASCII art treatment for a consistent look.
+- Added an "Erase all data (fresh install)" menu action that wipes every profile, account, project, scrollback, setting and log so the app restarts like a brand-new install — intended to be used after exporting a backup.
+- Account/profile export now archives the entire profile — Todos, history, activity metrics, preferences, tokens, scrollback, and any other stored data — instead of a fixed short list, so nothing the user owns is lost when exporting or migrating a profile.
+- Fixed switching accounts hanging with "Could not safely switch accounts: PTY reader flush barrier timed out" by closing each parked terminal's pseudoconsole before waiting for its final scrollback flush.
 - Fixed profile switching without restarting the app and refreshed terminal chats correctly when resuming parked sessions.
 - Refined the Accounts modal layout with clearer hierarchy, spacing, and profile creation controls.
 - Replaced the Todo project selector with a viewport-safe dropdown that keeps long project paths contained during use and recording.
@@ -21,6 +29,9 @@ Mudanças relevantes do **Alethe** para quem usa o app. Formato inspirado em
 - Standardized all project dropdowns on the Todo List's portal-based behavior, with viewport-safe positioning, truncation, keyboard escape handling, and consistent styling.
 
 ### Added
+
+- Agent Sandbox workers now expose stable job and thread identifiers, preserve working state until a Codex turn completes, and return structured spawn acknowledgements for reliable orchestration.
+- Agent Sandbox now draws parent-to-worker relationships independently from chat traffic, so the hierarchy remains visible before the first message is exchanged.
 
 - **LAN remote control:** open an authenticated mobile web view from the Alethe menu, browse existing agent chats across groups, watch terminal output live, and send one message at a time without changing the workspace.
 - **LAN remote control controls:** the feature can now be turned off, immediately disconnects paired devices, shows the active connection count, and supports regenerating the pairing token from a clearer status modal.

@@ -121,6 +121,13 @@
   animation: edgeFloat 2.4s linear infinite;
 }
 
+.hierarchyEdge {
+  stroke: var(--border-strong);
+  stroke-width: 1;
+  stroke-dasharray: 3 5;
+  opacity: .55;
+}
+
 .edgeActive {
   stroke: var(--accent);
   stroke-width: 2.5;
@@ -212,10 +219,27 @@
   white-space: nowrap;
 }
 
+.nodeMeta {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  height: 20px;
+  box-sizing: border-box;
+  padding: 0 8px;
+  overflow: hidden;
+  border-bottom: 1px solid var(--border);
+  background: var(--bg-elevated);
+  color: var(--fg-faint);
+  font: 8px var(--font-mono);
+  white-space: nowrap;
+}
+
+.nodeMeta span { overflow: hidden; text-overflow: ellipsis; }
+
 .terminalSurface {
   display: flex;
   align-items: center;
-  height: calc(100% - 28px);
+  height: calc(100% - 48px);
   margin: 0;
   border: 0;
   background: var(--bg-sunken);

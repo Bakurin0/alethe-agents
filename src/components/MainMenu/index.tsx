@@ -19,6 +19,7 @@ import { useOnClickOutside } from '../../hooks/useOnClickOutside'
 import { useOnEscape } from '../../hooks/useOnEscape'
 
 import { useT } from '../../lib/i18n'
+import { AGENT_SANDBOX_ENABLED } from '../../lib/featureFlags'
 import { pickFile, saveFile } from '../../lib/dialog'
 import {
   exportBackup,
@@ -28,6 +29,7 @@ import {
   openLogsFolder,
   openSpawnLog,
   resetAppData,
+  wipeAllAppData,
 } from '../../lib/tauri'
 import { useProjectsStore } from '../../stores/projectsStore'
 import { useUiStore } from '../../stores/uiStore'
@@ -65,6 +67,18 @@ export function MainMenu() {
     window.location.reload()
   }
 
+  const factoryReset = async () => {
+    if (!window.confirm(t('menu.confirmFactoryReset'))) return
+    await wipeAllAppData()
+    try {
+      localStorage.clear()
+      sessionStorage.clear()
+    } catch {
+      // WebView storage may be unavailable; the backend wipe already ran.
+    }
+    window.location.reload()
+  }
+
   return (
     <div ref={ref} className={styles.menu} role="menu">
       <button
@@ -77,16 +91,18 @@ export function MainMenu() {
       >
         <Settings size={14} /> <span>{t('menu.preferences')}</span>
       </button>
-      <button
-        type="button"
-        className={styles.item}
-        onClick={() => {
-          setActiveView('agentSandbox')
-          closeMainMenu()
-        }}
-      >
-        <Network size={14} /> <span>{t('menu.agentSandbox')}</span>
-      </button>
+      {AGENT_SANDBOX_ENABLED ? (
+        <button
+          type="button"
+          className={styles.item}
+          onClick={() => {
+            setActiveView('agentSandbox')
+            closeMainMenu()
+          }}
+        >
+          <Network size={14} /> <span>{t('menu.agentSandbox')}</span>
+        </button>
+      ) : null}
       <button
         type="button"
         className={styles.item}
@@ -204,6 +220,13 @@ export function MainMenu() {
         onClick={() => void reset()}
       >
         <Trash2 size={14} /> <span>{t('menu.resetAppData')}</span>
+      </button>
+      <button
+        type="button"
+        className={`${styles.item} ${styles.danger}`}
+        onClick={() => void factoryReset()}
+      >
+        <Trash2 size={14} /> <span>{t('menu.factoryReset')}</span>
       </button>
     </div>
   )

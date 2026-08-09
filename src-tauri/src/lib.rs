@@ -279,6 +279,7 @@ pub fn run() {
             diagnostics::write_clipboard_text,
             diagnostics::read_clipboard_payload,
             diagnostics::reset_app_data,
+            diagnostics::wipe_all_app_data,
             diagnostics::open_logs_folder,
             diagnostics::export_logs,
             logging::record_frontend_error,

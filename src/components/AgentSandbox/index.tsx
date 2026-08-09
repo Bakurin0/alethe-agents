@@ -154,6 +154,21 @@ export function AgentSandbox() {
       />
     )
   })
+  const hierarchyEdges = nodes.map((node) => {
+    if (!node.parentId) return null
+    const parent = nodeMap.get(node.parentId)
+    if (!parent) return null
+    return (
+      <line
+        key={`hierarchy-${node.id}`}
+        className={styles.hierarchyEdge}
+        x1={parent.x + parent.width / 2}
+        y1={parent.y + parent.height / 2}
+        x2={node.x + node.width / 2}
+        y2={node.y + node.height / 2}
+      />
+    )
+  })
 
   const start = () => {
     if (project?.defaultCwd) void startDemo(project.defaultCwd)
@@ -236,7 +251,10 @@ export function AgentSandbox() {
           </div>
         ) : (
           <>
-            <svg className={styles.edges} aria-hidden="true">{edges}</svg>
+            <svg className={styles.edges} aria-hidden="true">
+              {hierarchyEdges}
+              {edges}
+            </svg>
             {groupBoxes}
             {nodes.map((node) => (
               <article
@@ -261,6 +279,11 @@ export function AgentSandbox() {
                   <span className={`${styles.status} ${styles[`status_${node.status}`]}`}>
                     {statusLabel(node.status)}
                   </span>
+                </div>
+                <div className={styles.nodeMeta}>
+                  <span>{node.transport === 'app-server' ? t('sandbox.protocol') : t('sandbox.terminal')}</span>
+                  {node.jobId && <span>{t('sandbox.job')} {node.jobId.slice(-8)}</span>}
+                  {node.threadId && <span>{t('sandbox.thread')} {node.threadId.slice(0, 8)}</span>}
                 </div>
                 <div className={styles.terminalSurface}>
                   {node.transport === 'app-server' ? (

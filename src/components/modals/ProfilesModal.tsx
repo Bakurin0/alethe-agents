@@ -128,7 +128,7 @@ export function ProfilesModal() {
 
   const parkCurrentProfile = async () => {
     const ids = [...new Set(currentPtyIds)]
-    await Promise.all(ids.map((id) => suspendPty(id)))
+    await Promise.allSettled(ids.map((id) => suspendPty(id)))
   }
 
   const reload = () => window.location.reload()

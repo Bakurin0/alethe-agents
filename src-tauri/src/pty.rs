@@ -752,7 +752,21 @@ pub fn suspend_session(app: &AppHandle, sessions: &PtySessions, id: &str) -> Res
         }
         let _ = child.kill();
     }
-    let (done_lock, done_ready) = &*session.reader_done;
+    {
+        let (lock, cvar) = &*session.read_active;
+        if let Ok(mut active) = lock.lock() {
+            *active = true;
+            cvar.notify_all();
+        }
+    }
+    // Close the pseudoconsole BEFORE waiting on the barrier. On Windows ConPTY,
+    // killing the child does not close the output pipe — the blocking reader
+    // stays in read() until the master (HPCON) is dropped. Holding the session
+    // across the wait would deadlock the reader against its own flush barrier.
+    let reader_done = Arc::clone(&session.reader_done);
+    drop(session);
+
+    let (done_lock, done_ready) = &*reader_done;
     let done = done_lock
         .lock()
         .map_err(|_| "PTY reader barrier lock poisoned".to_string())?;

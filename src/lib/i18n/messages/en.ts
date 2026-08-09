@@ -162,11 +162,14 @@ export const en = {
   'menu.importBackup': 'Import backup…',
   'menu.redoOnboarding': 'Redo onboarding',
   'menu.resetAppData': 'Reset app data…',
+  'menu.factoryReset': 'Erase all data (fresh install)…',
   'menu.exportBackupTitle': 'Export backup',
   'menu.importBackupTitle': 'Import backup',
   'menu.backupFilter': 'Alethe backup',
   'menu.confirmReset':
     'Erase ALL app state (projects, scrollback, settings)? This cannot be undone.',
+  'menu.confirmFactoryReset':
+    'Erase EVERYTHING — all profiles, accounts, projects, scrollback, settings and logs — so the app starts like a brand-new install? This cannot be undone. Export a backup first if you want to keep anything.',
   'menu.confirmImport':
     'Importing will replace the current state (projects, scrollback). Continue?',
   'remote.title': 'Remote control',
@@ -1422,6 +1425,10 @@ export const en = {
   'sandbox.focus': 'Focus',
   'sandbox.exitFocus': 'Exit focus',
   'sandbox.groupSelected': 'Group selected',
+  'sandbox.protocol': 'app-server',
+  'sandbox.terminal': 'terminal',
+  'sandbox.job': 'job',
+  'sandbox.thread': 'thread',
 
   /* ---- RFC-004 — Graphify (code graph) ---- */
   'graphify.title': 'Code graph',

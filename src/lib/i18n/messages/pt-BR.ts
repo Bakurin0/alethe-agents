@@ -159,11 +159,14 @@ export const ptBR: Record<MessageKey, string> = {
   'menu.importBackup': 'Importar backup…',
   'menu.redoOnboarding': 'Refazer onboarding',
   'menu.resetAppData': 'Resetar app data…',
+  'menu.factoryReset': 'Apagar todos os dados (instalação nova)…',
   'menu.exportBackupTitle': 'Exportar backup',
   'menu.importBackupTitle': 'Importar backup',
   'menu.backupFilter': 'Alethe backup',
   'menu.confirmReset':
     'Apagar TODO o estado do app (projetos, scrollback, configs)? Não dá pra desfazer.',
+  'menu.confirmFactoryReset':
+    'Apagar TUDO — todos os perfis, contas, projetos, scrollback, configs e logs — pra o app abrir como uma instalação nova? Não dá pra desfazer. Exporte um backup antes se quiser guardar algo.',
   'menu.confirmImport': 'Importar vai substituir o estado atual (projetos, scrollback). Continuar?',
   'remote.title': 'Controle remoto',
   'remote.enabled': 'Controle remoto disponível',
@@ -1430,6 +1433,10 @@ export const ptBR: Record<MessageKey, string> = {
   'sandbox.focus': 'Foco',
   'sandbox.exitFocus': 'Sair do foco',
   'sandbox.groupSelected': 'Agrupar selecionados',
+  'sandbox.protocol': 'app-server',
+  'sandbox.terminal': 'terminal',
+  'sandbox.job': 'job',
+  'sandbox.thread': 'thread',
 
   /* ---- RFC-004 — Graphify (grafo do código) ---- */
   'graphify.title': 'Grafo do código',

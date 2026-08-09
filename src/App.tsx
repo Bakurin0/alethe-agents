@@ -53,6 +53,7 @@ import { checkForUpdate } from './lib/updater'
 import { useProjectsStore } from './stores/projectsStore'
 import { type InAppToast, useUiStore } from './stores/uiStore'
 import { AsciiEffect } from './components/ui/ascii-effect'
+import { AGENT_SANDBOX_ENABLED } from './lib/featureFlags'
 import homeBackground from './assets/home-bg-right.png'
 import styles from './App.module.css'
 
@@ -92,6 +93,8 @@ function LoadingScreen() {
           mouseStrength={16}
           scale={1}
           fit="cover"
+          colors={['var(--fg-muted)', 'var(--fg)']}
+          backgroundColor="transparent"
         />
       </div>
       <div className={styles.loadingInner}>
@@ -396,7 +399,7 @@ export default function App() {
                 <Suspense fallback={<LoadingScreen />}>
                   {activeView === 'home' ? (
                     <HomeView />
-                  ) : activeView === 'agentSandbox' ? (
+                  ) : activeView === 'agentSandbox' && AGENT_SANDBOX_ENABLED ? (
                     <AgentSandbox />
                   ) : activeView === 'agentCanvas' ? (
                     <AgentCanvasPOC />
