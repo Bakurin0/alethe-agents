@@ -106,6 +106,20 @@ pub fn command_builder_for_terminal(
     }
     builder.env("TERM", "xterm-256color");
     builder.env("COLORTERM", "truecolor");
+    // O framework de TUI do OpenCode (`opentui`) manda uma query OSC 66 pra
+    // cada glifo antes de desenhar, tentando confirmar a largura exata que o
+    // terminal vai renderizar. Confirmado com um teste isolado rodando o
+    // xterm.js real: ele nunca responde OSC 66 (não implementa esse handler
+    // — nem DECRQSS/XTGETTCAP, embora responda OSC 10/11/DSR/DA
+    // normalmente). A própria documentação do opentui descreve isso como
+    // causa conhecida de "artefatos estranhos contendo '66'" em terminais
+    // sem esse suporte (ex.: GNOME Terminal) — bate com os blocos cinza
+    // soltos e a área principal em branco vistos no Alethe. `false` faz o
+    // opentui nem mandar a query (evita os artefatos) e assumir largura 1
+    // por padrão, sem esperar uma resposta que o xterm.js nunca vai dar.
+    if trimmed == Some("opencode") {
+        builder.env("OPENTUI_FORCE_EXPLICIT_WIDTH", "false");
+    }
     scrub_editor_environment(&mut builder);
     builder.env_remove("EDITOR");
     builder.env_remove("VISUAL");

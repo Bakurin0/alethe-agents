@@ -135,6 +135,16 @@ fn align_to_char_boundary(slice: &[u8], start: usize) -> usize {
     start
 }
 
+/// `ALETHE_PTY_DEBUG=1` liga uma timeline de timestamps (spawn → primeiro
+/// output real → resize → nudge de redesenho) em `spawn.log`, pro
+/// procedimento de diagnóstico da área principal do OpenCode renderizando
+/// em branco (ver docs/CHANGELOG.md e o plano de investigação). Mesmo
+/// padrão de `ALETHE_E2E`/`ALETHE_GHOSTTY_PROBE` já usado no projeto — sem
+/// a variável, zero custo extra (só a checagem do env var).
+fn pty_debug_enabled() -> bool {
+    std::env::var("ALETHE_PTY_DEBUG").as_deref() == Ok("1")
+}
+
 /// Decide se o canal `pty://activity/{id}` (painel invisível) já pode emitir
 /// de novo. `None` = nunca emitiu ainda (primeiro lote invisível passa na
 /// hora, sem esperar o intervalo).
@@ -443,6 +453,12 @@ pub async fn spawn_pty(
         let is_opencode = requested_command.as_deref() == Some("opencode");
         let boot_nudge_writer = Arc::clone(&writer);
         let boot_nudge_lock = Arc::clone(&opencode_nudge_lock);
+        // Handle dedicado pro log de diagnóstico (ver `pty_debug_enabled` /
+        // `ALETHE_PTY_DEBUG` — procedimento de diagnóstico da área principal
+        // do OpenCode em branco, docs/CHANGELOG.md), separado de `event_app`
+        // (canal de dados) só pra deixar claro o propósito em cada clone.
+        let debug_app = app.clone();
+        let debug_id = id.clone();
         let event_name = format!("pty://data/{id}");
         let activity_event_name = format!("pty://activity/{id}");
         let exit_event_name = format!("pty://exit/{id}");
@@ -543,8 +559,19 @@ pub async fn spawn_pty(
             // pra não atrasar o desenho deste primeiro lote em si.
             if is_opencode && !sent_boot_nudge {
                 sent_boot_nudge = true;
+                if pty_debug_enabled() {
+                    let _ = append_spawn_log(
+                        &debug_app,
+                        &format!(
+                            "[pty-debug] {debug_id}: primeiro batch real recebido ({} bytes)",
+                            first.len()
+                        ),
+                    );
+                }
                 let nudge_writer = Arc::clone(&boot_nudge_writer);
                 let nudge_lock = Arc::clone(&boot_nudge_lock);
+                let nudge_debug_app = debug_app.clone();
+                let nudge_debug_id = debug_id.clone();
                 tauri::async_runtime::spawn(async move {
                     tokio::time::sleep(Duration::from_millis(150)).await;
                     // Reclama o direito de nudge só na hora de escrever, não
@@ -552,7 +579,17 @@ pub async fn spawn_pty(
                     // dele durante essa espera; se já ganhou, não manda o
                     // nosso por cima (dois redesenhos concorrentes é o que
                     // causava a corrupção em primeiro lugar).
-                    if try_claim_opencode_nudge(&nudge_lock) {
+                    let claimed = try_claim_opencode_nudge(&nudge_lock);
+                    if pty_debug_enabled() {
+                        let _ = append_spawn_log(
+                            &nudge_debug_app,
+                            &format!(
+                                "[pty-debug] {nudge_debug_id}: nudge de boot {} (150ms após 1º batch)",
+                                if claimed { "ENVIADO" } else { "pulado (perdeu a trava)" }
+                            ),
+                        );
+                    }
+                    if claimed {
                         if let Ok(mut writer) = nudge_writer.lock() {
                             let _ = writer.write_all(&[12]);
                             let _ = writer.flush();
@@ -898,6 +935,7 @@ pub async fn write_pty(
 
 #[tauri::command]
 pub async fn resize_pty(
+    app: AppHandle,
     sessions: State<'_, PtySessions>,
     id: String,
     cols: u16,
@@ -909,6 +947,9 @@ pub async fn resize_pty(
     // lock antes, isso prendia kill/write/attach de TODOS os outros terminais.
     let sessions: PtySessions = Arc::clone(sessions.inner());
     tokio::task::spawn_blocking(move || {
+        if pty_debug_enabled() {
+            let _ = append_spawn_log(&app, &format!("[pty-debug] {id}: resize_pty {cols}x{rows}"));
+        }
         let (master, writer, is_opencode, nudge_lock) = {
             let sessions = sessions
                 .lock()
@@ -966,7 +1007,17 @@ pub async fn resize_pty(
         // scrollback — texto de um redraw colidindo com blocos do outro).
         if is_opencode {
             std::thread::sleep(std::time::Duration::from_millis(50));
-            if try_claim_opencode_nudge(&nudge_lock) {
+            let claimed = try_claim_opencode_nudge(&nudge_lock);
+            if pty_debug_enabled() {
+                let _ = append_spawn_log(
+                    &app,
+                    &format!(
+                        "[pty-debug] {id}: nudge de resize {} (50ms após master.resize)",
+                        if claimed { "ENVIADO" } else { "pulado (perdeu a trava)" }
+                    ),
+                );
+            }
+            if claimed {
                 if let Ok(mut writer) = writer.lock() {
                     let _ = writer.write_all(&[12]);
                     let _ = writer.flush();

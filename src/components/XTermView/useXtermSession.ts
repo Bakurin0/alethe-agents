@@ -682,6 +682,9 @@ export function useXtermSession(params: {
       if (!force && terminal.cols === lastCols && terminal.rows === lastRows) return
       lastCols = terminal.cols
       lastRows = terminal.rows
+      if (import.meta.env.DEV) {
+        console.debug(`[pty-debug] ${id}: fit() -> resizePty ${terminal.cols}x${terminal.rows}`)
+      }
       void resizePty(id, terminal.cols, terminal.rows)
     }
     const scheduleResize = (force = false) => {
