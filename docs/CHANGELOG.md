@@ -10,6 +10,8 @@ Mudanças relevantes do **Alethe** para quem usa o app. Formato inspirado em
 
 ## [Não lançado]
 
+## [1.5.0] — 2026-08-09
+
 - Fixed onboarding hanging forever on "Detecting installed CLIs…": CLI detection is now time-boxed per agent, so a slow or unreachable PATH entry can no longer freeze the flow.
 - Fixed creating a new account/profile getting stuck on a long, broken loading state — the fresh profile now reaches its onboarding cleanly, and parking the previous profile's terminals no longer blocks the switch.
 - The default profile picture now uses the current dark app icon.
