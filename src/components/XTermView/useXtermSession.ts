@@ -3,7 +3,6 @@ import { CanvasAddon } from '@xterm/addon-canvas'
 import { FitAddon } from '@xterm/addon-fit'
 import { SearchAddon } from '@xterm/addon-search'
 import { Unicode11Addon } from '@xterm/addon-unicode11'
-import { WebglAddon } from '@xterm/addon-webgl'
 import { Terminal } from '@xterm/xterm'
 import type { Dispatch, MutableRefObject, SetStateAction } from 'react'
 import { useEffect, useRef } from 'react'
@@ -339,77 +338,14 @@ export function useXtermSession(params: {
       if (linkActionsRef.current) setLinkActions(null)
     })
 
-    // Renderer WebGL (GPU) — o renderer DOM padrão trava a digitação,
-    // principalmente com zoom da WebView ≠ 100%. Fallback em camadas:
-    // WebGL → Canvas 2D (bem mais rápido que DOM sob saída pesada, addon já
-    // instalado mas até aqui nunca usado) → DOM puro como último recurso.
-    let webglAddon: WebglAddon | null = null
-    let canvasAddon: CanvasAddon | null = null
-    const loadCanvasFallback = () => {
-      if (canvasAddon) return
-      try {
-        canvasAddon = new CanvasAddon()
-        terminal.loadAddon(canvasAddon)
-      } catch {
-        canvasAddon = null
-      }
-    }
-    // WebGL desligado de propósito: perda de contexto pode derrubar um
-    // syncScrollArea assíncrono interno do próprio xterm.js (fora do alcance
-    // do onContextLoss/try-catch abaixo) e crashar o pane. Canvas 2D
-    // (loadCanvasFallback, branch `else`) é o renderer real em uso — ainda
-    // bem mais rápido que o DOM puro, sem esse risco de instabilidade.
-    let releaseWebglContext: (() => void) | null = null
-    if (releaseWebglContext) {
-      try {
-        webglAddon = new WebglAddon()
-        webglAddon.onContextLoss(() => {
-          if (disposed) return
-          // Perda de contexto GL (ex.: muitos terminais estouram o limite de
-          // contextos da WebView, ou soluço do processo de GPU). Descarta o
-          // addon e NÃO recria — evita thrash — mas cai pro Canvas 2D antes
-          // do DOM puro. `dispose()`/`loadAddon()` num renderer já quebrado
-          // podem lançar sincronamente — sem o try/catch, isso aborta a troca
-          // de renderer no meio e deixa o terminal sem WebGL nem Canvas.
-          try {
-            webglAddon?.dispose()
-          } catch {
-            /* renderer já inválido — segue o descarte mesmo assim */
-          }
-          webglAddon = null
-          releaseWebglContext?.()
-          releaseWebglContext = null
-          loadCanvasFallback()
-          // Um syncScrollArea assíncrono já agendado (nosso ou interno do
-          // próprio xterm.js) pode ler `dimensions` de um renderer morto e
-          // lançar ("Cannot read properties of undefined (reading
-          // 'dimensions')"), o que cascateia e derruba a render. Força um
-          // re-fit/refresh no próximo frame pra reestabelecer as dimensões —
-          // só se o pane ainda não foi desmontado, o container tiver tamanho
-          // válido, e sempre dentro de try/catch.
-          window.requestAnimationFrame(() => {
-            if (disposed) return
-            try {
-              const rect = container.getBoundingClientRect()
-              if (rect.width < 50 || rect.height < 30) return
-              fitAddon.fit()
-              terminal.refresh(0, Math.max(0, terminal.rows - 1))
-              terminal.focus()
-            } catch {
-              /* container invisível / em teardown — ignora */
-            }
-          })
-        })
-        terminal.loadAddon(webglAddon)
-      } catch {
-        webglAddon?.dispose()
-        webglAddon = null
-        loadCanvasFallback()
-      }
-    } else {
-      // Budget de WebGL esgotado (outros terminais já usam os contextos
-      // disponíveis) — Canvas 2D em vez de cair direto pro DOM.
-      loadCanvasFallback()
+    // Canvas 2D e o renderer em uso: bem mais rapido que o DOM puro sob saida
+    // pesada e sem o risco do WebGL, cuja perda de contexto podia derrubar um
+    // syncScrollArea assincrono interno do xterm.js e crashar o pane. Se o
+    // addon falhar ao carregar, o xterm cai sozinho no renderer DOM.
+    try {
+      terminal.loadAddon(new CanvasAddon())
+    } catch {
+      /* addon indisponivel — o xterm cai sozinho no renderer DOM */
     }
 
     terminal.focus()
@@ -1483,9 +1419,6 @@ export function useXtermSession(params: {
       ptyIdRef.current = null
       if (resyncTerminalRef.current === doResync) resyncTerminalRef.current = null
       terminal.dispose()
-      releaseWebglContext?.()
-      releaseWebglContext = null
-      canvasAddon = null
     }
     // A identidade estável da sub-tab evita remontar assim que o spawn troca o
     // ptyId temporário pelo ID real; isso também deixa a descoberta assíncrona
