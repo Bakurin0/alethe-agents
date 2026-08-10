@@ -96,8 +96,9 @@ export function NewProjectModal() {
         agent: 'claude',
       })
       try {
-        const targetDir = `D:\\Projetos\\${trimmed.replace(/[^A-Za-z0-9_-]/g, '_')}`
-        await cloneGithubRepo(trimmedGithub, targetDir)
+        // A pasta escolhida (se houver) vira o pai do clone; string vazia deixa
+        // o backend resolver o padrao. O nome da pasta sai da URL do repo.
+        await cloneGithubRepo(trimmedGithub, defaultCwd.trim())
         pushToast({
           title: 'Repositório Clonado',
           body: 'Clone concluído com sucesso. Contexto de IA injetado em AGENTS.md e CLAUDE.md.',

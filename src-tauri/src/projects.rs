@@ -153,6 +153,48 @@ pub async fn save_projects(app: AppHandle, content: String, sequence: u64) -> Re
 }
 
 /// Normaliza uma URL do GitHub (suporta `https://github.com/usr/repo`, `github.com/usr/repo`, `usr/repo` ou `git@...`).
+/// Nome de pasta que o `git clone` usaria: último segmento da URL, sem `.git`.
+fn repo_folder_name(normalized_url: &str) -> String {
+    let name = normalized_url
+        .trim_end_matches('/')
+        .rsplit(['/', ':'])
+        .next()
+        .unwrap_or("repo")
+        .trim_end_matches(".git");
+    let sanitized: String = name
+        .chars()
+        .map(|c| if c.is_alphanumeric() || c == '-' || c == '_' || c == '.' { c } else { '_' })
+        .collect();
+    if sanitized.is_empty() {
+        "repo".to_string()
+    } else {
+        sanitized
+    }
+}
+
+/// `target_dir` vazio = deixa o app escolher. Antes o frontend montava um
+/// `D:\Projetos\<nome>` fixo, que não existe na maioria das máquinas e nem faz
+/// sentido fora do Windows. O default agora é `~/Alethe/<repo>`, e um diretório
+/// escolhido pelo usuário é usado como PAI do clone (o `git clone` cria a pasta
+/// do repo dentro dele), a menos que já termine no nome do repo.
+fn resolve_clone_target(requested: &str, normalized_url: &str) -> Result<String, String> {
+    let folder = repo_folder_name(normalized_url);
+    let trimmed = requested.trim();
+    let base = if trimmed.is_empty() {
+        dirs_next::home_dir()
+            .ok_or_else(|| "Não foi possível localizar a pasta do usuário".to_string())?
+            .join("Alethe")
+    } else {
+        std::path::PathBuf::from(trimmed)
+    };
+    let target = if base.file_name().and_then(|n| n.to_str()) == Some(folder.as_str()) {
+        base
+    } else {
+        base.join(&folder)
+    };
+    Ok(target.to_string_lossy().to_string())
+}
+
 fn normalize_github_url(raw: &str) -> String {
     let trimmed = raw.trim();
     if trimmed.starts_with("http://") || trimmed.starts_with("https://") || trimmed.starts_with("git@") {
@@ -171,6 +213,7 @@ fn normalize_github_url(raw: &str) -> String {
 pub async fn clone_github_repo(url: String, target_dir: String) -> Result<String, String> {
     tokio::task::spawn_blocking(move || {
         let normalized = normalize_github_url(&url);
+        let target_dir = resolve_clone_target(&target_dir, &normalized)?;
         let target_path = std::path::PathBuf::from(&target_dir);
 
         if let Some(parent) = target_path.parent() {
