@@ -94,6 +94,8 @@ Custom grids support `colSpan`, `rowSpan`, drag-and-drop swapping, and resizable
 - Claude usage/activity widgets when available.
 - Spotify Now Playing when configured.
 
+![Home view with recent projects and quick actions](screenshots/home-view.png)
+
 ## Search and Navigation
 
 - Jump modal for terminals.
