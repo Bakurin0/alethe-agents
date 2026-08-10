@@ -2,6 +2,7 @@ import { AgentCompletionMonitor } from './agentCompletionMonitor'
 import { normalizeCwd } from './platform'
 import {
   listenOpenCodeBridgeStatus,
+  listenPtyActivity,
   listenPtyData,
   recordActivitySamples,
   type ActivityAgentSample,
@@ -28,6 +29,7 @@ type AgentMeta = {
 type TrackedAgent = AgentMeta & {
   monitor: AgentCompletionMonitor
   unlisten: (() => void) | null
+  unlistenActivity: (() => void) | null
 }
 
 const tracked = new Map<string, TrackedAgent>()
@@ -113,7 +115,7 @@ function syncTrackedAgents(): void {
         useTerminalsStore.getState().setStatus(ptyId, status)
       },
     })
-    const entry: TrackedAgent = { ...meta, monitor, unlisten: null }
+    const entry: TrackedAgent = { ...meta, monitor, unlisten: null, unlistenActivity: null }
     tracked.set(ptyId, entry)
     void listenPtyData(ptyId, (chunk) => monitor.handleOutput(chunk))
       .then((unlisten) => {
@@ -121,10 +123,20 @@ function syncTrackedAgents(): void {
         else entry.unlisten = unlisten
       })
       .catch(() => tracked.delete(ptyId))
+    // O backend para de emitir `pty://data` enquanto o painel está invisível.
+    // Sem escutar `activity` também, o status de um agente em segundo plano
+    // (justamente o caso que o badge existe pra cobrir) nunca mais atualiza.
+    void listenPtyActivity(ptyId, (chunk) => monitor.handleOutput(chunk))
+      .then((unlisten) => {
+        if (tracked.get(ptyId) !== entry) unlisten()
+        else entry.unlistenActivity = unlisten
+      })
+      .catch(() => {})
   }
   for (const [ptyId, entry] of tracked) {
     if (!metadata.has(ptyId) || !runtimes[ptyId]?.alive) {
       entry.unlisten?.()
+      entry.unlistenActivity?.()
       entry.monitor.dispose()
       tracked.delete(ptyId)
       bridgeActivePtyIds.delete(ptyId)
@@ -272,6 +284,7 @@ export function startActivityTracker(): () => void {
     unlistenBridge?.()
     for (const entry of tracked.values()) {
       entry.unlisten?.()
+      entry.unlistenActivity?.()
       entry.monitor.dispose()
     }
     tracked.clear()

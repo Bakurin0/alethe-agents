@@ -70,12 +70,30 @@ export function computeVisibleFocusedPtyIds(): PtyVisibilitySets {
 }
 
 function subscribePtyVisibility(callback: () => void): () => void {
-  const unsubProjects = useProjectsStore.subscribe(callback)
-  const unsubUi = useUiStore.subscribe(callback)
+  const unsubProjects = useProjectsStore.subscribe(() => {
+    cached = null
+    callback()
+  })
+  const unsubUi = useUiStore.subscribe(() => {
+    cached = null
+    callback()
+  })
   return () => {
     unsubProjects()
     unsubUi()
   }
+}
+
+// `useSyncExternalStore` chama getSnapshot por pane inscrito a cada emissão de
+// store, e o cálculo é O(projetos × terminais). Com N panes abertos isso vira
+// N varreduras completas por escrita de store — numa feature cujo objetivo é
+// justamente reduzir custo de frontend. Invalidado no subscribe acima, então o
+// cache nunca sobrevive a uma mudança de estado.
+let cached: PtyVisibilitySets | null = null
+
+function visibilitySets(): PtyVisibilitySets {
+  if (!cached) cached = computeVisibleFocusedPtyIds()
+  return cached
 }
 
 /**
@@ -88,6 +106,6 @@ function subscribePtyVisibility(callback: () => void): () => void {
 export function usePtyPanelVisible(ptyId: string | undefined): boolean {
   return useSyncExternalStore(subscribePtyVisibility, () => {
     if (!ptyId) return false
-    return computeVisibleFocusedPtyIds().visible.has(ptyId)
+    return visibilitySets().visible.has(ptyId)
   })
 }

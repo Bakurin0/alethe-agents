@@ -254,6 +254,10 @@ export function useXtermSession(params: {
     let pendingWrites: string[] = []
     let pendingWriteLength = 0
     let resumeErrorBuffer = ''
+    // Não-nulo só durante o await do snapshot em `doResync`: coleta os chunks
+    // de `data` que chegarem nessa janela pra reaplicá-los depois do replay,
+    // em vez de perdê-los no clear da fila.
+    let resyncCaptureRef: string[] | null = null
     let lastCols = 0
     let lastRows = 0
     let forceNextResize = false
@@ -739,7 +743,13 @@ export function useXtermSession(params: {
       const id = ptyIdRef.current
       if (!id || disposed) return
       try {
+        // Chunks que chegarem pelo canal `data` DURANTE o await não estão no
+        // snapshot (ele foi tirado antes deles) e não podem ser descartados
+        // junto com a fila — senão viram um buraco permanente no render.
+        const arrivedDuringFetch: string[] = []
+        resyncCaptureRef = arrivedDuringFetch
         const replay = await attachPty(id)
+        resyncCaptureRef = null
         if (disposed) return
         terminal.reset()
         pendingWrites = []
@@ -749,7 +759,9 @@ export function useXtermSession(params: {
           writeFrame = null
         }
         if (replay) queueTerminalWrite(replay)
+        for (const chunk of arrivedDuringFetch) queueTerminalWrite(chunk)
       } catch {
+        resyncCaptureRef = null
         /* resync best-effort — o próximo lote do canal `data` corrige sozinho */
       }
     }
@@ -769,6 +781,7 @@ export function useXtermSession(params: {
     ): Promise<boolean> => {
       const dataUnlisten = await listenPtyData(id, (chunk) => {
         useTerminalsStore.getState().recordIo(id)
+        if (resyncCaptureRef) resyncCaptureRef.push(chunk)
         queueTerminalWrite(chunk)
         completionMonitor?.handleOutput(chunk)
         inspectChunk?.(chunk)

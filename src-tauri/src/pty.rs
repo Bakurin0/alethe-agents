@@ -127,7 +127,7 @@ fn valid_utf8_prefix_len(buf: &[u8]) -> usize {
 /// têm os dois bits mais altos como `10`; sem isso, um corte no meio de um
 /// acento (ex.: "ã" = 2 bytes) sobra um byte órfão que vira `U+FFFD` no
 /// `from_utf8_lossy` seguinte.
-fn align_to_char_boundary(slice: &[u8], start: usize) -> usize {
+pub(crate) fn align_to_char_boundary(slice: &[u8], start: usize) -> usize {
     let mut start = start.min(slice.len());
     while start < slice.len() && (slice[start] & 0xC0) == 0x80 {
         start += 1;
@@ -519,6 +519,12 @@ pub async fn spawn_pty(
         // `None` = ainda não emitiu nada no canal `activity` — deixa o
         // primeiro lote invisível passar na hora, sem esperar o intervalo.
         let mut last_activity_emit: Option<Instant> = None;
+        // Saída acumulada desde o último emit no canal `activity`, pra o
+        // throttle atrasar sem descartar. Teto de 256 KiB porque o consumidor
+        // só precisa de volume e de padrões recentes — não redesenha a tela
+        // (isso é o replay de scrollback no `doResync`).
+        let mut activity_pending = String::new();
+        const ACTIVITY_PENDING_CAP: usize = 256 * 1024;
 
         // Painel visível: emite no canal `data` de sempre (render caro no
         // frontend). Painel invisível: NÃO emite `data` (o frontend não está
@@ -526,6 +532,12 @@ pub async fn spawn_pty(
         // pra manter recordIo/AgentCompletionMonitor vivos em background sem
         // custo de render. `push_scrollback` (fora daqui) roda sempre, então
         // nenhum byte é perdido — só o "desenhar na tela" é adiado.
+        //
+        // O throttle ACUMULA em `activity_pending` em vez de descartar: o
+        // consumidor do canal conta caracteres de saída (`outputChars` do
+        // `AgentCompletionMonitor`) e casa padrões de erro de bootstrap, então
+        // amostrar o stream faria um agente em segundo plano nunca sair de
+        // `armed` ou perder a detecção de conflito de resume do Codex.
         let mut emit_data_or_activity = |text: &str| {
             // Espelho do controle remoto: o dispositivo remoto é um viewer
             // independente do painel local, então publica sempre — o gate de
@@ -534,11 +546,21 @@ pub async fn spawn_pty(
                 serde_json::json!({ "type": "pty_output", "ptyId": &remote_pty_id, "text": text }),
             );
             if thread_visible.load(Ordering::Relaxed) {
+                if !activity_pending.is_empty() {
+                    activity_pending.clear();
+                }
                 let _ = event_app.emit(&event_name, text);
                 return;
             }
+            activity_pending.push_str(text);
+            if activity_pending.len() > ACTIVITY_PENDING_CAP {
+                let drop_to = activity_pending.len() - ACTIVITY_PENDING_CAP;
+                let boundary = align_to_char_boundary(activity_pending.as_bytes(), drop_to);
+                activity_pending.drain(..boundary);
+            }
             if activity_emit_due(last_activity_emit, PTY_ACTIVITY_EMIT_INTERVAL_MS) {
-                let _ = event_app.emit(&activity_event_name, text);
+                let _ = event_app.emit(&activity_event_name, activity_pending.as_str());
+                activity_pending.clear();
                 last_activity_emit = Some(Instant::now());
             }
         };

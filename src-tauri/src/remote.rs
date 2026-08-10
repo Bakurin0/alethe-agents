@@ -477,7 +477,10 @@ fn read_scrollback(sessions: &PtySessions, id: &str, max_bytes: usize) -> String
         if let Some(session) = sessions.get(id) {
             if let Ok(mut buffer) = session.scrollback.lock() {
                 let data = buffer.data.make_contiguous();
-                let start = data.len().saturating_sub(max_bytes);
+                let start = crate::pty::align_to_char_boundary(
+                    data,
+                    data.len().saturating_sub(max_bytes),
+                );
                 return String::from_utf8_lossy(&data[start..]).into_owned();
             }
         }
