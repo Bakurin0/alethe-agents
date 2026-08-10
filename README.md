@@ -57,15 +57,13 @@
       <img src="./docs/screenshots/alethe-windows.png" alt="Alethe running on Windows" width="100%">
     </td>
     <td align="center">
-      <br><br><br>
-      <strong>Coming soon</strong>
-      <br><br><br>
+      <img src="./docs/screenshots/alethe-linux.png" alt="Alethe runnig on Linux" width="100%">
     </td>
   </tr>
   <tr>
     <td align="center">Available on macOS</td>
     <td align="center">Available on Windows</td>
-    <td align="center">Screenshot coming soon</td>
+    <td align="center">Available on Linux</td>
   </tr>
 </table>
 
