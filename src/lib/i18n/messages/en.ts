@@ -1028,6 +1028,7 @@ export const en = {
   'ui.sidebar.home': 'Home',
   'ui.sidebar.homeTitle': 'Home ({shortcut})',
   'ui.sidebar.projects': 'Projects',
+  'ui.sidebar.search': 'Search',
   'ui.sidebar.explorer': 'Explorer',
   'ui.sidebar.navigation': 'Sidebar navigation',
   'ui.sidebar.archiveGroup': 'Archive group',

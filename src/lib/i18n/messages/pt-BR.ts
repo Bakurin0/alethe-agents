@@ -1036,6 +1036,7 @@ export const ptBR: Record<MessageKey, string> = {
   'ui.sidebar.home': 'Início',
   'ui.sidebar.homeTitle': 'Início ({shortcut})',
   'ui.sidebar.projects': 'Projetos',
+  'ui.sidebar.search': 'Buscar',
   'ui.sidebar.explorer': 'Explorer',
   'ui.sidebar.navigation': 'Navegacao da barra lateral',
   'ui.sidebar.archiveGroup': 'Arquivar grupo',
