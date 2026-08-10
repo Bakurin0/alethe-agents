@@ -13,6 +13,7 @@ import {
   Pin,
   RefreshCw,
   Newspaper,
+  Smartphone,
   Users,
   Workflow,
   X,
@@ -28,12 +29,13 @@ import { getCachedAntigravityUsage } from '../../lib/antigravityUsageCache'
 import { requestAppClose } from '../../hooks/useCloseConfirmation'
 import { observeClaudeReset, observeCodexReset } from '../../lib/limitResetWatch'
 import { useT } from '../../lib/i18n'
-import { killPty } from '../../lib/tauri'
+import { killPty, remoteControlInfo } from '../../lib/tauri'
 import { useProjectsStore } from '../../stores/projectsStore'
 import { useUiStore } from '../../stores/uiStore'
 import styles from './TitleBar.module.css'
 
 const CLAUDE_POLL_INTERVAL_MS = 5 * 60_000
+const REMOTE_CONTROL_POLL_INTERVAL_MS = 2_000
 const APP_TITLE = import.meta.env.DEV ? '(DEV) Alethe' : 'Alethe'
 
 function usagePillColor(utilization: number): string {
@@ -117,10 +119,17 @@ export function TitleBar() {
   const activateWorkspaceTab = useProjectsStore((s) => s.activateWorkspaceTab)
   const navigateWorkspaceHistory = useProjectsStore((s) => s.navigateWorkspaceHistory)
   const [tabMenu, setTabMenu] = useState<{ x: number; y: number; items: MenuItem[] } | null>(null)
+  const [remoteConnectedDevices, setRemoteConnectedDevices] = useState(0)
   const activeProfile = profiles.find((profile) => profile.id === activeProfileId) ?? null
   const threeAreas = preferences.topbarStyle === 'three-areas'
   const antigravityReady =
     antigravityUsage?.status === 'ready' && antigravityUsage.buckets.length > 0
+  const remoteConnectedLabel = t(
+    remoteConnectedDevices === 1
+      ? 'remote.topbarDeviceConnected'
+      : 'remote.topbarDevicesConnected',
+    { count: remoteConnectedDevices },
+  )
 
   const closeAgentPlanning = () => {
     if (!agentCanvasSession) return
@@ -137,6 +146,29 @@ export function TitleBar() {
   // Pausa apenas o polling remoto de usage quando a janela não está visível.
   // O supervisor de memória continua ativo no background por segurança.
   const activeRef = useRef(true)
+
+  useEffect(() => {
+    let cancelled = false
+    const refreshRemoteDevices = async () => {
+      try {
+        const info = await remoteControlInfo()
+        if (!cancelled) {
+          setRemoteConnectedDevices(info.enabled ? info.connected_devices : 0)
+        }
+      } catch {
+        if (!cancelled) setRemoteConnectedDevices(0)
+      }
+    }
+    void refreshRemoteDevices()
+    const interval = window.setInterval(
+      () => void refreshRemoteDevices(),
+      REMOTE_CONTROL_POLL_INTERVAL_MS,
+    )
+    return () => {
+      cancelled = true
+      window.clearInterval(interval)
+    }
+  }, [])
 
   // Claude usage polling — adiado 1.5s (HTTP call externa, não trava boot).
   useEffect(() => {
@@ -517,6 +549,18 @@ export function TitleBar() {
             ) : null}
           </div>
           <div className={styles.statusGroup}>
+            {remoteConnectedDevices > 0 ? (
+              <button
+                type="button"
+                className={styles.remoteDevicePill}
+                onClick={() => openModal('remoteControl')}
+                title={remoteConnectedLabel}
+                aria-label={remoteConnectedLabel}
+              >
+                <Smartphone size={12} />
+                <span>{remoteConnectedLabel}</span>
+              </button>
+            ) : null}
             {preferences.topbarShowClaudeUsage && claudeUsage !== null ? (
               <div className={styles.usageWidget}>
                 <button
